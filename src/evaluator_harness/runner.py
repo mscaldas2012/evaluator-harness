@@ -315,15 +315,16 @@ class ExperimentRunner:
             request = ModelRequest(
                 prompt=prompt,
                 params=config.baseline.parameters.model_dump(mode="json", exclude_none=True),
-                metadata={
-                    "project": config.project.name,
-                    "run_id": run_id,
-                    "run_type": "baseline",
-                    "item_id": item.item_id,
-                    "trace_id": trace_id,
-                    "trace_name": trace_name,
-                    "prompt_version": config.task_prompt.version,
-                },
+                metadata=self._request_metadata(
+                    config=config,
+                    item=item,
+                    run_id=run_id,
+                    run_type="baseline",
+                    trace_id=trace_id,
+                    trace_name=trace_name,
+                    dataset_sync=dataset_sync,
+                    fingerprint=fingerprint,
+                ),
             )
             with self.langfuse_client.trace_span(
                 trace_id=trace_id,
@@ -480,13 +481,16 @@ class ExperimentRunner:
                 prompt=prompt,
                 params=candidate.parameters.model_dump(mode="json", exclude_none=True),
                 metadata={
-                    "project": config.project.name,
-                    "run_id": run_id,
-                    "run_type": "candidate",
-                    "item_id": item.item_id,
-                    "trace_id": trace_id,
-                    "trace_name": trace_name,
-                    "prompt_version": config.task_prompt.version,
+                    **self._request_metadata(
+                        config=config,
+                        item=item,
+                        run_id=run_id,
+                        run_type="candidate",
+                        trace_id=trace_id,
+                        trace_name=trace_name,
+                        dataset_sync=dataset_sync,
+                        fingerprint=fingerprint,
+                    ),
                     "baseline_run_id": baseline_run_id,
                 },
             )
@@ -656,6 +660,35 @@ class ExperimentRunner:
             },
             "prompt": prompt,
             "timestamp": _utc_now(),
+        }
+
+    def _request_metadata(
+        self,
+        *,
+        config: ProjectConfig,
+        item: DatasetItem,
+        run_id: str,
+        run_type: str,
+        trace_id: str,
+        trace_name: str,
+        dataset_sync: DatasetSyncResult,
+        fingerprint: BaselineFingerprint,
+    ) -> dict[str, Any]:
+        return {
+            "project": config.project.name,
+            "project_version": config.project.version,
+            "run_id": run_id,
+            "run_type": run_type,
+            "item_id": item.item_id,
+            "dataset_item_id": item.item_id,
+            "dataset_name": dataset_sync.name,
+            "dataset_version": dataset_sync.version,
+            "dataset_compatibility_version": dataset_sync.compatibility_version,
+            "evaluator_set_id": fingerprint.evaluator_set_id,
+            "trace_id": trace_id,
+            "trace_name": trace_name,
+            "prompt_version": config.task_prompt.version,
+            "observation_role": "model_output",
         }
 
     def _render_prompt(self, path: Path, variables: dict[str, str]) -> str:
