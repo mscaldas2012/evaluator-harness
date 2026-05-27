@@ -1,0 +1,67 @@
+project:
+  name: rewrite-quality
+  version: v1
+  score_config_prefix: eh_rewrite_quality_
+
+dataset:
+  kind: local_csv
+  path: datasets/rewrite_quality.csv
+  langfuse_dataset_name: rewrite-quality/v1
+  item_id_strategy: explicit_or_hash
+
+task_prompt:
+  path: prompts/rewrite_quality/task_prompt.md
+  version: v1
+  template_variables:
+    - input
+
+baseline:
+  name: gpt-4.1-baseline
+  provider: openai_compatible
+  auth_mode: azure_client_credentials
+  model: gpt-4.1
+  azure:
+    tenant_id_env: EDAV_TENANT_ID
+    client_id_env: EDAV_CLIENT_ID
+    client_secret_env: EDAV_CLIENT_SECRET
+    scope_env: EDAV_SCOPE_TOKEN_AUDIENCE
+    subscription_key_env: EDAV_SUBSCRIPTION_KEY
+    api_version_env: EDAV_AZURE_OPENAI_API_VERSION
+    endpoint_env: EDAV_AZURE_OPENAI_ENDPOINT
+  parameters:
+    temperature: 0.2
+
+candidates:
+  - name: dry-run-candidate
+    provider: dry_run
+    auth_mode: none
+    model: dry-run
+    parameters:
+      temperature: 0.0
+
+evaluators:
+  - name: clarity
+    type: llm_as_judge
+    version: v1
+    prompt_path: prompts/rewrite_quality/evaluators/clarity.md
+    score:
+      name: clarity
+      managed_by_harness: true
+      data_type: NUMERIC
+      min_value: 0
+      max_value: 1
+    blind: true
+    modes:
+      - baseline
+      - candidate
+    variables:
+      - input
+      - output
+      - baseline_output
+      - ground_truth
+
+human_review:
+  enabled: true
+  queue_ownership: user_owned
+  review_policy_version: default
+  annotation_queue_id: queue-user-owned-1

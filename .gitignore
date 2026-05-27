@@ -1,0 +1,81 @@
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+*.local
+*.local.*
+*.secret
+*.secrets
+secrets/
+credentials/
+
+# Python environments and packaging
+.venv/
+venv/
+env/
+ENV/
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+build/
+dist/
+site/
+
+# Python tooling caches
+.pytest_cache/
+.pytest-tmp/
+.tmp-pytest/
+.tmp-pytest*/
+pytest-cache-files-*/
+.coverage
+.coverage.*
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+.pyre/
+.pytype/
+.tox/
+.nox/
+
+# uv local state
+.uv-cache/
+.uv-cache*/
+
+# Harness runtime artifacts
+.evaluator-harness/
+.evaluator-harness/queue-references/
+runs/
+outputs/
+exports/
+artifacts/
+reports/*.csv
+tmp/
+temp/
+*.trace.jsonl
+*.run.json
+*.results.json
+*.results.csv
+
+# Langfuse and provider local artifacts
+langfuse.local.*
+openai.local.*
+azure.local.*
+ollama.local.*
+
+# Logs
+logs/
+*.log
+*.out
+*.err
+
+# OS and editor noise
+.DS_Store
+Thumbs.db
+Desktop.ini
+.idea/
+.vscode/
+*.swp
+*.swo
+*~

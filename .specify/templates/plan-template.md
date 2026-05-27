@@ -22,6 +22,10 @@
 
 **Primary Dependencies**: [e.g., FastAPI, UIKit, LLVM or NEEDS CLARIFICATION]
 
+**Python Environment Management**: For Python features, use `uv` for
+environment management, dependency setup, lockfile management, and command
+execution. Prefer `uv sync` and `uv run ...`.
+
 **Storage**: [if applicable, e.g., PostgreSQL, CoreData, files or N/A]
 
 **Testing**: [e.g., pytest, XCTest, cargo test or NEEDS CLARIFICATION]
@@ -40,7 +44,32 @@
 
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
 
-[Gates determined based on constitution file]
+- **Langfuse-first**: Confirm the feature uses Langfuse-native traces,
+  evaluations, LLM-as-a-Judge, scoring, dashboards, and comparisons wherever
+  those capabilities exist. Provider calls MUST prefer Langfuse SDK
+  integrations or Langfuse-compatible provider APIs when available; any manual
+  tracing or local replacement MUST be listed in Complexity Tracking.
+- **Thin harness scope**: Confirm the design remains a local Python CLI with
+  simple provider adapters and lightweight config. No microservices,
+  orchestration frameworks, distributed systems, or unnecessary APIs.
+- **Dataset simplicity**: Confirm CSV with an `input` column remains the default
+  runnable dataset shape. Any richer schema MUST be justified.
+- **Reproducibility metadata**: Confirm every run logs provider, model name,
+  model parameters, prompt version, evaluator versions, temperature, latency,
+  token usage, timestamps, project identity, dataset identity, baseline
+  reference, run identity, and relevant configuration values.
+- **Baseline-centric workflow**: Confirm baseline outputs are generated,
+  identified, or reused before candidate comparisons, and comparison is
+  delegated to Langfuse unless a documented gap exists.
+- **Minimal local state**: Confirm Langfuse remains the system of record and
+  local state is limited to files needed for datasets, prompts, config,
+  reproducibility, or temporary run artifacts.
+- **Human review awareness**: Confirm automated scoring is framed as decision
+  support and preserves links, handles, or Human Annotation Queue entries for
+  human review in Langfuse.
+- **Local-first execution**: Confirm the feature can run locally from a simple
+  command such as `uv run python run_experiment.py`; Docker may be optional but
+  not required.
 
 ## Project Structure
 

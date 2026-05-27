@@ -1,0 +1,144 @@
+# Project config contract for the MVP.
+# This is documentation-oriented schema, not a generated validator format.
+
+project:
+  name: string-required
+  description: string-optional
+  version: string-required
+  score_config_prefix: string-required-pattern-^[A-Za-z0-9_-]+[_-]$-max-64
+  metadata: object-optional
+
+dataset:
+  kind: enum[local_csv, local_json, langfuse]
+  path: string-required-when-local
+  langfuse_dataset_name: string-optional-before-sync
+  langfuse_dataset_id: string-optional
+  langfuse_dataset_version: string-optional-before-sync
+  item_id_strategy: enum[explicit_or_hash]
+  metadata: object-optional
+  optional_item_fields:
+    - ground_truth
+    - reference_output
+    - tags
+    - notes
+
+task_prompt:
+  path: string-required
+  version: string-required
+  template_variables:
+    - input
+
+baseline:
+  name: string-required
+  provider: enum[openai_compatible, ollama]
+  auth_mode: enum[azure_client_credentials, api_key, none]
+  model: string-required
+  endpoint: string-optional
+  # Azure fields are environment variable names or secret reference names only.
+  # The project config is intended to be committed; secret values belong in
+  # .env, the host environment, or a secret manager.
+  azure:
+    tenant_id_env: env-var-name-required-when-azure-client-credentials
+    client_id_env: env-var-name-required-when-azure-client-credentials
+    client_secret_env: env-var-name-required-when-azure-client-credentials
+    scope_env: env-var-name-required-when-azure-client-credentials
+    subscription_key_env: env-var-name-required-when-azure-client-credentials
+    api_version_env: env-var-name-required-when-azure-client-credentials
+    endpoint_env: env-var-name-required-when-azure-client-credentials
+  parameters:
+    temperature: number-required
+    top_p: number-optional
+    max_tokens: integer-optional
+    token_limit_parameter: enum[max_tokens, max_completion_tokens]-default-max_tokens
+    seed: integer-optional
+  metadata: object-optional
+
+candidates:
+  - name: string-required
+    provider: enum[openai_compatible, ollama]
+    auth_mode: enum[azure_client_credentials, api_key, none]
+    model: string-required
+    endpoint: string-optional
+    # Azure fields are environment variable names or secret reference names only.
+    # The project config is intended to be committed; secret values belong in
+    # .env, the host environment, or a secret manager.
+    azure:
+      tenant_id_env: env-var-name-required-when-azure-client-credentials
+      client_id_env: env-var-name-required-when-azure-client-credentials
+      client_secret_env: env-var-name-required-when-azure-client-credentials
+      scope_env: env-var-name-required-when-azure-client-credentials
+      subscription_key_env: env-var-name-required-when-azure-client-credentials
+      api_version_env: env-var-name-required-when-azure-client-credentials
+      endpoint_env: env-var-name-required-when-azure-client-credentials
+    parameters:
+      temperature: number-required
+      top_p: number-optional
+      max_tokens: integer-optional
+      token_limit_parameter: enum[max_tokens, max_completion_tokens]-default-max_tokens
+      seed: integer-optional
+    metadata: object-optional
+
+evaluators:
+  - name: string-required
+    type: enum[llm_as_judge, deterministic]
+    version: string-required
+    prompt_path: string-required-when-llm-as-judge
+    score:
+      name: string-required
+      managed_by_harness: boolean-default-true
+      data_type: enum[NUMERIC, CATEGORICAL, BOOLEAN, TEXT]
+      min_value: number-required-when-numeric
+      max_value: number-required-when-numeric
+      categories: list-required-when-categorical
+      description: string-optional
+      langfuse_score_config_id: string-required-when-managed-by-harness-false-optional-after-sync
+    blind: boolean-default-true
+    modes:
+      - enum[baseline, candidate]
+    variables:
+      - input
+      - output
+      - baseline_output
+      - ground_truth
+
+human_review:
+  enabled: boolean-default-true
+  minimum_sample_percent: integer-default-5
+  prioritize:
+    - failures
+    - low_confidence
+    - disputed
+  annotation_queue_id: string-optional
+
+exports:
+  enabled: boolean-default-false
+  directory: string-default-exports
+
+validation_rules:
+  provider_secret_refs:
+    project_config_must_store_references_only: true
+    allowed_env_name_pattern: "^[A-Z_][A-Z0-9_]*$"
+    forbid_literal_secret_values: true
+    forbid_trace_or_stdout_secret_values: true
+    secret_values_loaded_from:
+      - .env
+      - host_environment
+      - secret_manager
+  score_config_prefix:
+    non_empty: true
+    allowed_pattern: "^[A-Za-z0-9_-]+[_-]$"
+    project_specific: true
+    max_prefix_length: 64
+    max_derived_name_length: 128
+  score_config_compatibility:
+    compare:
+      - name
+      - data_type
+      - min_value
+      - max_value
+      - categories
+      - boolean_constraints
+      - text_constraints
+      - archived_status
+    report_only:
+      - description

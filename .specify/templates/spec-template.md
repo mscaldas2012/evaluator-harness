@@ -85,6 +85,23 @@
   Fill them out with the right functional requirements.
 -->
 
+### Experiment Requirements
+
+- **Project**: Feature MUST define the evaluation project identity, including
+  datasets, baseline model configuration, candidate model configurations,
+  evaluator definitions, and review policy.
+- **Dataset**: Feature MUST preserve support for CSV datasets with an `input`
+  column unless explicitly out of scope.
+- **Langfuse Logging**: Feature MUST define what traces, observations, scores,
+  run metadata, evaluator metadata, baseline references, and comparison metadata
+  are logged to Langfuse.
+- **Prompt and Evaluator Versioning**: Feature MUST identify how prompt versions
+  and evaluator versions are tracked and associated with runs.
+- **Baseline**: Feature MUST state whether it creates, selects, reuses, or
+  consumes a baseline model run before candidate comparisons.
+- **Human Review**: Feature MUST state how users can inspect important or
+  disputed outputs in Langfuse, including Human Annotation Queues when used.
+
 ### Functional Requirements
 
 - **FR-001**: System MUST [specific capability, e.g., "allow users to create accounts"]

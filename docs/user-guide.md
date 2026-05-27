@@ -1,0 +1,588 @@
+# User Guide: Lightweight Langfuse Evaluation Harness
+
+This harness is intended to run headless. The local tool should be a CLI that
+executes evaluation projects and logs complete run metadata to Langfuse.
+Langfuse provides the UI for traces, evaluators, annotation queues, dashboards,
+and comparisons.
+
+No local UI is required for the MVP. A local UI would only be justified later if
+non-technical users need guided project setup or if repeated project
+configuration becomes error-prone in files.
+
+## Core Concepts
+
+- **Project**: A reusable evaluation use case, such as `rewrite-quality`,
+  `support-answer-helpfulness`, or `rag-groundedness`.
+- **Dataset**: Inputs to evaluate. The default format is CSV with an `input`
+  column.
+- **Baseline**: The model and parameter set used as the comparison anchor for a
+  project.
+- **Candidate**: A model or model-parameter variant compared against the
+  baseline.
+- **Evaluator**: A Langfuse-owned scoring method, usually an LLM-as-a-Judge
+  prompt or a deterministic metric.
+- **Run**: One execution of a baseline or candidate over a project dataset.
+- **Human Annotation Queue**: A Langfuse review queue for manual inspection and
+  calibration.
+
+## 1. Set Up Local Python Environment
+
+Use `uv` for Python environment management, dependency setup, and command
+execution.
+
+```bash
+uv sync
+```
+
+Run the harness and tests through `uv run`, for example
+`uv run python run_experiment.py ...` and `uv run pytest`.
+
+Set `EVALUATOR_HARNESS_LIVE=1` when you want commands to use the real
+Langfuse SDK and provider credentials. Leave it unset or `0` for credential-free
+offline tests and fake-backed local development.
+
+## 2. Prepare Langfuse
+
+In Langfuse, set up the workspace that will store experiments:
+
+1. Create or select a Langfuse project.
+2. Create API credentials for the harness.
+3. Decide where datasets are authored:
+   - local CSV/JSON for low-friction authoring, or
+   - Langfuse Datasets managed in the Langfuse UI.
+4. Let the harness import or resolve local datasets as Langfuse Datasets before
+   valid experiment execution.
+5. Let the harness create or resolve harness-managed evaluator score configs
+   with the project score prefix.
+6. Let the harness create or resolve a project-managed Human Annotation Queue,
+   or configure a user-owned queue ID when you want to manage the queue
+   manually.
+
+The harness should fail fast if Langfuse is unreachable. Runs without Langfuse
+logging are not considered valid experiment runs.
+
+Use `LANGFUSE_HOST` for new setup. `LANGFUSE_BASE_URL` remains accepted as a
+compatibility alias.
+
+## 3. Create a Harness Project
+
+Create a project config that defines the evaluation use case.
+
+Project configs are intended to be committed. They must contain only stable
+project settings and environment variable names such as `EDAV_CLIENT_SECRET`.
+Actual credential values belong in `.env`, the host environment, or a secret
+manager, and must not be checked in.
+
+Example:
+
+```yaml
+project:
+  name: rewrite-quality
+  description: Compare model outputs for a rewrite task.
+  version: v1
+  score_config_prefix: eh_rewrite_quality_
+
+dataset:
+  path: datasets/rewrite_quality.csv
+  version: v1
+
+prompt:
+  path: prompts/rewrite_quality/task_prompt.md
+  version: v1
+
+baseline:
+  name: gpt-4.1-baseline
+  provider: openai-compatible
+  auth_mode: azure_client_credentials
+  model: gpt-4.1
+  azure:
+    tenant_id_env: EDAV_TENANT_ID
+    client_id_env: EDAV_CLIENT_ID
+    client_secret_env: EDAV_CLIENT_SECRET
+    scope_env: EDAV_SCOPE_TOKEN_AUDIENCE
+    subscription_key_env: EDAV_SUBSCRIPTION_KEY
+    api_version_env: EDAV_AZURE_OPENAI_API_VERSION
+    endpoint_env: EDAV_AZURE_OPENAI_ENDPOINT
+  parameters:
+    temperature: 0.2
+    top_p: 1.0
+    max_tokens: 2048
+
+candidates:
+  - name: llama3-local
+    provider: ollama
+    auth_mode: none
+    model: llama3
+    parameters:
+      temperature: 0.2
+      top_p: 1.0
+      max_tokens: 2048
+  - name: dry-run-candidate
+    provider: dry_run
+    auth_mode: none
+    model: dry-run
+    parameters:
+      temperature: 0.0
+      top_p: 1.0
+      max_tokens: 2048
+
+evaluators:
+  - name: clarity
+    type: llm-as-judge
+    prompt_path: prompts/rewrite_quality/evaluators/clarity.md
+    version: v1
+    score:
+      name: clarity
+      managed_by_harness: true
+      data_type: NUMERIC
+      min_value: 0
+      max_value: 1
+      description: Clarity score from 0.0 to 1.0.
+    blind: true
+    modes:
+      - baseline
+      - candidate
+    variables:
+      - input
+      - output
+      - baseline_output
+      - ground_truth
+
+human_review:
+  enabled: true
+  queue_ownership: managed_by_harness
+  review_policy_version: default
+  minimum_sample_percent: 5
+  prioritize:
+    - failures
+    - low_confidence
+    - disputed
+```
+
+The Azure `*_env` fields are references to environment variables, not the secret
+values themselves. For example, `client_secret_env: EDAV_CLIENT_SECRET` tells the
+harness to read the client secret from an environment variable named
+`EDAV_CLIENT_SECRET`.
+
+Rewrite quality is only one project. Future projects should define their own
+datasets, prompts, baseline, candidates, and evaluator prompts.
+
+The project config does not include a tracing mode. Provider adapters choose the
+best tracing strategy internally: Azure OpenAI should use the Langfuse-wrapped
+client, while providers without a compatible Langfuse integration can use an
+adapter-owned manual tracing fallback.
+
+The `dry_run` provider is a first-class candidate path for smoke testing live
+Langfuse baseline reuse without calling a second live model provider.
+
+## 4. Create the Dataset
+
+For the simplest local dataset, create a CSV with an `input` column.
+
+```csv
+id,input
+1,"Rewrite this paragraph in a professional tone."
+2,"Simplify this technical explanation."
+```
+
+Rules:
+
+- `input` is required.
+- `id` is optional.
+- If `id` is missing, the harness generates a stable item ID from row position
+  and input hash.
+- If explicit IDs are present, they must be unique.
+- Extra columns are allowed when they are useful for the project, such as
+  `tags`, `notes`, `expected_tone`, `reference_output`, or `ground_truth`.
+- `ground_truth` is optional. When present, baseline and candidate evaluators
+  can use it as a reference value. When absent, baseline and candidate runs
+  should still proceed; evaluators that do not require ground truth can still
+  run.
+- Before a valid experiment run, the harness should create, update, or resolve a
+  matching Langfuse Dataset and record the Langfuse dataset identity and version.
+- If Langfuse does not expose a dataset version, the harness derives a dataset
+  compatibility version from stable item IDs and input hashes for baseline
+  matching.
+
+## 5. Write the Task Prompt
+
+Create the prompt that candidate models will execute.
+
+Example `prompts/rewrite_quality/task_prompt.md`:
+
+```text
+Rewrite the following text according to the project instructions.
+
+Input:
+{{input}}
+```
+
+Track prompt versions. If the prompt changes, treat it as a new version so
+baseline reuse rules remain clear.
+
+## 6. Create LLM-as-a-Judge Evaluator Prompts
+
+Evaluator prompts belong to the project. They define what quality means for that
+project. The harness should not hard-code rewrite quality or any other scoring
+dimension.
+
+Recommended evaluator prompt pattern:
+
+1. Evaluate one dimension only.
+2. Set `blind: true` when the judge should not see provider or model identity.
+3. Include the source input, the output being evaluated, optional
+   `baseline_output`, optional `ground_truth`, and any reference fields needed
+   for the evaluator.
+4. Ask for reasoning, score, and confidence.
+5. Return structured output that Langfuse can map into scores.
+
+Example `prompts/rewrite_quality/evaluators/clarity.md`:
+
+```text
+You are evaluating one dimension: clarity.
+
+Source input:
+{{input}}
+
+Output:
+{{output}}
+
+Ground truth, if present:
+{{ground_truth}}
+
+Instructions:
+- Judge whether the candidate is clear and easy to understand.
+- Ignore provider identity, model identity, cost, and latency.
+- Do not evaluate tone, factuality, or brevity unless they affect clarity.
+- Explain the reasoning before assigning the score.
+
+Return JSON:
+{
+  "reasoning": "short explanation",
+  "score": 0.0,
+  "confidence": 0.0
+}
+```
+
+In Langfuse, configure an LLM-as-a-Judge evaluator that uses this prompt and maps
+the run fields into the prompt variables. Langfuse should own evaluator
+execution and score storage.
+
+Before running evaluators, sync the harness-managed score configs:
+
+```bash
+uv run python run_experiment.py sync-score-configs \
+  --project configs/projects/rewrite_quality.yaml
+```
+
+The harness only creates or resolves score configs it manages. Managed score
+configs use the project prefix, for example `eh_rewrite_quality_clarity`, so
+they are distinguishable from manually maintained Langfuse score configs. If a
+managed score config already exists with incompatible schema, the harness should
+fail instead of updating it. The user must delete or rename the existing score
+config in Langfuse before running the sync again. Archiving alone is accepted
+only if Langfuse no longer treats that score config name as conflicting.
+
+If an evaluator intentionally uses a manually maintained Langfuse score config,
+set `managed_by_harness: false` and provide the Langfuse score config ID. The
+harness may validate the reference, but it should not create or modify that
+config. Langfuse still owns the score results in both cases; this flag controls
+only whether the harness may create or resolve the score config schema.
+
+When `blind: true`, the harness should prepare judge inputs with neutral labels
+such as `baseline` and `candidate` or `output A` and `output B`. Provider,
+model, vendor, latency, and cost metadata remain available in Langfuse trace
+metadata, but they should not be included in the judge prompt.
+
+Evaluator definitions can support baseline mode, candidate mode, or both.
+Baseline-mode evaluator payloads use the baseline output as `output` and include
+`ground_truth` when the dataset item provides it. Candidate-mode payloads use the
+candidate output as `output` and can also include `baseline_output` and
+`ground_truth`.
+
+## 7. Run the Baseline
+
+Run the baseline first for the project.
+
+Example command shape:
+
+```bash
+uv run python run_experiment.py \
+  --project configs/projects/rewrite_quality.yaml \
+  --mode baseline
+```
+
+Expected behavior:
+
+- The harness loads the project config.
+- It validates the dataset.
+- It runs the baseline model over all dataset items.
+- It logs traces, run metadata, prompt version, model parameters, latency,
+  tokens, costs where available, and dataset item IDs to Langfuse.
+- It creates evaluator-ready baseline records so Langfuse evaluators can score
+  the baseline itself, with or without `ground_truth`.
+- It records the baseline run identity for later candidate runs.
+
+## 8. Run One Candidate Model
+
+Run a candidate against the existing compatible baseline.
+
+```bash
+uv run python run_experiment.py \
+  --project configs/projects/rewrite_quality.yaml \
+  --mode candidate \
+  --candidate llama3-local \
+  --baseline latest-compatible
+```
+
+Expected behavior:
+
+- The harness finds a compatible baseline run.
+- It does not rerun the baseline if one already exists.
+- It runs the candidate model over the same project dataset.
+- It records the baseline reference on every candidate output.
+- It logs all traces and metadata to Langfuse.
+
+Later, you can run more candidates against the same baseline:
+
+```bash
+uv run python run_experiment.py \
+  --project configs/projects/rewrite_quality.yaml \
+  --mode candidate \
+  --candidate mistral-local \
+  --baseline latest-compatible
+```
+
+Baseline reuse is valid only when the project, dataset version, task prompt
+version, evaluator set, and baseline model parameters are compatible.
+Use `--baseline latest-compatible` for the newest matching baseline, or pass an
+explicit baseline run ID such as `--baseline baseline-abc123` when you want a
+specific prior run. The harness rejects incompatible baselines instead of
+silently comparing against a different project, dataset, prompt, or baseline
+parameter set.
+
+## 8.1 Add Another Model Configuration
+
+Most model additions should be config-only. Add a new entry under `candidates`
+with a unique `name`, a supported `provider`, explicit generation parameters,
+and only environment variable names for credentials.
+
+OpenAI-compatible Azure candidate example:
+
+```yaml
+candidates:
+  - name: azure-gpt41-mini-low-temp
+    provider: openai_compatible
+    auth_mode: azure_client_credentials
+    model: gpt-4.1-mini
+    azure:
+      tenant_id_env: EDAV_TENANT_ID
+      client_id_env: EDAV_CLIENT_ID
+      client_secret_env: EDAV_CLIENT_SECRET
+      scope_env: EDAV_SCOPE_TOKEN_AUDIENCE
+      subscription_key_env: EDAV_SUBSCRIPTION_KEY
+      api_version_env: EDAV_AZURE_OPENAI_API_VERSION
+      endpoint_env: EDAV_AZURE_OPENAI_ENDPOINT
+    parameters:
+      temperature: 0.1
+      top_p: 1.0
+      max_tokens: 1024
+```
+
+Ollama local candidate example:
+
+```yaml
+candidates:
+  - name: llama3-local-fast
+    provider: ollama
+    auth_mode: none
+    model: llama3
+    endpoint: http://localhost:11434
+    parameters:
+      temperature: 0.2
+      top_p: 1.0
+      max_tokens: 2048
+```
+
+Run the new model with the same CLI shape:
+
+```bash
+uv run python run_experiment.py run \
+  --project configs/projects/rewrite_quality.yaml \
+  --mode candidate \
+  --candidate azure-gpt41-mini-low-temp \
+  --baseline latest-compatible
+```
+
+The provider factory is driven by `provider`. `openai_compatible` uses the
+Langfuse-wrapped Azure OpenAI path when available. `ollama` uses manual tracing
+metadata because there is no compatible Langfuse-wrapped Ollama client in the
+MVP. Project configs should not include a tracing mode; adapters choose and
+record the tracing strategy internally.
+
+If a provider is not `openai_compatible` or `ollama`, add a small adapter under
+`src/evaluator_harness/providers/` and register it in the provider factory.
+Avoid plugin systems or workflow changes unless a provider cannot fit the
+existing `ModelProvider.generate()` shape.
+
+## 9. Configure Langfuse Evaluators
+
+High-level Langfuse steps:
+
+1. Open the Langfuse project.
+2. Confirm the baseline and candidate runs appear as dataset or experiment runs.
+3. Confirm the evaluator uses the harness-managed score config created by
+   `sync-score-configs`.
+4. Create LLM-as-a-Judge evaluators for the project dimensions.
+5. Use the project evaluator prompts and map variables such as:
+   - `input`
+   - `baseline_output`
+   - `candidate_output`
+   - `reference_output`, if present
+   - project metadata, if needed
+6. Scope evaluators to the relevant dataset or experiment runs.
+7. Run evaluators in Langfuse.
+8. Inspect generated scores and judge traces in Langfuse.
+
+Evaluator prompts should be versioned. If an evaluator prompt changes, record a
+new evaluator version so future comparisons remain reproducible.
+
+## 10. Perform Human Annotation
+
+Human review is used for calibration and disputed outputs. Automated scores are
+decision support, not objective truth.
+
+MVP behavior:
+
+1. The project can use a harness-managed Langfuse Human Annotation Queue.
+2. The harness creates or reuses the managed queue with this naming convention:
+
+```text
+EH_<project-slug>_<project-version>_review_<review-policy-version>
+```
+
+For example:
+
+```text
+EH_rewrite-quality_v1_review_default
+```
+
+3. The reusable non-secret local queue reference is stored under:
+
+```text
+.evaluator-harness/queue-references/<project-slug>__<project-version>__<review-policy-version>.json
+```
+
+4. The harness selects at least 5% of evaluated outputs for review.
+5. Selection prioritizes:
+   - a stable random calibration cohort based on dataset item IDs
+   - failed outputs
+   - low-confidence evaluator outputs
+   - disputed outputs
+6. Selected items should include:
+   - source input
+   - baseline output
+   - candidate output
+   - evaluator output
+   - trace context
+
+Managed queue setup:
+
+```bash
+uv run python run_experiment.py sync-score-configs \
+  --project configs/projects/rewrite_quality.yaml
+
+uv run python run_experiment.py sync-annotation-queue \
+  --project configs/projects/rewrite_quality.yaml
+```
+
+Queue routing no longer requires `LANGFUSE_ANNOTATION_QUEUE_ID` for managed
+queues. Duplicate selected items for the same queue are skipped when selection
+is rerun.
+
+To use a manually managed queue instead, configure:
+
+```yaml
+human_review:
+  enabled: true
+  queue_ownership: user_owned
+  annotation_queue_id: existing-langfuse-queue-id
+```
+
+The optional `LANGFUSE_ANNOTATION_QUEUE_ID` environment variable remains
+available as a temporary override when `fallback_to_env: true`.
+
+The random calibration cohort is deterministic for a project, dataset
+compatibility version, and review policy. Baseline and compatible candidate runs
+therefore send the same dataset item IDs for human review; run-specific risk
+items are additive.
+
+## 11. Compare Runs in Langfuse
+
+Use Langfuse for comparison, not local dashboards.
+
+High-level comparison steps:
+
+1. Open the project experiment or dataset run comparison view in Langfuse.
+2. Select the baseline run.
+3. Select candidate runs to compare.
+4. Compare:
+   - evaluator scores
+   - latency
+   - token usage
+   - cost, when available
+   - trace-level examples
+   - human annotations
+5. Inspect low-confidence, failed, or disputed items.
+6. Decide whether the candidate model or parameter set is better than the
+   baseline for the project.
+
+## 12. Expected Headless Workflow
+
+A typical headless workflow looks like this:
+
+```bash
+# Validate project configuration and sync required Langfuse assets
+uv run python run_experiment.py validate \
+  --project configs/projects/rewrite_quality.yaml
+
+uv run python run_experiment.py sync-dataset \
+  --project configs/projects/rewrite_quality.yaml
+
+uv run python run_experiment.py sync-score-configs \
+  --project configs/projects/rewrite_quality.yaml
+
+uv run python run_experiment.py sync-annotation-queue \
+  --project configs/projects/rewrite_quality.yaml
+
+# Run or create the baseline
+uv run python run_experiment.py \
+  --project configs/projects/rewrite_quality.yaml \
+  --mode baseline
+
+# Run one candidate against the compatible baseline
+uv run python run_experiment.py \
+  --project configs/projects/rewrite_quality.yaml \
+  --mode candidate \
+  --candidate llama3-local \
+  --baseline latest-compatible
+```
+
+Then use Langfuse for evaluator execution, annotation, and comparison.
+
+Live smoke tests are opt-in:
+
+```bash
+uv run pytest -m live
+```
+
+They skip when required Langfuse, Azure OpenAI, or annotation queue credentials
+are not configured.
+
+## References
+
+- Langfuse datasets: https://langfuse.com/docs/evaluation/features/datasets
+- Langfuse experiments via SDK: https://langfuse.com/docs/evaluation/experiments/experiments-via-sdk
+- Langfuse LLM-as-a-Judge: https://langfuse.com/docs/evaluation/evaluation-methods/llm-as-a-judge
+- Langfuse annotation queues: https://langfuse.com/docs/evaluation/evaluation-methods/annotation-queues
+- Langfuse scores: https://langfuse.com/docs/evaluation/scores/overview

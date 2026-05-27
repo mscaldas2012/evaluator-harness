@@ -1,0 +1,15 @@
+project:
+  name: invalid-project
+  version: v1
+  score_config_prefix: eh_invalid_
+
+baseline:
+  name: gpt-4.1-baseline
+  provider: openai_compatible
+  auth_mode: api_key
+  model: gpt-4.1
+  parameters:
+    temperature: 0.2
+
+candidates: []
+evaluators: []

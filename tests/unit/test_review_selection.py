@@ -1,0 +1,42 @@
+from __future__ import annotations
+
+from evaluator_harness.config import HumanReviewPolicy
+from evaluator_harness.review_selection import ReviewCandidate, select_review_items
+
+
+def test_select_review_items_prioritizes_risky_outputs_then_deterministic_sample() -> None:
+    candidates = [
+        ReviewCandidate(item_id="1", run_id="run", trace_id="trace-1", failed=True),
+        ReviewCandidate(item_id="2", run_id="run", trace_id="trace-2", confidence=0.3),
+        ReviewCandidate(item_id="3", run_id="run", trace_id="trace-3", disputed=True),
+        ReviewCandidate(item_id="4", run_id="run", trace_id="trace-4"),
+        ReviewCandidate(item_id="5", run_id="run", trace_id="trace-5"),
+    ]
+    policy = HumanReviewPolicy(enabled=True, minimum_sample_percent=20)
+
+    selected = select_review_items(candidates, policy)
+
+    assert len([item for item in selected if item.selection_bucket == "stable_calibration"]) == 1
+    assert any(item.selection_bucket == "run_risk" for item in selected)
+    assert ("1", "failure", "run_risk") in [
+        (item.item_id, item.selection_reason, item.selection_bucket)
+        for item in selected
+    ] or any(item.item_id == "1" for item in selected)
+
+
+def test_select_review_items_enforces_minimum_one_item() -> None:
+    candidates = [ReviewCandidate(item_id="1", run_id="run", trace_id="trace-1")]
+    policy = HumanReviewPolicy(enabled=True, minimum_sample_percent=5)
+
+    selected = select_review_items(candidates, policy)
+
+    assert len(selected) == 1
+    assert selected[0].selection_reason == "sample"
+    assert selected[0].selection_bucket == "stable_calibration"
+
+
+def test_select_review_items_returns_empty_when_disabled() -> None:
+    candidates = [ReviewCandidate(item_id="1", run_id="run", trace_id="trace-1", failed=True)]
+    policy = HumanReviewPolicy(enabled=False)
+
+    assert select_review_items(candidates, policy) == []
