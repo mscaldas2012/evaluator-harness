@@ -35,6 +35,8 @@ def validate(project: Annotated[Path, typer.Option("--project")]) -> None:
         console.print(f"baseline: {result.baseline_name}")
         console.print(f"candidates: {', '.join(result.candidate_names)}")
         console.print(f"evaluators: {', '.join(result.evaluator_names)}")
+        console.print(f"evaluator-targets: {', '.join(result.evaluator_targets)}")
+        console.print(f"score-targets: {', '.join(result.score_targets)}")
 
 
 @app.command("sync-dataset")
@@ -75,6 +77,43 @@ def sync_annotation_queue(project: Annotated[Path, typer.Option("--project")]) -
             console.print(f"reference: {result.reference_path}")
         if result.manual_fallback_reason:
             console.print(f"manual-fallback: {result.manual_fallback_reason}")
+
+
+@app.command("render-judge-prompts")
+def render_judge_prompts(project: Annotated[Path, typer.Option("--project")]) -> None:
+    results = _handle_command(lambda: ExperimentRunner().render_judge_prompts(project))
+    if results is not None:
+        for result in results:
+            console.print(f"evaluator: {result.evaluator_name}/{result.evaluator_version}")
+            console.print(f"target: {result.target}")
+            console.print(f"score: {result.score}")
+            console.print(
+                "shared_with_human_annotation_queue: "
+                f"{str(result.shared_with_human_annotation_queue).lower()}"
+            )
+            console.print("score_sources:")
+            for source, langfuse_source in result.score_sources.items():
+                console.print(f"  {source}: {langfuse_source}")
+            console.print("filters:")
+            console.print(f"  project: {result.filters.project}")
+            console.print(f"  project_version: {result.filters.project_version}")
+            console.print(f"  evaluator_set_id: {result.filters.evaluator_set_id}")
+            console.print(
+                "  run_type: "
+                + ",".join(run_type.value for run_type in result.filters.run_types)
+            )
+            console.print(f"  observation_role: {result.filters.observation_role}")
+            if result.filters.observation_name:
+                console.print("optional_narrowing:")
+                console.print(f"  observation_name: {result.filters.observation_name}")
+            console.print(f"prompt: {result.prompt_path}")
+
+
+@app.command("export-evaluator-setup")
+def export_evaluator_setup(project: Annotated[Path, typer.Option("--project")]) -> None:
+    result = _handle_command(lambda: ExperimentRunner().export_evaluator_setup(project))
+    if result is not None:
+        console.print(f"export: {result}")
 
 
 @app.command()

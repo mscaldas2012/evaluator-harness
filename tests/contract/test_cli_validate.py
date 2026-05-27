@@ -17,6 +17,8 @@ def test_validate_cli_success_output() -> None:
     assert "baseline: gpt5.2-dgw-default" in result.stdout
     assert "candidates: llama3-local" in result.stdout
     assert "evaluators: clarity/v1" in result.stdout
+    assert "evaluator-targets: clarity=observation/model_output" in result.stdout
+    assert "score-targets: clarity=eh_rewrite_quality_clarity" in result.stdout
 
 
 def test_validate_cli_failure_output() -> None:

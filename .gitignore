@@ -51,6 +51,7 @@ outputs/
 exports/
 artifacts/
 reports/*.csv
+reports/evaluator-setup-*.md
 tmp/
 temp/
 *.trace.jsonl

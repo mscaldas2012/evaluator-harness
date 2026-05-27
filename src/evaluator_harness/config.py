@@ -42,8 +42,24 @@ class ScoreDataType(str, Enum):
 
 
 class EvaluatorMode(str, Enum):
+    SINGLE_OUTPUT = "single_output"
+    BASELINE_COMPARISON = "baseline_comparison"
+
+
+class EvaluatorRunType(str, Enum):
     BASELINE = "baseline"
     CANDIDATE = "candidate"
+
+
+class EvaluatorTarget(str, Enum):
+    OBSERVATION = "observation"
+    TRACE = "trace"
+
+
+class ScoreSource(str, Enum):
+    LLM_JUDGE = "llm_judge"
+    HUMAN_ANNOTATION = "human_annotation"
+    API = "api"
 
 
 class DatasetSource(BaseModel):
@@ -118,6 +134,12 @@ class ScoreConfigRef(BaseModel):
     categories: list[str] | None = None
     description: str | None = None
     langfuse_score_config_id: str | None = None
+    allowed_score_sources: list[ScoreSource] = Field(
+        default_factory=lambda: [
+            ScoreSource.LLM_JUDGE,
+            ScoreSource.HUMAN_ANNOTATION,
+        ]
+    )
 
     @model_validator(mode="after")
     def validate_score_contract(self) -> ScoreConfigRef:
@@ -135,15 +157,98 @@ class ScoreConfigRef(BaseModel):
         return self
 
 
+class ScoreFieldSchema(BaseModel):
+    type: Literal["number"] = "number"
+    minimum: float = 0
+    maximum: float = 1
+
+    @model_validator(mode="after")
+    def validate_range(self) -> ScoreFieldSchema:
+        if self.minimum >= self.maximum:
+            raise ValueError("score minimum must be less than maximum")
+        return self
+
+
+class ConfidenceFieldSchema(BaseModel):
+    type: Literal["number"] = "number"
+    minimum: float = 0
+    maximum: float = 1
+
+    @model_validator(mode="after")
+    def validate_range(self) -> ConfidenceFieldSchema:
+        if self.minimum >= self.maximum:
+            raise ValueError("confidence minimum must be less than maximum")
+        return self
+
+
+class JudgeResultSchema(BaseModel):
+    reasoning: Literal["string"] = "string"
+    score: ScoreFieldSchema = Field(default_factory=ScoreFieldSchema)
+    confidence: ConfidenceFieldSchema = Field(default_factory=ConfidenceFieldSchema)
+
+
+class EvaluatorFilterProfile(BaseModel):
+    target: EvaluatorTarget = EvaluatorTarget.OBSERVATION
+    observation_role: str = "model_output"
+    observation_name: str | None = None
+    project: str | None = None
+    project_version: str | None = None
+    evaluator_set_id: str | None = None
+    environment: str | None = None
+    run_types: list[EvaluatorRunType] = Field(default_factory=list)
+
+
 class EvaluatorDefinition(BaseModel):
     name: str
     type: Literal["llm_as_judge", "deterministic"]
     version: str
+    dimension: str | None = None
+    target: EvaluatorTarget | None = None
+    target_observation_role: str = "model_output"
+    target_observation_name: str | None = None
+    run_types: list[EvaluatorRunType] | None = None
+    mode: EvaluatorMode | None = None
     prompt_path: Path | None = None
+    prompt_version: str | None = None
     score: ScoreConfigRef
     blind: bool = True
-    modes: list[EvaluatorMode]
-    variables: list[str]
+    non_blind_reason: str | None = None
+    modes: list[EvaluatorRunType] | None = None
+    variables: list[str] = Field(default_factory=list)
+    required_inputs: list[str] = Field(default_factory=list)
+    output_schema: JudgeResultSchema | None = None
+    filter_profile: EvaluatorFilterProfile | None = None
+
+    @model_validator(mode="after")
+    def normalize_evaluator_fields(self) -> EvaluatorDefinition:
+        legacy_definition = (
+            self.target is None
+            and self.output_schema is None
+            and self.filter_profile is None
+            and self.modes is not None
+        )
+        if self.run_types is None and self.modes is not None:
+            self.run_types = list(self.modes)
+        if self.modes is None and self.run_types is not None:
+            self.modes = list(self.run_types)
+        if legacy_definition:
+            self.target = EvaluatorTarget.OBSERVATION
+            self.output_schema = JudgeResultSchema()
+        if self.mode is None:
+            self.mode = (
+                EvaluatorMode.BASELINE_COMPARISON
+                if self.run_types and EvaluatorRunType.CANDIDATE in self.run_types
+                else EvaluatorMode.SINGLE_OUTPUT
+            )
+        if self.dimension is None:
+            self.dimension = self.name
+        if not self.required_inputs and self.variables:
+            self.required_inputs = list(self.variables)
+        if self.prompt_version is None:
+            self.prompt_version = self.version
+        if not self.blind and not (self.non_blind_reason or "").strip():
+            raise ValueError("non_blind_reason is required when blind=false")
+        return self
 
 
 class HumanReviewPolicy(BaseModel):
@@ -336,17 +441,11 @@ def load_project_config(path: Path | str) -> ProjectConfig:
 def validate_project_config(config: ProjectConfig, *, base_dir: Path | None = None) -> None:
     base = base_dir or Path.cwd()
     _validate_prompt_ref(config.task_prompt, base=base, required_variables=["input"])
+    from evaluator_harness.evaluators import validate_evaluators
+
+    validate_evaluators(config, base=base)
 
     for evaluator in config.evaluators:
-        if evaluator.type == "llm_as_judge":
-            if evaluator.prompt_path is None:
-                raise ConfigError(f"Evaluator {evaluator.name} requires prompt_path")
-            _validate_prompt_file(evaluator.prompt_path, base=base)
-        if EvaluatorMode.BASELINE in evaluator.modes:
-            _require_variables(evaluator, ["input", "output"])
-        if EvaluatorMode.CANDIDATE in evaluator.modes:
-            _require_variables(evaluator, ["input", "output", "baseline_output"])
-
         managed_name = f"{config.project.score_config_prefix}{evaluator.score.name}"
         if len(managed_name) > 128:
             raise ConfigError(

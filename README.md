@@ -67,6 +67,39 @@ uv run python run_experiment.py select-review `
 Use Langfuse to run evaluators, inspect scores, compare baseline and candidate
 runs, and review selected items in Human Annotation Queues.
 
+## LLM-as-Judge Setup
+
+Evaluator definitions live in the project YAML. Each LLM-as-Judge evaluator is
+validated locally for target, run types, judging mode, blind defaults, prompt
+reference, result contract, score target, and Langfuse filter profile.
+
+Render the Langfuse-ready setup values:
+
+```powershell
+uv run python run_experiment.py render-judge-prompts `
+  --project configs/projects/rewrite_quality.yaml
+```
+
+Export a lightweight setup document:
+
+```powershell
+uv run python run_experiment.py export-evaluator-setup `
+  --project configs/projects/rewrite_quality.yaml
+```
+
+The same score config must be used for automated judge scores and Human
+Annotation Queue scores for the same evaluator dimension. Score origin is
+distinguished by Langfuse score source:
+
+| Harness source | Langfuse source |
+| -------------- | --------------- |
+| `llm_judge` | `EVAL` |
+| `human_annotation` | `ANNOTATION` |
+
+Do not create source-specific score configs such as
+`eh_rewrite_quality_clarity_llm_judge` or
+`eh_rewrite_quality_clarity_human`.
+
 Trace names use a stable, scannable format:
 
 ```text
