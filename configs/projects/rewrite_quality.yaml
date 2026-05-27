@@ -70,7 +70,17 @@ evaluators:
   - name: clarity
     type: llm_as_judge
     version: v1
+    dimension: clarity
+    target: observation
+    target_observation_role: model_output
+    target_observation_name: OpenAI-generation
+    run_types:
+      - baseline
+      - candidate
+    mode: baseline_comparison
+    blind: true
     prompt_path: prompts/rewrite_quality/evaluators/clarity.md
+    prompt_version: v1
     score:
       name: clarity
       managed_by_harness: true
@@ -78,15 +88,41 @@ evaluators:
       min_value: 0
       max_value: 1
       description: Clarity score from 0.0 to 1.0.
-    blind: true
+      allowed_score_sources:
+        - llm_judge
+        - human_annotation
     modes:
       - baseline
       - candidate
+    required_inputs:
+      - input
+      - output
+      - baseline_output
     variables:
       - input
       - output
       - baseline_output
       - ground_truth
+    output_schema:
+      reasoning: string
+      score:
+        type: number
+        minimum: 0
+        maximum: 1
+      confidence:
+        type: number
+        minimum: 0
+        maximum: 1
+    filter_profile:
+      target: observation
+      observation_role: model_output
+      observation_name: OpenAI-generation
+      project: rewrite-quality
+      project_version: v1
+      evaluator_set_id: clarity:v1
+      run_types:
+        - baseline
+        - candidate
 
 human_review:
   enabled: true

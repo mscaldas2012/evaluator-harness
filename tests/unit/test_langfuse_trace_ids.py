@@ -152,6 +152,20 @@ def test_runner_nests_openai_generation_under_parent_trace_span() -> None:
     assert generation_starts
     assert all(started["name"] == "OpenAI-generation" for started in generation_starts)
     assert all("trace_context" not in started for started in generation_starts)
+    assert all(
+        started["metadata"]["project"] == "rewrite-quality"
+        for started in generation_starts
+    )
+    assert all(started["metadata"]["project_version"] == "v1" for started in generation_starts)
+    assert all(started["metadata"]["run_type"] == "baseline" for started in generation_starts)
+    assert all(
+        started["metadata"]["evaluator_set_id"] == "clarity:v1"
+        for started in generation_starts
+    )
+    assert all(
+        started["metadata"]["observation_role"] == "model_output"
+        for started in generation_starts
+    )
 
 
 def test_runner_does_not_create_openai_generation_for_non_openai_provider() -> None:

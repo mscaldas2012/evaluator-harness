@@ -33,6 +33,12 @@ from evaluator_harness.config import (
 )
 from evaluator_harness.dataset_loader import load_dataset
 from evaluator_harness.errors import ConfigError
+from evaluator_harness.evaluators import (
+    evaluator_score_summary,
+    evaluator_target_summary,
+    export_evaluator_setup,
+    render_judge_prompts,
+)
 from evaluator_harness.exports import ExportResult, export_summary
 from evaluator_harness.langfuse_client import (
     AnnotationRoutingResult,
@@ -55,6 +61,8 @@ class ValidationResult:
     baseline_name: str
     candidate_names: list[str]
     evaluator_names: list[str]
+    evaluator_targets: list[str]
+    score_targets: list[str]
 
 
 @dataclass(frozen=True)
@@ -108,6 +116,12 @@ class ExperimentRunner:
             evaluator_names=[
                 f"{evaluator.name}/{evaluator.version}" for evaluator in config.evaluators
             ],
+            evaluator_targets=[
+                evaluator_target_summary(evaluator) for evaluator in config.evaluators
+            ],
+            score_targets=[
+                evaluator_score_summary(config, evaluator) for evaluator in config.evaluators
+            ],
         )
 
     def sync_dataset(self, project_path: Path) -> DatasetSyncResult:
@@ -120,6 +134,17 @@ class ExperimentRunner:
         config = load_project_config(project_path)
         validate_project_config(config)
         return self.langfuse_client.sync_score_configs(config)
+
+    def render_judge_prompts(self, project_path: Path) -> list[Any]:
+        config = load_project_config(project_path)
+        validate_project_config(config)
+        return render_judge_prompts(config)
+
+    def export_evaluator_setup(self, project_path: Path) -> Path:
+        config = load_project_config(project_path)
+        validate_project_config(config)
+        output_path = Path("reports") / f"evaluator-setup-{config.project.name}-{config.project.version}.md"
+        return export_evaluator_setup(config, output_path)
 
     def sync_annotation_queue(self, project_path: Path) -> AnnotationQueueSyncResult:
         config = load_project_config(project_path)
@@ -315,15 +340,16 @@ class ExperimentRunner:
             request = ModelRequest(
                 prompt=prompt,
                 params=config.baseline.parameters.model_dump(mode="json", exclude_none=True),
-                metadata={
-                    "project": config.project.name,
-                    "run_id": run_id,
-                    "run_type": "baseline",
-                    "item_id": item.item_id,
-                    "trace_id": trace_id,
-                    "trace_name": trace_name,
-                    "prompt_version": config.task_prompt.version,
-                },
+                metadata=self._request_metadata(
+                    config=config,
+                    item=item,
+                    run_id=run_id,
+                    run_type="baseline",
+                    trace_id=trace_id,
+                    trace_name=trace_name,
+                    dataset_sync=dataset_sync,
+                    fingerprint=fingerprint,
+                ),
             )
             with self.langfuse_client.trace_span(
                 trace_id=trace_id,
@@ -480,13 +506,16 @@ class ExperimentRunner:
                 prompt=prompt,
                 params=candidate.parameters.model_dump(mode="json", exclude_none=True),
                 metadata={
-                    "project": config.project.name,
-                    "run_id": run_id,
-                    "run_type": "candidate",
-                    "item_id": item.item_id,
-                    "trace_id": trace_id,
-                    "trace_name": trace_name,
-                    "prompt_version": config.task_prompt.version,
+                    **self._request_metadata(
+                        config=config,
+                        item=item,
+                        run_id=run_id,
+                        run_type="candidate",
+                        trace_id=trace_id,
+                        trace_name=trace_name,
+                        dataset_sync=dataset_sync,
+                        fingerprint=fingerprint,
+                    ),
                     "baseline_run_id": baseline_run_id,
                 },
             )
@@ -622,6 +651,9 @@ class ExperimentRunner:
                     dataset_sync.compatibility_version if dataset_sync else None
                 ),
                 "dataset_item_id": item.item_id,
+                "trace_id": trace_id,
+                "trace_name": trace_name,
+                "observation_role": "model_output",
                 "langfuse_dataset_item_id": (
                     f"{dataset_sync.name}:{item.item_id}" if dataset_sync else None
                 ),
@@ -656,6 +688,35 @@ class ExperimentRunner:
             },
             "prompt": prompt,
             "timestamp": _utc_now(),
+        }
+
+    def _request_metadata(
+        self,
+        *,
+        config: ProjectConfig,
+        item: DatasetItem,
+        run_id: str,
+        run_type: str,
+        trace_id: str,
+        trace_name: str,
+        dataset_sync: DatasetSyncResult,
+        fingerprint: BaselineFingerprint,
+    ) -> dict[str, Any]:
+        return {
+            "project": config.project.name,
+            "project_version": config.project.version,
+            "run_id": run_id,
+            "run_type": run_type,
+            "item_id": item.item_id,
+            "dataset_item_id": item.item_id,
+            "dataset_name": dataset_sync.name,
+            "dataset_version": dataset_sync.version,
+            "dataset_compatibility_version": dataset_sync.compatibility_version,
+            "evaluator_set_id": fingerprint.evaluator_set_id,
+            "trace_id": trace_id,
+            "trace_name": trace_name,
+            "prompt_version": config.task_prompt.version,
+            "observation_role": "model_output",
         }
 
     def _render_prompt(self, path: Path, variables: dict[str, str]) -> str:

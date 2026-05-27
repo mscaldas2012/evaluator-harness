@@ -18,3 +18,5 @@ def test_validates_sample_rewrite_project_without_model_calls() -> None:
         "dry-run-candidate",
     ]
     assert result.evaluator_names == ["clarity/v1"]
+    assert result.evaluator_targets == ["clarity=observation/model_output"]
+    assert result.score_targets == ["clarity=eh_rewrite_quality_clarity"]

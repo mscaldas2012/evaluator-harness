@@ -229,7 +229,9 @@ dimension.
 Recommended evaluator prompt pattern:
 
 1. Evaluate one dimension only.
-2. Set `blind: true` when the judge should not see provider or model identity.
+2. Keep `blind: true` for model-quality and baseline/candidate comparisons.
+   Non-blind evaluators are diagnostic only and must set `blind: false` with
+   `non_blind_reason`.
 3. Include the source input, the output being evaluated, optional
    `baseline_output`, optional `ground_truth`, and any reference fields needed
    for the evaluator.
@@ -293,6 +295,17 @@ When `blind: true`, the harness should prepare judge inputs with neutral labels
 such as `baseline` and `candidate` or `output A` and `output B`. Provider,
 model, vendor, latency, and cost metadata remain available in Langfuse trace
 metadata, but they should not be included in the judge prompt.
+
+Automated LLM-as-Judge scores and Human Annotation Queue scores for the same
+dimension must use the same Langfuse score config. Distinguish source with
+Langfuse score source:
+
+| Harness source | Langfuse source |
+| -------------- | --------------- |
+| `llm_judge` | `EVAL` |
+| `human_annotation` | `ANNOTATION` |
+
+Do not create separate clarity score configs for automated and human review.
 
 Evaluator definitions can support baseline mode, candidate mode, or both.
 Baseline-mode evaluator payloads use the baseline output as `output` and include
@@ -440,7 +453,9 @@ High-level Langfuse steps:
    - `candidate_output`
    - `reference_output`, if present
    - project metadata, if needed
-6. Scope evaluators to the relevant dataset or experiment runs.
+6. Scope evaluators to the relevant model-output observations using project
+   metadata such as `project`, `project_version`, `evaluator_set_id`,
+   `run_type`, and `observation_role=model_output`.
 7. Run evaluators in Langfuse.
 8. Inspect generated scores and judge traces in Langfuse.
 
