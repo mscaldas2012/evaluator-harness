@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 
 from evaluator_harness.config import DatasetKind, DatasetSource
 from evaluator_harness.config import DatasetItem
 from evaluator_harness.errors import LangfuseError
-from evaluator_harness.langfuse_client import LangfuseClient
+from evaluator_harness.langfuse_client import DatasetSyncResult, LangfuseClient
 
 
 def test_sync_dataset_creates_or_updates_dataset_with_items() -> None:
@@ -40,3 +42,249 @@ def test_langfuse_unreachable_fails_fast() -> None:
 
     with pytest.raises(LangfuseError, match="unreachable"):
         client.check_reachable(operation="sync-dataset", dataset_item_id="1")
+
+
+def test_records_live_dataset_run_item_with_stable_dataset_item_id() -> None:
+    sdk = FakeLangfuseSdk()
+    client = LangfuseClient(client=sdk)
+    dataset_sync = client.sync_dataset(
+        DatasetSource(kind=DatasetKind.LOCAL_CSV, langfuse_dataset_name="rewrite/v1"),
+        [DatasetItem(item_id="1", input="Rewrite")],
+    )
+
+    client.record_dataset_run_item(
+        dataset_sync=dataset_sync,
+        item_id="1",
+        run_name="baseline-123",
+        trace_id="trace-123",
+        observation_id="obs-123",
+        metadata={"baseline_run_id": "baseline-123", "run_type": "baseline"},
+    )
+
+    assert sdk.created_items[0]["id"] == "rewrite/v1:1"
+    assert sdk.created_run_items[0]["dataset_item_id"] == "rewrite/v1:1"
+    assert sdk.created_run_items[0]["run_name"] == "baseline-123"
+    assert sdk.created_run_items[0]["trace_id"] == "trace-123"
+    assert sdk.created_run_items[0]["observation_id"] == "obs-123"
+
+
+def test_records_live_dataset_run_item_with_existing_langfuse_item_id_fallback() -> None:
+    sdk = FakeLangfuseSdk(
+        existing_dataset_items=[
+            SimpleNamespace(
+                id="langfuse-generated-item-1",
+                metadata={"item_id": "1"},
+            )
+        ],
+        fail_run_item_ids={"rewrite/v1:1"},
+    )
+    client = LangfuseClient(client=sdk)
+    dataset_sync = DatasetSyncResult(
+        name="rewrite/v1",
+        version="latest",
+        compatibility_version="compat",
+        item_count=1,
+        status="synced",
+    )
+
+    client.record_dataset_run_item(
+        dataset_sync=dataset_sync,
+        item_id="1",
+        run_name="baseline-123",
+        trace_id="trace-123",
+        observation_id="obs-123",
+        metadata={"baseline_run_id": "baseline-123", "run_type": "baseline"},
+    )
+
+    assert [item["dataset_item_id"] for item in sdk.created_run_items] == [
+        "langfuse-generated-item-1",
+    ]
+
+
+def test_live_baseline_lookup_uses_dataset_run_item_metadata_when_run_metadata_missing() -> None:
+    fingerprint = SimpleNamespace(
+        project_name="rewrite-quality",
+        project_version="v1",
+        dataset_name="rewrite-quality/v1",
+        dataset_version="latest",
+        prompt_version="v1",
+        evaluator_set_id="clarity:v1",
+        baseline_model="gpt5.2-dgw-default",
+        baseline_parameters_hash="hash-1",
+    )
+    metadata = {
+        **fingerprint.__dict__,
+        "baseline_run_id": "baseline-123",
+        "created_at": "2026-05-28T00:00:00+00:00",
+        "run_type": "baseline",
+    }
+    sdk = FakeLangfuseSdk(
+        dataset_runs=[SimpleNamespace(name="baseline-123", metadata={})],
+        dataset_run_items=[
+            SimpleNamespace(metadata=metadata),
+        ],
+    )
+    client = LangfuseClient(client=sdk)
+
+    reference = client.lookup_baseline(
+        selector="latest-compatible",
+        fingerprint=fingerprint,
+    )
+
+    assert reference is not None
+    assert reference.baseline_run_id == "baseline-123"
+
+
+def test_live_baseline_lookup_uses_item_metadata_when_run_metadata_is_incomplete() -> None:
+    fingerprint = SimpleNamespace(
+        project_name="rewrite-quality",
+        project_version="v1",
+        dataset_name="rewrite-quality/v1",
+        dataset_version="latest",
+        prompt_version="v1",
+        evaluator_set_id="clarity:v1",
+        baseline_model="gpt5.2-dgw-default",
+        baseline_parameters_hash="hash-1",
+    )
+    item_metadata = {
+        **fingerprint.__dict__,
+        "baseline_run_id": "baseline-123",
+        "created_at": "2026-05-28T00:00:00+00:00",
+        "run_type": "baseline",
+    }
+    sdk = FakeLangfuseSdk(
+        dataset_runs=[
+            SimpleNamespace(
+                name="baseline-123",
+                metadata={"project": "rewrite-quality", "run_type": "baseline"},
+            )
+        ],
+        dataset_run_items=[SimpleNamespace(metadata=item_metadata)],
+    )
+    client = LangfuseClient(client=sdk)
+
+    reference = client.lookup_baseline(
+        selector="baseline-123",
+        fingerprint=fingerprint,
+    )
+
+    assert reference is not None
+    assert reference.baseline_run_id == "baseline-123"
+
+
+def test_live_baseline_lookup_matches_dataset_compatibility_version_metadata() -> None:
+    fingerprint = SimpleNamespace(
+        project_name="rewrite-quality",
+        project_version="v1",
+        dataset_name="rewrite-quality/v1",
+        dataset_version="sha256:compat",
+        prompt_version="v1",
+        evaluator_set_id="clarity:v1",
+        baseline_model="gpt5.2-dgw-default",
+        baseline_parameters_hash="hash-1",
+    )
+    metadata = {
+        **fingerprint.__dict__,
+        "dataset_version": "latest",
+        "dataset_compatibility_version": "sha256:compat",
+        "baseline_run_id": "baseline-123",
+        "created_at": "2026-05-28T00:00:00+00:00",
+        "run_type": "baseline",
+    }
+    sdk = FakeLangfuseSdk(
+        dataset_runs=[
+            SimpleNamespace(name="baseline-123", metadata=metadata),
+        ],
+    )
+    client = LangfuseClient(client=sdk)
+
+    reference = client.lookup_baseline(
+        selector="baseline-123",
+        fingerprint=fingerprint,
+    )
+
+    assert reference is not None
+    assert reference.baseline_run_id == "baseline-123"
+    assert reference.dataset_version == "sha256:compat"
+
+
+def test_live_traces_for_run_falls_back_to_dataset_run_metadata() -> None:
+    metadata = {
+        "run_id": "candidate-123",
+        "run_type": "candidate",
+        "trace_id": "trace-123",
+        "dataset_item_id": "1",
+        "dataset_name": "rewrite-quality/v1",
+        "model_name": "azure-mistral-large-3",
+        "baseline_reference": {"baseline_run_id": "baseline-123"},
+    }
+    sdk = FakeLangfuseSdk(
+        dataset_runs=[
+            SimpleNamespace(name="candidate-123", metadata=metadata),
+        ],
+    )
+    client = LangfuseClient(client=sdk)
+
+    traces = client.traces_for_run("candidate-123")
+
+    assert len(traces) == 1
+    assert traces[0]["trace_id"] == "trace-123"
+    assert traces[0]["run_id"] == "candidate-123"
+    assert traces[0]["metadata"]["model_name"] == "azure-mistral-large-3"
+
+
+class FakeDatasetRunItemsClient:
+    def __init__(self, sdk: FakeLangfuseSdk) -> None:
+        self.sdk = sdk
+
+    def create(self, **kwargs):
+        if kwargs["dataset_item_id"] in self.sdk.fail_run_item_ids:
+            raise RuntimeError("dataset item not found")
+        self.sdk.created_run_items.append(kwargs)
+
+
+class FakeApi:
+    def __init__(self, sdk: FakeLangfuseSdk) -> None:
+        self.dataset_items = FakeDatasetItemsClient(sdk)
+        self.dataset_run_items = FakeDatasetRunItemsClient(sdk)
+
+
+class FakeLangfuseSdk:
+    def __init__(
+        self,
+        *,
+        dataset_runs: list[object] | None = None,
+        dataset_run_items: list[object] | None = None,
+        existing_dataset_items: list[object] | None = None,
+        fail_run_item_ids: set[str] | None = None,
+    ) -> None:
+        self.created_items: list[dict[str, object]] = []
+        self.created_run_items: list[dict[str, object]] = []
+        self.dataset_runs = dataset_runs or []
+        self.dataset_run_items = dataset_run_items or []
+        self.existing_dataset_items = existing_dataset_items or []
+        self.fail_run_item_ids = fail_run_item_ids or set()
+        self.api = FakeApi(self)
+
+    def auth_check(self) -> bool:
+        return True
+
+    def create_dataset(self, **_kwargs):
+        return None
+
+    def create_dataset_item(self, **kwargs):
+        self.created_items.append(kwargs)
+
+    def get_dataset_runs(self, **_kwargs):
+        return SimpleNamespace(data=self.dataset_runs)
+
+    def get_dataset_run(self, **_kwargs):
+        return SimpleNamespace(items=self.dataset_run_items)
+
+
+class FakeDatasetItemsClient:
+    def __init__(self, sdk: FakeLangfuseSdk) -> None:
+        self.sdk = sdk
+
+    def list(self, **_kwargs):
+        return SimpleNamespace(data=self.sdk.existing_dataset_items)

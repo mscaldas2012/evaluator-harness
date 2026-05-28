@@ -1,0 +1,87 @@
+project:
+  name: mixed-azure-auth
+  version: v1
+  score_config_prefix: eh_mixed_azure_
+
+judge_setup:
+  default_judge_model: gpt-4.1
+  binding_path: configs/langfuse/evaluator_bindings/rewrite-quality.yaml
+
+dataset:
+  kind: local_csv
+  path: datasets/rewrite_quality.csv
+  langfuse_dataset_name: mixed-azure-auth/v1
+  item_id_strategy: explicit_or_hash
+
+task_prompt:
+  path: prompts/rewrite_quality/task_prompt.md
+  version: v1
+  template_variables:
+    - input
+
+baseline:
+  name: azure-baseline-client-credentials
+  provider: openai_compatible
+  auth_mode: azure_client_credentials
+  model: gpt5.2-dgw-default
+  azure:
+    tenant_id_env: MIXED_BASELINE_AZURE_TENANT_ID
+    client_id_env: MIXED_BASELINE_AZURE_CLIENT_ID
+    client_secret_env: MIXED_BASELINE_AZURE_CLIENT_SECRET
+    scope_env: MIXED_BASELINE_AZURE_SCOPE
+    subscription_key_env: MIXED_BASELINE_AZURE_SUBSCRIPTION_KEY
+    api_version_env: MIXED_BASELINE_AZURE_API_VERSION
+    endpoint_env: MIXED_BASELINE_AZURE_ENDPOINT
+  parameters:
+    temperature: 0.2
+    top_p: 1.0
+    max_tokens: 2048
+    token_limit_parameter: max_completion_tokens
+
+candidates:
+  - name: azure-api-key-candidate
+    provider: openai_compatible
+    auth_mode: api_key
+    model: mistral-large-3
+    azure_api_key:
+      api_key_env: MIXED_CANDIDATE_MISTRAL_LARGE_3_API_KEY
+      endpoint_env: MIXED_CANDIDATE_MISTRAL_LARGE_3_ENDPOINT
+      api_version_env: MIXED_CANDIDATE_MISTRAL_LARGE_3_API_VERSION
+      subscription_key_env: MIXED_CANDIDATE_MISTRAL_LARGE_3_SUBSCRIPTION_KEY
+    parameters:
+      temperature: 0.2
+      top_p: 1.0
+      max_tokens: 2048
+      token_limit_parameter: max_completion_tokens
+
+evaluators:
+  - name: clarity
+    type: llm_as_judge
+    version: v1
+    source_type: custom
+    target: observation
+    mode: baseline_comparison
+    prompt_path: prompts/rewrite_quality/evaluators/clarity.md
+    prompt_version: v1
+    score:
+      name: clarity
+      data_type: NUMERIC
+      min_value: 0
+      max_value: 1
+    run_types:
+      - baseline
+      - candidate
+    variables:
+      - input
+      - output
+      - baseline_output
+    output_schema:
+      reasoning: string
+      score:
+        type: number
+        minimum: 0
+        maximum: 1
+      confidence:
+        type: number
+        minimum: 0
+        maximum: 1

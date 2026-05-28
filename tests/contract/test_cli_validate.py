@@ -29,3 +29,19 @@ def test_validate_cli_failure_output() -> None:
 
     assert result.exit_code == 1
     assert "dataset" in result.stdout
+
+
+def test_validate_cli_reports_invalid_api_key_candidate_config() -> None:
+    result = CliRunner().invoke(
+        app,
+        [
+            "validate",
+            "--project",
+            "tests/fixtures/projects/invalid_azure_api_key_candidate_missing_refs.yaml",
+        ],
+    )
+
+    assert result.exit_code == 1
+    assert "azure_api_key credential env" in result.stdout
+    assert "references are required" in result.stdout
+    assert "azure-api-key-candidate" in result.stdout

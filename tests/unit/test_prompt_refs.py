@@ -79,11 +79,11 @@ task_prompt:
   version: v1
 baseline:
   name: baseline
-  provider: openai_compatible
-  auth_mode: api_key
-  model: gpt-4.1
+  provider: dry_run
+  auth_mode: none
+  model: dry-run
   parameters:
-    temperature: 0.2
+    temperature: 0.0
 candidates:
   - name: candidate
     provider: ollama

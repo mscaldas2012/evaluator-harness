@@ -110,6 +110,24 @@ class AzureCredentialRefs(BaseModel):
         return value
 
 
+class AzureApiKeyCredentialRefs(BaseModel):
+    api_key_env: str
+    endpoint_env: str
+    api_version_env: str
+    subscription_key_env: str | None = None
+
+    @field_validator("*")
+    @classmethod
+    def env_names_only(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        if not ENV_NAME_PATTERN.fullmatch(value):
+            raise ValueError(
+                "provider credential references must be environment variable names"
+            )
+        return value
+
+
 class ModelParameters(BaseModel):
     temperature: float
     top_p: float | None = None
@@ -125,15 +143,39 @@ class ModelConfig(BaseModel):
     model: str
     endpoint: str | None = None
     azure: AzureCredentialRefs | None = None
+    azure_api_key: AzureApiKeyCredentialRefs | None = None
     parameters: ModelParameters
     metadata: dict[str, Any] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def validate_auth_requirements(self) -> ModelConfig:
-        if self.auth_mode == AuthMode.AZURE_CLIENT_CREDENTIALS and self.azure is None:
-            raise ValueError("azure credential env references are required")
         if self.provider == ProviderName.DRY_RUN and self.auth_mode != AuthMode.NONE:
             raise ValueError("dry_run provider requires auth_mode none")
+        if self.auth_mode == AuthMode.AZURE_CLIENT_CREDENTIALS:
+            if self.azure is None:
+                raise ValueError(
+                    f"Model {self.name} azure credential env references are required"
+                )
+            if self.azure_api_key is not None:
+                raise ValueError(
+                    f"Model {self.name} must not include azure_api_key credential refs "
+                    "when auth_mode is azure_client_credentials"
+                )
+        if self.auth_mode == AuthMode.API_KEY:
+            if self.azure_api_key is None:
+                raise ValueError(
+                    f"Model {self.name} azure_api_key credential env references are required"
+                )
+            if self.azure is not None:
+                raise ValueError(
+                    f"Model {self.name} must not include azure credential refs "
+                    "when auth_mode is api_key"
+                )
+        if self.auth_mode == AuthMode.NONE:
+            if self.azure is not None or self.azure_api_key is not None:
+                raise ValueError(
+                    f"Model {self.name} must not include credential refs when auth_mode is none"
+                )
         return self
 
 

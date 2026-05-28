@@ -5,7 +5,7 @@ from collections.abc import Callable
 from typing import Any
 from urllib.parse import quote
 
-from evaluator_harness.config import ModelConfig
+from evaluator_harness.config import AuthMode, ModelConfig
 from evaluator_harness.errors import FailureContext, ProviderError, RuntimeDependencyError
 from evaluator_harness.providers.base import ModelRequest, ModelResponse
 
@@ -34,6 +34,8 @@ class OpenAICompatibleProvider:
             try:
                 if self._generator is not None:
                     response = self._generator(request)
+                elif self.config.auth_mode == AuthMode.API_KEY:
+                    response = self._generate_with_azure_rest(request)
                 elif self.config.azure is not None and self._has_required_azure_env():
                     response = self._generate_with_azure_openai(request)
                 else:
@@ -97,16 +99,25 @@ class OpenAICompatibleProvider:
         )
 
     def _generate_with_azure_rest(self, request: ModelRequest) -> ModelResponse:
-        auth = self._azure_auth_config()
+        auth = (
+            self._azure_api_key_auth_config()
+            if self.config.auth_mode == AuthMode.API_KEY
+            else self._azure_auth_config()
+        )
         payload = self._completion_kwargs(request)
-        payload.pop("model", None)
+        if not self._uses_full_chat_completions_endpoint(auth):
+            payload.pop("model", None)
         try:
             response_json = self._post_azure_chat_completion(auth, payload)
         except Exception as exc:
-            if not self._requires_max_completion_tokens(exc):
+            if self._requires_max_completion_tokens(exc):
+                payload = self._completion_kwargs(request, use_max_completion_tokens=True)
+            elif self._requires_max_tokens(exc):
+                payload = self._completion_kwargs(request, use_max_tokens=True)
+            else:
                 raise
-            payload = self._completion_kwargs(request, use_max_completion_tokens=True)
-            payload.pop("model", None)
+            if not self._uses_full_chat_completions_endpoint(auth):
+                payload.pop("model", None)
             response_json = self._post_azure_chat_completion(auth, payload)
 
         choice = response_json["choices"][0]
@@ -133,33 +144,64 @@ class OpenAICompatibleProvider:
             raise RuntimeDependencyError("httpx is required for Azure OpenAI REST calls") from exc
 
         endpoint = auth["azure_endpoint"].rstrip("/")
-        deployment = quote(self.config.model, safe="")
-        url = (
-            f"{endpoint}/openai/deployments/{deployment}/chat/completions"
-            f"?api-version={auth['api_version']}"
-        )
+        if self._uses_full_chat_completions_endpoint(auth):
+            url = endpoint
+        else:
+            deployment = quote(self.config.model, safe="")
+            url = (
+                f"{endpoint}/openai/deployments/{deployment}/chat/completions"
+                f"?api-version={auth['api_version']}"
+            )
         response = httpx.post(
             url,
-            headers={
-                "Authorization": f"Bearer {auth['token']}",
-                "Ocp-Apim-Subscription-Key": auth["subscription_key"],
-                "Content-Type": "application/json",
-            },
+            headers=self._azure_rest_headers(auth),
             json=payload,
             timeout=60,
         )
         if response.status_code >= 400:
+            category = self._status_category(response.status_code, response.text)
             raise RuntimeDependencyError(
-                f"Azure OpenAI REST call failed with {response.status_code}: "
+                f"Azure OpenAI REST call failed with {response.status_code} "
+                f"({category}): "
                 f"{self._redact(response.text)}"
             )
         return response.json()
+
+    def _uses_full_chat_completions_endpoint(self, auth: dict[str, str]) -> bool:
+        return auth["azure_endpoint"].rstrip("/").endswith("/chat/completions")
+
+    def _status_category(self, status_code: int, message: str) -> str:
+        lowered = message.lower()
+        if status_code in {401, 403}:
+            return "authentication" if status_code == 401 else "authorization"
+        if status_code == 429:
+            return "throttling"
+        if status_code == 408 or status_code >= 500:
+            return "timeout_or_service"
+        if "max_completion_tokens" in lowered or "unsupported parameter" in lowered:
+            return "unsupported_parameter"
+        if status_code == 400:
+            return "malformed_request"
+        return "unknown"
+
+    def _azure_rest_headers(self, auth: dict[str, str]) -> dict[str, str]:
+        headers = {"Content-Type": "application/json"}
+        if auth.get("auth_mode") == AuthMode.API_KEY.value:
+            headers["api-key"] = auth["api_key"]
+            subscription_key = auth.get("subscription_key")
+            if subscription_key:
+                headers["Ocp-Apim-Subscription-Key"] = subscription_key
+            return headers
+        headers["Authorization"] = f"Bearer {auth['token']}"
+        headers["Ocp-Apim-Subscription-Key"] = auth["subscription_key"]
+        return headers
 
     def _completion_kwargs(
         self,
         request: ModelRequest,
         *,
         use_max_completion_tokens: bool = False,
+        use_max_tokens: bool = False,
     ) -> dict[str, object]:
         kwargs: dict[str, object] = {
             "model": self.config.model,
@@ -172,6 +214,8 @@ class OpenAICompatibleProvider:
             key = (
                 "max_completion_tokens"
                 if use_max_completion_tokens
+                else "max_tokens"
+                if use_max_tokens
                 else self.config.parameters.token_limit_parameter
             )
             kwargs[key] = token_limit
@@ -180,6 +224,17 @@ class OpenAICompatibleProvider:
     def _requires_max_completion_tokens(self, exc: Exception) -> bool:
         message = str(exc)
         return "max_tokens" in message and "max_completion_tokens" in message
+
+    def _requires_max_tokens(self, exc: Exception) -> bool:
+        message = str(exc)
+        return (
+            "max_completion_tokens" in message
+            and (
+                "extra_forbidden" in message
+                or "extra inputs are not permitted" in message.lower()
+                or "unsupported parameter" in message.lower()
+            )
+        )
 
     def _build_azure_openai_client(self, *, timeout: float):
         if self.config.azure is None:
@@ -227,11 +282,28 @@ class OpenAICompatibleProvider:
             ) from exc
 
         return {
+            "auth_mode": AuthMode.AZURE_CLIENT_CREDENTIALS.value,
             "token": token,
             "subscription_key": subscription_key,
             "api_version": api_version,
             "azure_endpoint": azure_endpoint,
         }
+
+    def _azure_api_key_auth_config(self) -> dict[str, str]:
+        if self.config.azure_api_key is None:
+            raise RuntimeDependencyError(
+                "Azure API-key credential references are not configured"
+            )
+        refs = self.config.azure_api_key
+        auth = {
+            "auth_mode": AuthMode.API_KEY.value,
+            "api_key": self._required_env(refs.api_key_env),
+            "api_version": self._required_env(refs.api_version_env),
+            "azure_endpoint": self._required_env(refs.endpoint_env),
+        }
+        if refs.subscription_key_env:
+            auth["subscription_key"] = self._required_env(refs.subscription_key_env)
+        return auth
 
     def _required_env(self, name: str) -> str:
         value = os.getenv(name)
@@ -278,17 +350,30 @@ class OpenAICompatibleProvider:
 
     def _redact(self, message: str) -> str:
         redacted = message
-        if self.config.azure is None:
-            return redacted
-        for env_name in (
-            self.config.azure.tenant_id_env,
-            self.config.azure.client_id_env,
-            self.config.azure.client_secret_env,
-            self.config.azure.scope_env,
-            self.config.azure.subscription_key_env,
-            self.config.azure.api_version_env,
-            self.config.azure.endpoint_env,
-        ):
+        env_names: list[str] = []
+        if self.config.azure is not None:
+            env_names.extend(
+                [
+                    self.config.azure.tenant_id_env,
+                    self.config.azure.client_id_env,
+                    self.config.azure.client_secret_env,
+                    self.config.azure.scope_env,
+                    self.config.azure.subscription_key_env,
+                    self.config.azure.api_version_env,
+                    self.config.azure.endpoint_env,
+                ]
+            )
+        if self.config.azure_api_key is not None:
+            env_names.extend(
+                [
+                    self.config.azure_api_key.api_key_env,
+                    self.config.azure_api_key.api_version_env,
+                    self.config.azure_api_key.endpoint_env,
+                ]
+            )
+            if self.config.azure_api_key.subscription_key_env:
+                env_names.append(self.config.azure_api_key.subscription_key_env)
+        for env_name in env_names:
             value = os.getenv(env_name)
             if value:
                 redacted = redacted.replace(value, "[REDACTED]")

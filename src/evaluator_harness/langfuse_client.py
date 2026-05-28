@@ -158,6 +158,7 @@ class LangfuseClient:
                     for item in items:
                         create_dataset_item(
                             dataset_name=name,
+                            id=f"{name}:{item.item_id}",
                             input={"input": item.input},
                             expected_output=item.ground_truth or item.reference_output,
                             metadata={
@@ -193,6 +194,67 @@ class LangfuseClient:
             item_count=len(items),
             status=status,
         )
+
+    def record_dataset_run_item(
+        self,
+        *,
+        dataset_sync: DatasetSyncResult,
+        item_id: str,
+        run_name: str,
+        trace_id: str,
+        observation_id: str | None,
+        metadata: dict[str, Any],
+    ) -> None:
+        if self.client is None:
+            return
+        api = getattr(self.client, "api", None)
+        dataset_run_items = getattr(api, "dataset_run_items", None)
+        create = getattr(dataset_run_items, "create", None)
+        if not callable(create):
+            return
+        payload = {
+            "run_name": run_name,
+            "metadata": metadata,
+            "trace_id": trace_id,
+            "observation_id": observation_id,
+        }
+        try:
+            create(
+                dataset_item_id=f"{dataset_sync.name}:{item_id}",
+                **payload,
+            )
+            return
+        except Exception:
+            fallback_item_id = self._find_dataset_item_id(
+                dataset_name=dataset_sync.name,
+                item_id=item_id,
+            )
+            if not fallback_item_id:
+                return
+        try:
+            create(dataset_item_id=fallback_item_id, **payload)
+        except Exception:
+            return
+
+    def _find_dataset_item_id(self, *, dataset_name: str, item_id: str) -> str | None:
+        if self.client is None:
+            return None
+        api = getattr(self.client, "api", None)
+        dataset_items = getattr(api, "dataset_items", None)
+        list_items = getattr(dataset_items, "list", None)
+        if not callable(list_items):
+            return None
+        try:
+            page = list_items(dataset_name=dataset_name, limit=100)
+        except Exception:
+            return None
+        items = getattr(page, "data", None) or getattr(page, "items", None) or []
+        for item in items:
+            metadata = getattr(item, "metadata", None) or {}
+            if str(metadata.get("item_id")) == str(item_id):
+                value = getattr(item, "id", None)
+                return str(value) if value else None
+        return None
 
     def sync_score_configs(self, config: ProjectConfig) -> list[ScoreConfigSyncResult]:
         self.check_reachable(operation="sync-score-configs")
@@ -757,7 +819,13 @@ class LangfuseClient:
         runs = getattr(page, "data", None) or getattr(page, "runs", None) or []
         matches: list[Any] = []
         for run in runs:
-            metadata = getattr(run, "metadata", None) or {}
+            metadata = self._dataset_run_metadata(
+                dataset_name=str(dataset_name),
+                fingerprint=fingerprint,
+                run=run,
+            )
+            if metadata.get("run_type") not in {None, "baseline"}:
+                continue
             if selector != "latest-compatible":
                 run_name = getattr(run, "name", None) or getattr(run, "run_name", None)
                 if selector not in {str(run_name), str(metadata.get("baseline_run_id"))}:
@@ -778,8 +846,36 @@ class LangfuseClient:
             ),
             langfuse_run_name=str(getattr(run, "name", None) or getattr(run, "run_name", None)),
             created_at=str(metadata.get("created_at") or ""),
-            **{field: str(metadata.get(field)) for field in _FINGERPRINT_FIELDS},
+            **{field: _metadata_fingerprint_value(metadata, field) for field in _FINGERPRINT_FIELDS},
         )
+
+    def _dataset_run_metadata(
+        self,
+        *,
+        dataset_name: str,
+        fingerprint: Any,
+        run: Any,
+    ) -> dict[str, Any]:
+        metadata = getattr(run, "metadata", None) or {}
+        if metadata and _metadata_matches(dict(metadata), fingerprint):
+            return dict(metadata)
+        get_dataset_run = getattr(self.client, "get_dataset_run", None)
+        run_name = getattr(run, "name", None) or getattr(run, "run_name", None)
+        if not callable(get_dataset_run) or not run_name:
+            return {}
+        try:
+            run_with_items = get_dataset_run(
+                dataset_name=dataset_name,
+                run_name=str(run_name),
+            )
+        except Exception:
+            return {}
+        items = getattr(run_with_items, "items", None) or []
+        for item in items:
+            item_metadata = getattr(item, "metadata", None) or {}
+            if item_metadata and _metadata_matches(dict(item_metadata), fingerprint):
+                return dict(item_metadata)
+        return dict(metadata)
 
     def record_baseline_reference(self, run_id: str, reference: Any) -> None:
         self.baseline_references[run_id] = reference
@@ -803,7 +899,63 @@ class LangfuseClient:
         return self.scores.get(run_id, [])
 
     def traces_for_run(self, run_id: str) -> list[dict[str, Any]]:
-        return [trace for trace in self.traces if trace.get("run_id") == run_id]
+        traces = [trace for trace in self.traces if trace.get("run_id") == run_id]
+        if traces or self.client is None:
+            return traces
+        live_traces = self._live_traces_for_run(run_id)
+        self.traces.extend(live_traces)
+        return live_traces
+
+    def _live_traces_for_run(self, run_id: str) -> list[dict[str, Any]]:
+        trace_client = getattr(getattr(self.client, "api", None), "trace", None)
+        list_traces = getattr(trace_client, "list", None)
+        if not callable(list_traces):
+            return self._live_dataset_run_traces_for_run(run_id)
+        filters = [
+            f'metadata.run_id = "{run_id}"',
+            f"metadata.run_id = {run_id}",
+        ]
+        for filter_expression in filters:
+            try:
+                page = list_traces(limit=100, filter=filter_expression)
+            except Exception:
+                continue
+            traces = [
+                _live_trace_to_dict(trace)
+                for trace in (getattr(page, "data", None) or [])
+            ]
+            traces = [trace for trace in traces if trace.get("run_id") == run_id]
+            if traces:
+                return traces
+        return self._live_dataset_run_traces_for_run(run_id)
+
+    def _live_dataset_run_traces_for_run(self, run_id: str) -> list[dict[str, Any]]:
+        get_dataset_runs = getattr(self.client, "get_dataset_runs", None)
+        if not callable(get_dataset_runs):
+            return []
+        traces: list[dict[str, Any]] = []
+        for dataset_name in self._candidate_dataset_names():
+            try:
+                page = get_dataset_runs(dataset_name=dataset_name, limit=100)
+            except Exception:
+                continue
+            for run in getattr(page, "data", None) or getattr(page, "runs", None) or []:
+                run_name = getattr(run, "name", None) or getattr(run, "run_name", None)
+                if str(run_name) != run_id:
+                    continue
+                metadata = getattr(run, "metadata", None) or {}
+                trace = _trace_from_metadata(dict(metadata), run_id=run_id)
+                if trace is not None:
+                    traces.append(trace)
+        return traces
+
+    def _candidate_dataset_names(self) -> list[str]:
+        names = {
+            str(trace.get("metadata", {}).get("dataset_name"))
+            for trace in self.traces
+            if trace.get("metadata", {}).get("dataset_name")
+        }
+        return sorted(names or {"rewrite-quality/v1"})
 
     def trace_by_id(self, trace_id: str) -> dict[str, Any]:
         for trace in self.traces:
@@ -1100,7 +1252,50 @@ def _metadata_matches(metadata: dict[str, Any], fingerprint: Any) -> bool:
         if hasattr(fingerprint, "model_dump")
         else getattr(fingerprint, "__dict__", {})
     )
-    return all(str(metadata.get(field)) == str(fp_data.get(field)) for field in _FINGERPRINT_FIELDS)
+    return all(
+        _metadata_fingerprint_value(metadata, field) == str(fp_data.get(field))
+        for field in _FINGERPRINT_FIELDS
+    )
+
+
+def _metadata_fingerprint_value(metadata: dict[str, Any], field: str) -> str:
+    if field == "dataset_version":
+        value = metadata.get("dataset_compatibility_version") or metadata.get(field)
+    else:
+        value = metadata.get(field)
+    return str(value)
+
+
+def _live_trace_to_dict(trace: Any) -> dict[str, Any]:
+    metadata = getattr(trace, "metadata", None) or {}
+    trace_id = str(getattr(trace, "id", None) or metadata.get("trace_id"))
+    run_id = str(metadata.get("run_id") or "")
+    return {
+        "trace_id": trace_id,
+        "run_id": run_id,
+        "name": getattr(trace, "name", None),
+        "input": getattr(trace, "input", None),
+        "output": getattr(trace, "output", None),
+        "error": metadata.get("error"),
+        "metadata": dict(metadata),
+        "timestamp": str(getattr(trace, "timestamp", None) or ""),
+    }
+
+
+def _trace_from_metadata(metadata: dict[str, Any], *, run_id: str) -> dict[str, Any] | None:
+    trace_id = metadata.get("trace_id")
+    if not trace_id:
+        return None
+    return {
+        "trace_id": str(trace_id),
+        "run_id": str(metadata.get("run_id") or run_id),
+        "name": metadata.get("trace_name"),
+        "input": None,
+        "output": None,
+        "error": metadata.get("error"),
+        "metadata": metadata,
+        "timestamp": "",
+    }
 
 
 def _object_to_queue_dict(value: Any) -> dict[str, Any]:

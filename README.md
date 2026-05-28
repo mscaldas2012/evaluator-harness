@@ -18,6 +18,14 @@ uv sync
 Store credentials in `.env`, your shell, or a secret manager. Project YAML files
 store only environment variable names such as `EDAV_CLIENT_SECRET`.
 
+Azure-hosted model configs use one Azure/OpenAI-compatible provider family with
+explicit auth per baseline or candidate. A baseline can use
+`auth_mode: azure_client_credentials` while a candidate uses `auth_mode:
+api_key`; the harness builds provider behavior from each model config and does
+not infer auth from whichever environment variables are set. Prefer
+project/model-specific names such as `REWRITE_QUALITY_BASELINE_AZURE_ENDPOINT`
+and `REWRITE_QUALITY_MISTRAL_LARGE_3_API_KEY` to avoid credential collisions.
+
 Required for Langfuse:
 
 ```powershell
@@ -41,6 +49,14 @@ $env:EDAV_AZURE_OPENAI_API_VERSION="..."
 $env:EDAV_AZURE_OPENAI_ENDPOINT="..."
 ```
 
+Required for the sample Azure endpoint/API-key candidate:
+
+```powershell
+$env:REWRITE_QUALITY_MISTRAL_LARGE_3_API_KEY="..."
+$env:REWRITE_QUALITY_MISTRAL_LARGE_3_ENDPOINT="https://example.openai.azure.com"
+$env:REWRITE_QUALITY_MISTRAL_LARGE_3_API_VERSION="2024-12-01-preview"
+```
+
 ## Quickstart
 
 ```powershell
@@ -57,6 +73,12 @@ uv run python run_experiment.py run `
   --project configs/projects/rewrite_quality.yaml `
   --mode candidate `
   --candidate dry-run-candidate `
+  --baseline latest-compatible
+
+uv run python run_experiment.py run `
+  --project configs/projects/rewrite_quality.yaml `
+  --mode candidate `
+  --candidate azure-mistral-large-3 `
   --baseline latest-compatible
 
 uv run python run_experiment.py select-review `

@@ -73,6 +73,15 @@ project settings and environment variable names such as `EDAV_CLIENT_SECRET`.
 Actual credential values belong in `.env`, the host environment, or a secret
 manager, and must not be checked in.
 
+Azure-hosted models use one Azure/OpenAI-compatible provider family with an
+explicit `auth_mode` per baseline or candidate. Use
+`azure_client_credentials` for tenant/client auth and `api_key` for
+endpoint/API-key auth. The harness must not auto-detect auth mode from
+environment variables, because a shell may contain credentials for several
+baselines and candidates at once. Prefer project/model-specific variable names
+such as `REWRITE_QUALITY_BASELINE_AZURE_ENDPOINT` and
+`REWRITE_QUALITY_MISTRAL_LARGE_3_API_KEY`.
+
 Example:
 
 ```yaml
@@ -125,6 +134,19 @@ candidates:
       temperature: 0.0
       top_p: 1.0
       max_tokens: 2048
+  - name: azure-mistral-large-3
+    provider: openai_compatible
+    auth_mode: api_key
+    model: mistral-large-3
+    azure_api_key:
+      api_key_env: REWRITE_QUALITY_MISTRAL_LARGE_3_API_KEY
+      endpoint_env: REWRITE_QUALITY_MISTRAL_LARGE_3_ENDPOINT
+      api_version_env: REWRITE_QUALITY_MISTRAL_LARGE_3_API_VERSION
+    parameters:
+      temperature: 0.2
+      top_p: 1.0
+      max_tokens: 2048
+      token_limit_parameter: max_completion_tokens
 
 evaluators:
   - name: clarity
@@ -162,7 +184,9 @@ human_review:
 The Azure `*_env` fields are references to environment variables, not the secret
 values themselves. For example, `client_secret_env: EDAV_CLIENT_SECRET` tells the
 harness to read the client secret from an environment variable named
-`EDAV_CLIENT_SECRET`.
+`EDAV_CLIENT_SECRET`. For API-key candidates, `api_key_env` and `endpoint_env`
+are also environment variable names; do not place API keys or endpoint values
+directly in project YAML.
 
 Rewrite quality is only one project. Future projects should define their own
 datasets, prompts, baseline, candidates, and evaluator prompts.
@@ -406,6 +430,25 @@ candidates:
       max_tokens: 1024
 ```
 
+Azure endpoint/API-key candidate example:
+
+```yaml
+candidates:
+  - name: azure-mistral-large-3
+    provider: openai_compatible
+    auth_mode: api_key
+    model: mistral-large-3
+    azure_api_key:
+      api_key_env: REWRITE_QUALITY_MISTRAL_LARGE_3_API_KEY
+      endpoint_env: REWRITE_QUALITY_MISTRAL_LARGE_3_ENDPOINT
+      api_version_env: REWRITE_QUALITY_MISTRAL_LARGE_3_API_VERSION
+    parameters:
+      temperature: 0.2
+      top_p: 1.0
+      max_tokens: 2048
+      token_limit_parameter: max_completion_tokens
+```
+
 Ollama local candidate example:
 
 ```yaml
@@ -427,15 +470,17 @@ Run the new model with the same CLI shape:
 uv run python run_experiment.py run \
   --project configs/projects/rewrite_quality.yaml \
   --mode candidate \
-  --candidate azure-gpt41-mini-low-temp \
+  --candidate azure-mistral-large-3 \
   --baseline latest-compatible
 ```
 
 The provider factory is driven by `provider`. `openai_compatible` uses the
-Langfuse-wrapped Azure OpenAI path when available. `ollama` uses manual tracing
-metadata because there is no compatible Langfuse-wrapped Ollama client in the
-MVP. Project configs should not include a tracing mode; adapters choose and
-record the tracing strategy internally.
+Langfuse-wrapped Azure OpenAI path when available for tenant/client auth. The
+API-key path currently uses the harness manual generation span so it can attach
+the generation to the existing parent trace and preserve evaluator metadata.
+`ollama` uses manual tracing metadata because there is no compatible
+Langfuse-wrapped Ollama client in the MVP. Project configs should not include a
+tracing mode; adapters choose and record the tracing strategy internally.
 
 If a provider is not `openai_compatible` or `ollama`, add a small adapter under
 `src/evaluator_harness/providers/` and register it in the provider factory.

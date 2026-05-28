@@ -15,6 +15,7 @@ from evaluator_harness.baseline_registry import (
     build_baseline_fingerprint,
     fingerprint_metadata,
 )
+from evaluator_harness.certificates import configure_tls_truststore
 from evaluator_harness.annotation_queues import (
     AnnotationQueueReferenceStore,
     AnnotationQueueSyncResult,
@@ -102,6 +103,7 @@ class ExperimentRunner:
         provider_factory: Any | None = None,
         baseline_registry: BaselineRegistry | None = None,
     ) -> None:
+        configure_tls_truststore()
         load_env_file()
         self.langfuse_client = langfuse_client or (
             LangfuseClient.from_env()
@@ -437,6 +439,14 @@ class ExperimentRunner:
                     if self.langfuse_client.update_trace_span(parent_observation, trace):
                         trace["_live_observation_logged"] = True
                     self.langfuse_client.log_trace(trace)
+                    self.langfuse_client.record_dataset_run_item(
+                        dataset_sync=dataset_sync,
+                        item_id=item.item_id,
+                        run_name=run_id,
+                        trace_id=trace_id,
+                        observation_id=parent_observation_id,
+                        metadata=trace["metadata"],
+                    )
                     self.langfuse_client.enqueue_baseline_evaluator_payload(
                         {
                             "run_id": run_id,
@@ -477,6 +487,14 @@ class ExperimentRunner:
                     if self.langfuse_client.update_trace_span(parent_observation, trace):
                         trace["_live_observation_logged"] = True
                     self.langfuse_client.log_trace(trace)
+                    self.langfuse_client.record_dataset_run_item(
+                        dataset_sync=dataset_sync,
+                        item_id=item.item_id,
+                        run_name=run_id,
+                        trace_id=trace_id,
+                        observation_id=parent_observation_id,
+                        metadata=trace["metadata"],
+                    )
 
         self.baseline_registry.record(run_id, fingerprint, reference)
         self.langfuse_client.record_baseline_reference(run_id, reference)
@@ -608,6 +626,14 @@ class ExperimentRunner:
                     if self.langfuse_client.update_trace_span(parent_observation, trace):
                         trace["_live_observation_logged"] = True
                     self.langfuse_client.log_trace(trace)
+                    self.langfuse_client.record_dataset_run_item(
+                        dataset_sync=dataset_sync,
+                        item_id=item.item_id,
+                        run_name=run_id,
+                        trace_id=trace_id,
+                        observation_id=parent_observation_id,
+                        metadata=trace["metadata"],
+                    )
                     self.langfuse_client.enqueue_candidate_evaluator_payload(
                         {
                             "run_id": run_id,
@@ -648,6 +674,14 @@ class ExperimentRunner:
                     if self.langfuse_client.update_trace_span(parent_observation, trace):
                         trace["_live_observation_logged"] = True
                     self.langfuse_client.log_trace(trace)
+                    self.langfuse_client.record_dataset_run_item(
+                        dataset_sync=dataset_sync,
+                        item_id=item.item_id,
+                        run_name=run_id,
+                        trace_id=trace_id,
+                        observation_id=parent_observation_id,
+                        metadata=trace["metadata"],
+                    )
 
         return RunResult(
             run_id=run_id,
@@ -684,6 +718,7 @@ class ExperimentRunner:
             "output": response.output if response is not None else None,
             "error": error,
             "metadata": {
+                **(fingerprint_metadata(fingerprint) if fingerprint else {}),
                 "project": config.project.name,
                 "project_version": config.project.version,
                 "run_type": "candidate" if baseline_reference is not None else "baseline",

@@ -47,22 +47,6 @@ baseline:
     token_limit_parameter: max_completion_tokens
 
 candidates:
-  - name: llama3-local
-    provider: ollama
-    auth_mode: none
-    model: llama3
-    parameters:
-      temperature: 0.2
-      top_p: 1.0
-      max_tokens: 2048
-  - name: llama3-local-temp-high
-    provider: ollama
-    auth_mode: none
-    model: llama3
-    parameters:
-      temperature: 0.7
-      top_p: 1.0
-      max_tokens: 2048
   - name: dry-run-candidate
     provider: dry_run
     auth_mode: none
@@ -71,6 +55,19 @@ candidates:
       temperature: 0.0
       top_p: 1.0
       max_tokens: 2048
+  - name: azure-mistral-large-3
+    provider: openai_compatible
+    auth_mode: api_key
+    model: mistral-large-3
+    azure_api_key:
+      api_key_env: REWRITE_QUALITY_MISTRAL_LARGE_3_API_KEY
+      endpoint_env: REWRITE_QUALITY_MISTRAL_LARGE_3_ENDPOINT
+      api_version_env: REWRITE_QUALITY_MISTRAL_LARGE_3_API_VERSION
+    parameters:
+      temperature: 0.2
+      top_p: 1.0
+      max_tokens: 2048
+      token_limit_parameter: max_completion_tokens
 
 evaluators:
   - name: clarity
@@ -80,7 +77,6 @@ evaluators:
     source_type: custom
     target: observation
     target_observation_role: model_output
-    target_observation_name: OpenAI-generation
     run_types:
       - baseline
       - candidate
@@ -125,7 +121,6 @@ evaluators:
     filter_profile:
       target: observation
       observation_role: model_output
-      observation_name: OpenAI-generation
       project: rewrite-quality
       project_version: v1
       evaluator_set_id: clarity:v1
