@@ -37,6 +37,11 @@ def validate(project: Annotated[Path, typer.Option("--project")]) -> None:
         console.print(f"evaluators: {', '.join(result.evaluator_names)}")
         console.print(f"evaluator-targets: {', '.join(result.evaluator_targets)}")
         console.print(f"score-targets: {', '.join(result.score_targets)}")
+        console.print(f"judge-setup: {result.judge_setup_status}")
+        if result.judge_default:
+            console.print(f"judge-default: {result.judge_default}")
+        if result.binding_path:
+            console.print(f"binding-file: {result.binding_path}")
 
 
 @app.command("sync-dataset")
@@ -116,6 +121,23 @@ def export_evaluator_setup(project: Annotated[Path, typer.Option("--project")]) 
         console.print(f"export: {result}")
 
 
+@app.command("sync-judge-evaluators")
+def sync_judge_evaluators(
+    project: Annotated[Path, typer.Option("--project")],
+    dry_run: Annotated[bool, typer.Option("--dry-run")] = False,
+    audit: Annotated[bool, typer.Option("--audit")] = False,
+) -> None:
+    result = _handle_command(
+        lambda: ExperimentRunner().sync_judge_evaluators(
+            project,
+            dry_run=dry_run,
+            audit=audit,
+        )
+    )
+    if result is not None:
+        _print_judge_setup_result(result)
+
+
 @app.command()
 def run(
     project: Annotated[Path, typer.Option("--project")],
@@ -172,3 +194,39 @@ def export(
     if result is not None:
         console.print(f"export: {result.output_path}")
         console.print(f"rows: {result.row_count}")
+
+
+def _print_judge_setup_result(result: object) -> None:
+    console.print(f"project: {result.project}/{result.project_version}")
+    console.print(f"mode: {result.mode}")
+    console.print(f"status: {result.overall_status}")
+    console.print(f"binding-file: {result.binding_path}")
+    for evaluator in result.evaluators:
+        console.print("")
+        console.print(f"evaluator: {evaluator.evaluator_name}/{evaluator.evaluator_version}")
+        console.print(f"source: {evaluator.source_type}")
+        console.print(f"target: {evaluator.target}")
+        console.print(f"operation: {evaluator.operation.value}")
+        console.print(f"display-name: {evaluator.managed_display_name}")
+        console.print(
+            "score-config: "
+            f"{evaluator.score_target.name} ({evaluator.score_target.score_config_id})"
+        )
+        if evaluator.judge_model:
+            console.print(f"judge-model: {evaluator.judge_model}")
+        if evaluator.llm_connection:
+            console.print(f"llm-connection: {evaluator.llm_connection}")
+        console.print(f"activation: {evaluator.activation_state}")
+        console.print(f"sampling: {evaluator.sampling_percent}")
+        console.print(f"historical-backfill: {evaluator.backfill_status.value}")
+        console.print(f"binding: {evaluator.binding_status}")
+        if evaluator.filters:
+            console.print("filters:")
+            for key, value in evaluator.filters.items():
+                console.print(f"  {key}: {value}")
+        if evaluator.variables:
+            console.print("variables:")
+            for key, value in evaluator.variables.items():
+                console.print(f"  {key}: {value}")
+        if evaluator.remediation:
+            console.print(f"remediation: {evaluator.remediation}")

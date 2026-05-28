@@ -9,6 +9,12 @@ project:
       - rewrite
       - mvp
 
+judge_setup:
+  default_judge_model: gpt-4.1
+  binding_path: configs/langfuse/evaluator_bindings/rewrite-quality.yaml
+  default_sampling_percent: 100
+  historical_backfill: disabled
+
 dataset:
   kind: local_csv
   path: datasets/rewrite_quality.csv
@@ -71,6 +77,7 @@ evaluators:
     type: llm_as_judge
     version: v1
     dimension: clarity
+    source_type: custom
     target: observation
     target_observation_role: model_output
     target_observation_name: OpenAI-generation
@@ -81,6 +88,8 @@ evaluators:
     blind: true
     prompt_path: prompts/rewrite_quality/evaluators/clarity.md
     prompt_version: v1
+    sampling_percent:
+    historical_backfill:
     score:
       name: clarity
       managed_by_harness: true

@@ -296,8 +296,10 @@ such as `baseline` and `candidate` or `output A` and `output B`. Provider,
 model, vendor, latency, and cost metadata remain available in Langfuse trace
 metadata, but they should not be included in the judge prompt.
 
-Automated LLM-as-Judge scores and Human Annotation Queue scores for the same
-dimension must use the same Langfuse score config. Distinguish source with
+Human Annotation Queue scores for a dimension use the canonical Langfuse score
+config, such as `eh_rewrite_quality_clarity`. Langfuse LLM-as-Judge evaluator
+scores are emitted under the evaluator name, with Langfuse score source `EVAL`.
+Compare automated and human scores by evaluator dimension, score name, and
 Langfuse score source:
 
 | Harness source | Langfuse source |
@@ -306,6 +308,8 @@ Langfuse score source:
 | `human_annotation` | `ANNOTATION` |
 
 Do not create separate clarity score configs for automated and human review.
+The score config remains the canonical human annotation schema; the evaluator
+name identifies the automated judge score in Langfuse dashboards.
 
 Evaluator definitions can support baseline mode, candidate mode, or both.
 Baseline-mode evaluator payloads use the baseline output as `output` and include
@@ -440,12 +444,46 @@ existing `ModelProvider.generate()` shape.
 
 ## 9. Configure Langfuse Evaluators
 
-High-level Langfuse steps:
+The harness can now set up Langfuse LLM-as-Judge evaluators directly from
+project configuration.
+
+Preview setup first:
+
+```powershell
+uv run python run_experiment.py sync-judge-evaluators `
+  --project configs/projects/rewrite_quality.yaml `
+  --dry-run
+```
+
+Apply setup:
+
+```powershell
+uv run python run_experiment.py sync-judge-evaluators `
+  --project configs/projects/rewrite_quality.yaml
+```
+
+Audit existing setup without mutation:
+
+```powershell
+uv run python run_experiment.py sync-judge-evaluators `
+  --project configs/projects/rewrite_quality.yaml `
+  --audit
+```
+
+Evaluator setup supports `custom` evaluators with local prompt/version
+contracts, Langfuse `catalog` evaluators with `catalog_ref`, and `user_owned`
+evaluator references that are validated but not mutated. Harness-managed
+evaluator bindings are stored as non-secret YAML under
+`configs/langfuse/evaluator_bindings/` and are required before updates or
+inactivation. Sampling defaults to `100`; historical backfill is disabled
+unless explicitly enabled and supported by the selected Langfuse target.
+
+Manual Langfuse checks remain useful:
 
 1. Open the Langfuse project.
 2. Confirm the baseline and candidate runs appear as dataset or experiment runs.
-3. Confirm the evaluator uses the harness-managed score config created by
-   `sync-score-configs`.
+3. Confirm the Human Annotation Queue uses the harness-managed score config
+   created by `sync-score-configs`.
 4. Create LLM-as-a-Judge evaluators for the project dimensions.
 5. Use the project evaluator prompts and map variables such as:
    - `input`

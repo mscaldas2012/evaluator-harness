@@ -5,6 +5,8 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Any
 
+import httpx
+
 from evaluator_harness.config import (
     DatasetItem,
     DatasetKind,
@@ -27,6 +29,9 @@ _FINGERPRINT_FIELDS = [
     "baseline_model",
     "baseline_parameters_hash",
 ]
+
+UNSTABLE_EVALUATION_RULES_PATH = "/api/public/unstable/evaluation-rules"
+UNSTABLE_EVALUATORS_PATH = "/api/public/unstable/evaluators"
 
 
 @dataclass(frozen=True)
@@ -60,6 +65,7 @@ class LangfuseClient:
     client: Any | None = None
     reachable: bool = True
     settings: LiveSettings | None = None
+    http_transport: httpx.BaseTransport | None = None
     calls: list[tuple[str, dict[str, Any]]] = field(default_factory=list)
     datasets: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
     score_configs: dict[str, dict[str, Any]] = field(default_factory=dict)
@@ -71,6 +77,8 @@ class LangfuseClient:
     scores: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
     annotation_queues: dict[str, dict[str, Any]] = field(default_factory=dict)
     annotation_queue_items: list[dict[str, Any]] = field(default_factory=list)
+    evaluators: dict[str, dict[str, Any]] = field(default_factory=dict)
+    evaluator_backfill_targets: set[str] = field(default_factory=set)
     _annotation_queue_keys: set[tuple[str, str]] = field(default_factory=set)
 
     @classmethod
@@ -237,6 +245,225 @@ class LangfuseClient:
             )
         self.calls.append(("sync_score_configs", {"count": len(results)}))
         return results
+
+    def list_evaluators(self) -> list[dict[str, Any]]:
+        self.check_reachable(operation="list-evaluators")
+        self.calls.append(("list_evaluators", {}))
+        if self.client is not None:
+            return self._list_live_evaluators()
+        return list(self.evaluators.values())
+
+    def get_evaluator(self, evaluator_id: str) -> dict[str, Any] | None:
+        self.check_reachable(operation="get-evaluator")
+        self.calls.append(("get_evaluator", {"evaluator_id": evaluator_id}))
+        if self.client is not None:
+            try:
+                return self._get_live_evaluator(evaluator_id)
+            except NotImplementedError:
+                return None
+        return self.evaluators.get(evaluator_id)
+
+    def create_evaluator(self, payload: dict[str, Any]) -> dict[str, Any]:
+        self.check_reachable(operation="create-evaluator")
+        self.calls.append(("create_evaluator", payload))
+        if self.client is not None:
+            return self._create_live_evaluator(payload)
+        evaluator_id = f"eval-{len(self.evaluators) + 1}"
+        evaluator = {"id": evaluator_id, **payload, "active": True}
+        self.evaluators[evaluator_id] = evaluator
+        return evaluator
+
+    def update_evaluator(
+        self,
+        evaluator_id: str,
+        changes: dict[str, Any],
+    ) -> dict[str, Any]:
+        self.check_reachable(operation="update-evaluator")
+        self.calls.append(
+            ("update_evaluator", {"evaluator_id": evaluator_id, "changes": changes})
+        )
+        if self.client is not None:
+            return self._update_live_evaluator(evaluator_id, changes)
+        if evaluator_id not in self.evaluators:
+            raise ConfigError(f"Evaluator not found: {evaluator_id}")
+        self.evaluators[evaluator_id].update(changes)
+        return self.evaluators[evaluator_id]
+
+    def inactivate_evaluator(
+        self,
+        evaluator_id: str,
+        *,
+        comment: str | None = None,
+    ) -> dict[str, Any]:
+        self.check_reachable(operation="inactivate-evaluator")
+        self.calls.append(
+            (
+                "inactivate_evaluator",
+                {"evaluator_id": evaluator_id, "comment": comment},
+            )
+        )
+        changes = {"active": False}
+        if comment:
+            changes["comment"] = comment
+        return self.update_evaluator(evaluator_id, changes)
+
+    def supports_evaluator_backfill(self, target: str) -> bool:
+        return target in self.evaluator_backfill_targets
+
+    def _list_live_evaluators(self) -> list[dict[str, Any]]:
+        api = getattr(self.client, "api", None)
+        evaluators = getattr(api, "evaluators", None)
+        list_evaluators = getattr(evaluators, "list", None) or getattr(evaluators, "get", None)
+        if not callable(list_evaluators):
+            return self._list_rest_evaluators()
+        try:
+            page = list_evaluators(limit=100)
+        except Exception as exc:
+            raise LangfuseError(f"Unable to list Langfuse evaluators: {exc}") from exc
+        return [_object_to_evaluator_dict(item) for item in getattr(page, "data", [])]
+
+    def _get_live_evaluator(self, evaluator_id: str) -> dict[str, Any]:
+        api = getattr(self.client, "api", None)
+        evaluators = getattr(api, "evaluators", None)
+        get_by_id = getattr(evaluators, "get_by_id", None) or getattr(evaluators, "get", None)
+        if not callable(get_by_id):
+            return self._get_rest_evaluator(evaluator_id)
+        try:
+            return _object_to_evaluator_dict(get_by_id(evaluator_id))
+        except Exception as exc:
+            raise LangfuseError(f"Unable to get Langfuse evaluator {evaluator_id}: {exc}") from exc
+
+    def _create_live_evaluator(self, payload: dict[str, Any]) -> dict[str, Any]:
+        api = getattr(self.client, "api", None)
+        evaluators = getattr(api, "evaluators", None)
+        create = getattr(evaluators, "create", None)
+        if not callable(create):
+            return self._create_rest_evaluator(payload)
+        try:
+            return _object_to_evaluator_dict(create(**payload))
+        except Exception as exc:
+            raise LangfuseError(
+                f"Unable to create Langfuse evaluator {payload.get('display_name')}: {exc}"
+            ) from exc
+
+    def _update_live_evaluator(
+        self,
+        evaluator_id: str,
+        changes: dict[str, Any],
+    ) -> dict[str, Any]:
+        api = getattr(self.client, "api", None)
+        evaluators = getattr(api, "evaluators", None)
+        update = getattr(evaluators, "update", None)
+        if not callable(update):
+            return self._update_rest_evaluator(evaluator_id, changes)
+        try:
+            return _object_to_evaluator_dict(update(evaluator_id, **changes))
+        except Exception as exc:
+            raise LangfuseError(f"Unable to update Langfuse evaluator {evaluator_id}: {exc}") from exc
+
+    def _list_rest_evaluators(self) -> list[dict[str, Any]]:
+        payload = self._rest_evaluator_request(
+            "GET",
+            UNSTABLE_EVALUATION_RULES_PATH,
+            operation="list Langfuse evaluators",
+        )
+        return [_object_to_evaluator_dict(item) for item in _extract_rest_collection(payload)]
+
+    def _get_rest_evaluator(self, evaluator_id: str) -> dict[str, Any] | None:
+        try:
+            payload = self._rest_evaluator_request(
+                "GET",
+                f"{UNSTABLE_EVALUATION_RULES_PATH}/{evaluator_id}",
+                operation=f"get Langfuse evaluator {evaluator_id}",
+            )
+        except LangfuseError as exc:
+            if "404" in str(exc):
+                return None
+            raise
+        return _object_to_evaluator_dict(payload)
+
+    def _create_rest_evaluator(self, payload: dict[str, Any]) -> dict[str, Any]:
+        evaluator_ref = self._resolve_rest_evaluator_reference(payload)
+        response = self._rest_evaluator_request(
+            "POST",
+            UNSTABLE_EVALUATION_RULES_PATH,
+            json_payload=_rest_evaluation_rule_payload(payload, evaluator_ref=evaluator_ref),
+            operation=f"create Langfuse evaluator {payload.get('display_name')}",
+        )
+        return _object_to_evaluator_dict(response)
+
+    def _update_rest_evaluator(
+        self,
+        evaluator_id: str,
+        changes: dict[str, Any],
+    ) -> dict[str, Any]:
+        response = self._rest_evaluator_request(
+            "PATCH",
+            f"{UNSTABLE_EVALUATION_RULES_PATH}/{evaluator_id}",
+            json_payload=_rest_evaluation_rule_update_payload(changes),
+            operation=f"update Langfuse evaluator {evaluator_id}",
+        )
+        return _object_to_evaluator_dict(response)
+
+    def _resolve_rest_evaluator_reference(self, payload: dict[str, Any]) -> dict[str, str]:
+        source_type = payload.get("source_type")
+        if source_type == "catalog":
+            name = str(payload.get("catalog_ref") or payload.get("name") or payload.get("display_name"))
+            return {"name": name, "scope": "managed"}
+        evaluator_name = str(payload.get("name") or payload.get("display_name"))
+        if source_type == "custom" or payload.get("prompt"):
+            evaluator_payload = _rest_custom_evaluator_payload(payload)
+            created = self._rest_evaluator_request(
+                "POST",
+                UNSTABLE_EVALUATORS_PATH,
+                json_payload=evaluator_payload,
+                operation=f"create Langfuse evaluator template {evaluator_name}",
+            )
+            return {
+                "name": str(created.get("name") or evaluator_name),
+                "scope": str(created.get("scope") or "project"),
+            }
+        return {"name": evaluator_name, "scope": str(payload.get("evaluator_scope") or "project")}
+
+    def _rest_evaluator_request(
+        self,
+        method: str,
+        path: str,
+        *,
+        operation: str,
+        json_payload: dict[str, Any] | None = None,
+    ) -> Any:
+        if self.settings is None:
+            raise NotImplementedError(
+                "Installed Langfuse SDK/API does not expose evaluator operations "
+                "and REST credentials are unavailable"
+            )
+        self.settings.require_langfuse()
+        try:
+            with httpx.Client(
+                base_url=str(self.settings.langfuse_host).rstrip("/"),
+                auth=(
+                    str(self.settings.langfuse_public_key),
+                    str(self.settings.langfuse_secret_key),
+                ),
+                timeout=30.0,
+                transport=self.http_transport,
+            ) as http_client:
+                response = http_client.request(method, path, json=json_payload)
+                response.raise_for_status()
+                if not response.content:
+                    return {}
+                return response.json()
+        except httpx.HTTPStatusError as exc:
+            body = exc.response.text[:500]
+            raise LangfuseError(
+                f"Unable to {operation} via unstable evaluation-rules REST API: "
+                f"HTTP {exc.response.status_code} {body}"
+            ) from exc
+        except httpx.HTTPError as exc:
+            raise LangfuseError(
+                f"Unable to {operation} via unstable evaluation-rules REST API: {exc}"
+            ) from exc
 
     def _load_live_score_configs_by_name(self, name: str, expected: dict[str, Any]) -> None:
         if self.client is None:
@@ -931,6 +1158,204 @@ def _object_to_score_config_dict(value: Any) -> dict[str, Any]:
         raw["data_type"] = raw["data_type"].value
     raw["categories"] = _normalize_score_categories(raw.get("categories"))
     return raw
+
+
+def _extract_rest_collection(payload: Any) -> list[Any]:
+    if isinstance(payload, list):
+        return payload
+    if not isinstance(payload, dict):
+        return []
+    for key in ("data", "items", "evaluationRules", "evaluation_rules"):
+        value = payload.get(key)
+        if isinstance(value, list):
+            return value
+    return []
+
+
+def _rest_custom_evaluator_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    name = str(payload.get("name") or payload.get("display_name"))
+    output_definition = (
+        payload.get("outputDefinition")
+        or payload.get("output_definition")
+        or {
+            "dataType": "NUMERIC",
+            "reasoning": {"description": "Explain the score."},
+            "score": {"description": "Score."},
+        }
+    )
+    result: dict[str, Any] = {
+        "name": name,
+        "prompt": str(payload.get("prompt") or ""),
+        "outputDefinition": output_definition,
+    }
+    model_config = payload.get("modelConfig") or payload.get("model_config")
+    if model_config:
+        result["modelConfig"] = model_config
+    return result
+
+
+def _rest_evaluation_rule_payload(
+    payload: dict[str, Any],
+    *,
+    evaluator_ref: dict[str, str],
+) -> dict[str, Any]:
+    return {
+        "name": str(payload.get("name") or payload.get("display_name")),
+        "evaluator": evaluator_ref,
+        "target": str(payload.get("target") or "observation"),
+        "enabled": bool(payload.get("enabled", payload.get("active", True))),
+        "sampling": _sampling_fraction(payload.get("sampling_percent")),
+        "filter": _rest_evaluation_rule_filters(payload.get("filters") or {}),
+        "mapping": _rest_evaluation_rule_mapping(payload.get("variables") or {}),
+    }
+
+
+def _rest_evaluation_rule_update_payload(changes: dict[str, Any]) -> dict[str, Any]:
+    payload: dict[str, Any] = {}
+    if "display_name" in changes or "name" in changes:
+        payload["name"] = str(changes.get("name") or changes.get("display_name"))
+    if "active" in changes or "enabled" in changes:
+        payload["enabled"] = bool(changes.get("enabled", changes.get("active")))
+    if "sampling_percent" in changes:
+        payload["sampling"] = _sampling_fraction(changes.get("sampling_percent"))
+    if "target" in changes:
+        payload["target"] = str(changes["target"])
+    if "filters" in changes:
+        filters = changes.get("filters") or {}
+        payload["target"] = str(filters.get("target") or changes.get("target") or "observation")
+        payload["filter"] = _rest_evaluation_rule_filters(filters)
+    if "variables" in changes:
+        payload["mapping"] = _rest_evaluation_rule_mapping(changes.get("variables") or {})
+    return payload
+
+
+def _sampling_fraction(value: Any) -> float:
+    if value is None:
+        return 1.0
+    numeric = float(value)
+    return numeric / 100 if numeric > 1 else numeric
+
+
+def _rest_evaluation_rule_mapping(variables: dict[str, str]) -> list[dict[str, Any]]:
+    mapping: list[dict[str, Any]] = []
+    for variable, path in variables.items():
+        if path.endswith(".input"):
+            mapping.append({"variable": variable, "source": "input"})
+        elif path.endswith(".output"):
+            mapping.append({"variable": variable, "source": "output"})
+        elif ".metadata." in path:
+            metadata_key = path.rsplit(".metadata.", 1)[1]
+            mapping.append(
+                {
+                    "variable": variable,
+                    "source": "metadata",
+                    "jsonPath": f"$.{metadata_key}",
+                }
+            )
+    return mapping
+
+
+def _rest_evaluation_rule_filters(filters: dict[str, Any]) -> list[dict[str, Any]]:
+    result: list[dict[str, Any]] = []
+    for key in ("project", "project_version", "evaluator_set_id", "observation_role"):
+        if filters.get(key):
+            result.append(
+                {
+                    "type": "stringObject",
+                    "column": "metadata",
+                    "key": key,
+                    "operator": "=",
+                    "value": str(filters[key]),
+                }
+            )
+    return result
+
+
+def _object_to_evaluator_dict(value: Any) -> dict[str, Any]:
+    if isinstance(value, dict):
+        raw = dict(value)
+    elif hasattr(value, "model_dump"):
+        raw = value.model_dump(mode="json")
+    elif hasattr(value, "dict"):
+        raw = value.dict()
+    else:
+        raw = {
+            key: getattr(value, key)
+            for key in (
+                "id",
+                "evaluationRuleId",
+                "name",
+                "display_name",
+                "displayName",
+                "active",
+                "enabled",
+                "filters",
+                "variables",
+                "score_config_id",
+                "scoreConfigId",
+                "sampling_percent",
+                "samplingPercent",
+                "target",
+            )
+            if hasattr(value, key)
+        }
+    if "evaluationRuleId" in raw and "id" not in raw:
+        raw["id"] = raw["evaluationRuleId"]
+    if "displayName" in raw and "display_name" not in raw:
+        raw["display_name"] = raw["displayName"]
+    if "scoreConfigId" in raw and "score_config_id" not in raw:
+        raw["score_config_id"] = raw["scoreConfigId"]
+    if "samplingPercent" in raw and "sampling_percent" not in raw:
+        raw["sampling_percent"] = raw["samplingPercent"]
+    if "sampling" in raw and "sampling_percent" not in raw:
+        raw["sampling_percent"] = int(float(raw["sampling"]) * 100)
+    if "mapping" in raw and "variables" not in raw:
+        raw["variables"] = _rest_mapping_to_variables(raw["mapping"])
+    if "filter" in raw and "filters" not in raw:
+        raw["filters"] = _rest_filters_to_internal(raw["filter"])
+    if "enabled" in raw and "active" not in raw:
+        raw["active"] = raw["enabled"]
+    return raw
+
+
+def _rest_mapping_to_variables(mapping: Any) -> dict[str, str]:
+    if not isinstance(mapping, list):
+        return {}
+    variables: dict[str, str] = {}
+    for item in mapping:
+        if not isinstance(item, dict) or not item.get("variable"):
+            continue
+        source = item.get("source")
+        variable = str(item["variable"])
+        if source == "input":
+            variables[variable] = "observation.input"
+        elif source == "output":
+            variables[variable] = "observation.output"
+        elif source == "metadata":
+            json_path = str(item.get("jsonPath") or "")
+            metadata_key = json_path[2:] if json_path.startswith("$.") else variable
+            variables[variable] = f"trace.metadata.{metadata_key}"
+    return variables
+
+
+def _rest_filters_to_internal(filters: Any) -> dict[str, Any]:
+    if not isinstance(filters, list):
+        return {}
+    internal: dict[str, Any] = {}
+    for item in filters:
+        if not isinstance(item, dict):
+            continue
+        column = item.get("column")
+        value = item.get("value")
+        if column == "name" and isinstance(value, list) and value:
+            internal["_has_top_level_name_filter"] = True
+        elif column == "environment":
+            internal["_has_top_level_environment_filter"] = True
+        elif column == "type":
+            internal["_has_top_level_type_filter"] = True
+        elif column == "metadata" and item.get("key"):
+            internal[str(item["key"])] = value
+    return internal
 
 
 def _normalize_score_categories(value: Any) -> list[str] | None:

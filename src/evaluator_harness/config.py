@@ -54,12 +54,24 @@ class EvaluatorRunType(str, Enum):
 class EvaluatorTarget(str, Enum):
     OBSERVATION = "observation"
     TRACE = "trace"
+    EXPERIMENT = "experiment"
 
 
 class ScoreSource(str, Enum):
     LLM_JUDGE = "llm_judge"
     HUMAN_ANNOTATION = "human_annotation"
     API = "api"
+
+
+class EvaluatorSourceType(str, Enum):
+    CATALOG = "catalog"
+    CUSTOM = "custom"
+    USER_OWNED = "user_owned"
+
+
+class HistoricalBackfillPolicy(str, Enum):
+    DISABLED = "disabled"
+    ENABLED = "enabled"
 
 
 class DatasetSource(BaseModel):
@@ -198,11 +210,29 @@ class EvaluatorFilterProfile(BaseModel):
     run_types: list[EvaluatorRunType] = Field(default_factory=list)
 
 
+class JudgeSetupDefaults(BaseModel):
+    default_judge_model: str | None = None
+    default_llm_connection: str | None = None
+    binding_path: Path | None = None
+    default_sampling_percent: int | None = None
+    historical_backfill: HistoricalBackfillPolicy = HistoricalBackfillPolicy.DISABLED
+
+    @field_validator("default_sampling_percent")
+    @classmethod
+    def validate_sampling_percent(cls, value: int | None) -> int | None:
+        if value is not None and not 0 < value <= 100:
+            raise ValueError("default_sampling_percent must be between 1 and 100")
+        return value
+
+
 class EvaluatorDefinition(BaseModel):
     name: str
     type: Literal["llm_as_judge", "deterministic"]
     version: str
     dimension: str | None = None
+    source_type: EvaluatorSourceType = EvaluatorSourceType.CUSTOM
+    catalog_ref: str | None = None
+    remote_evaluator_id: str | None = None
     target: EvaluatorTarget | None = None
     target_observation_role: str = "model_output"
     target_observation_name: str | None = None
@@ -210,6 +240,11 @@ class EvaluatorDefinition(BaseModel):
     mode: EvaluatorMode | None = None
     prompt_path: Path | None = None
     prompt_version: str | None = None
+    judge_model: str | None = None
+    llm_connection: str | None = None
+    sampling_percent: int | None = None
+    historical_backfill: HistoricalBackfillPolicy | None = None
+    managed_display_name: str | None = None
     score: ScoreConfigRef
     blind: bool = True
     non_blind_reason: str | None = None
@@ -218,6 +253,13 @@ class EvaluatorDefinition(BaseModel):
     required_inputs: list[str] = Field(default_factory=list)
     output_schema: JudgeResultSchema | None = None
     filter_profile: EvaluatorFilterProfile | None = None
+
+    @field_validator("sampling_percent")
+    @classmethod
+    def validate_sampling_percent(cls, value: int | None) -> int | None:
+        if value is not None and not 0 < value <= 100:
+            raise ValueError("sampling_percent must be between 1 and 100")
+        return value
 
     @model_validator(mode="after")
     def normalize_evaluator_fields(self) -> EvaluatorDefinition:
@@ -303,6 +345,7 @@ class ProjectConfig(BaseModel):
     baseline: ModelConfig
     candidates: list[ModelConfig]
     evaluators: list[EvaluatorDefinition]
+    judge_setup: JudgeSetupDefaults = Field(default_factory=JudgeSetupDefaults)
     human_review: HumanReviewPolicy = Field(default_factory=HumanReviewPolicy)
 
     @model_validator(mode="after")
@@ -444,12 +487,47 @@ def validate_project_config(config: ProjectConfig, *, base_dir: Path | None = No
     from evaluator_harness.evaluators import validate_evaluators
 
     validate_evaluators(config, base=base)
+    _validate_judge_setup(config, base=base)
 
     for evaluator in config.evaluators:
         managed_name = f"{config.project.score_config_prefix}{evaluator.score.name}"
         if len(managed_name) > 128:
             raise ConfigError(
                 f"Managed score config name is too long for evaluator {evaluator.name}"
+            )
+
+
+def _validate_judge_setup(config: ProjectConfig, *, base: Path) -> None:
+    from evaluator_harness.evaluator_bindings import validate_binding_path
+
+    binding_path = config.judge_setup.binding_path or Path(
+        "configs/langfuse/evaluator_bindings"
+    ) / f"{config.project.name}.yaml"
+    validate_binding_path(binding_path, repo_root=base)
+    for evaluator in config.evaluators:
+        if evaluator.type != "llm_as_judge":
+            continue
+        if not (
+            evaluator.judge_model
+            or evaluator.llm_connection
+            or config.judge_setup.default_judge_model
+            or config.judge_setup.default_llm_connection
+        ):
+            raise ConfigError(
+                f"Evaluator {evaluator.name} requires a judge model or LLM connection"
+            )
+        if evaluator.source_type == EvaluatorSourceType.CATALOG and not evaluator.catalog_ref:
+            raise ConfigError(f"Evaluator {evaluator.name} requires catalog_ref")
+        if evaluator.source_type == EvaluatorSourceType.CUSTOM:
+            if evaluator.prompt_path is None:
+                raise ConfigError(f"Evaluator {evaluator.name} requires prompt_path")
+            if not evaluator.prompt_version:
+                raise ConfigError(f"Evaluator {evaluator.name} requires prompt_version")
+            if evaluator.output_schema is None:
+                raise ConfigError(f"Evaluator {evaluator.name} requires output_schema")
+        if evaluator.source_type == EvaluatorSourceType.USER_OWNED and not evaluator.remote_evaluator_id:
+            raise ConfigError(
+                f"Evaluator {evaluator.name} user_owned setup requires remote_evaluator_id"
             )
 
 

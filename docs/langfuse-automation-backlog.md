@@ -14,7 +14,7 @@ track additional automation candidates so they can be implemented deliberately.
 | BL-005 | Comparison workspace setup | Backlog | Create saved views, tags, or dashboard links for common baseline-vs-candidate comparisons. |
 | BL-006 | Scheduled regression runs | Backlog | Configure CI or scheduled jobs for recurring evaluations and regression alerts. |
 | BL-007 | Evaluator calibration support | Backlog | Track human labels, evaluator disagreements, drift summaries, and calibration datasets. |
-| BL-008 | LLM-as-Judge evaluator creation | Backlog | Use Langfuse APIs to create evaluator jobs from rendered setup once the API surface is confirmed for filters, variable mapping, and score targets. |
+| BL-008 | LLM-as-Judge evaluator setup | In progress | Create, reuse, audit, and safely update harness-managed evaluator jobs from rendered setup once the Langfuse surface is confirmed for filters, variable mapping, score targets, catalog evaluators, and custom evaluators. Superseded harness-managed versions are inactivated where supported; evaluator resources are never deleted. |
 | BL-009 | Evaluator score source audit | Backlog | Periodically verify human annotation scores use `ANNOTATION`, LLM-as-Judge scores use `EVAL`, and both point at the same canonical score config. |
 | BL-010 | Score config compatibility repair guidance | Backlog | Detect incompatible active score configs and generate precise manual cleanup instructions instead of mutating user-owned or conflicting global configs. |
 

@@ -2,14 +2,20 @@ project:
   name: rewrite-quality
   version: v1
   score_config_prefix: eh_rewrite_quality_
+
 judge_setup:
   default_judge_model: gpt-4.1
+
 dataset:
   kind: local_csv
   path: datasets/rewrite_quality.csv
+
 task_prompt:
   path: prompts/rewrite_quality/task_prompt.md
   version: v1
+  template_variables:
+    - input
+
 baseline:
   name: baseline
   provider: dry_run
@@ -17,6 +23,7 @@ baseline:
   model: dry-run
   parameters:
     temperature: 0
+
 candidates:
   - name: candidate
     provider: dry_run
@@ -24,21 +31,23 @@ candidates:
     model: dry-run
     parameters:
       temperature: 0
+
 evaluators:
   - name: clarity
     type: llm_as_judge
     version: v1
     dimension: clarity
+    source_type: user_owned
     target: observation
-    prompt_path: prompts/rewrite_quality/evaluators/clarity.md
-    prompt_version: v1
+    target_observation_role: model_output
+    remote_evaluator_id:
+    run_types: [baseline, candidate]
+    mode: single_output
     score:
       name: clarity
       data_type: NUMERIC
       min_value: 0
       max_value: 1
-    run_types: [baseline, candidate]
-    mode: single_output
     required_inputs: [input, output]
     variables: [input, output]
     output_schema:
@@ -54,4 +63,7 @@ evaluators:
     filter_profile:
       target: observation
       observation_role: model_output
+      project: rewrite-quality
+      project_version: v1
+      evaluator_set_id: clarity:v1
       run_types: [baseline, candidate]
