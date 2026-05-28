@@ -87,9 +87,53 @@ uv run python run_experiment.py export-evaluator-setup `
   --project configs/projects/rewrite_quality.yaml
 ```
 
-The same score config must be used for automated judge scores and Human
-Annotation Queue scores for the same evaluator dimension. Score origin is
-distinguished by Langfuse score source:
+Preview direct Langfuse evaluator setup without mutation:
+
+```powershell
+uv run python run_experiment.py sync-judge-evaluators `
+  --project configs/projects/rewrite_quality.yaml `
+  --dry-run
+```
+
+Apply creates missing harness-managed evaluators, reuses compatible remote
+evaluators, updates only safe operational fields, writes non-secret binding
+records, and inactivates superseded harness-managed versions where Langfuse
+supports it:
+
+```powershell
+uv run python run_experiment.py sync-judge-evaluators `
+  --project configs/projects/rewrite_quality.yaml
+```
+
+Technical Debt: evaluator setup currently keeps two Langfuse adapter paths. The
+SDK implementation remains in place for the future stable SDK evaluator
+resource, while the live fallback calls Langfuse's unstable
+`/api/public/unstable/evaluation-rules` REST API so create, list, lookup, and
+safe update/inactivation work today. The fallback must be retired when Langfuse
+ships stable SDK support for LLM-as-Judge evaluator CRUD. Deletes remain out of
+scope.
+
+Audit compares project definitions, local bindings, and remote evaluator state
+without mutation:
+
+```powershell
+uv run python run_experiment.py sync-judge-evaluators `
+  --project configs/projects/rewrite_quality.yaml `
+  --audit
+```
+
+Managed evaluator names use:
+
+```text
+EH_<project>_<version>_judge_<dimension>_<evaluator-version>_<source-type>_<target>
+```
+
+Human Annotation Queue scores use the harness-managed Langfuse score config for
+the evaluator dimension, such as `eh_rewrite_quality_clarity`. Langfuse
+LLM-as-Judge evaluator scores are emitted under the evaluator name, such as
+`EH_rewrite-quality_v1_judge_clarity_v1_custom_observation`, with score source
+`EVAL`. Compare automated and human scores by dimension, score source, and
+dashboard grouping:
 
 | Harness source | Langfuse source |
 | -------------- | --------------- |

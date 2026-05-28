@@ -1,0 +1,17 @@
+bindings:
+- project: rewrite-quality
+  project_version: v1
+  evaluator_name: clarity
+  evaluator_version: v1
+  source_type: custom
+  target: observation
+  langfuse_evaluator_id: cmpokarfl00lmad0e8ko1tlz4
+  langfuse_display_name: EH_rewrite-quality_v1_judge_clarity_v1_custom_observation
+  score_config_id: cb709a27-8a26-4923-8828-f1ea9df2182d
+  score_config_name: eh_rewrite_quality_clarity
+  judge_model: gpt-4.1
+  llm_connection: null
+  sampling_percent: 100
+  historical_backfill: false
+  active: true
+  last_synced_at: '2026-05-27T21:48:11.634782+00:00'

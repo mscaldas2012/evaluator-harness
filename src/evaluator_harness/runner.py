@@ -39,7 +39,14 @@ from evaluator_harness.evaluators import (
     export_evaluator_setup,
     render_judge_prompts,
 )
+from evaluator_harness.evaluator_bindings import load_evaluator_bindings
 from evaluator_harness.exports import ExportResult, export_summary
+from evaluator_harness.langfuse_evaluator_setup import (
+    EvaluatorSetupResult,
+    apply_judge_evaluator_setup,
+    audit_judge_evaluator_setup,
+    plan_judge_evaluator_setup,
+)
 from evaluator_harness.langfuse_client import (
     AnnotationRoutingResult,
     DatasetSyncResult,
@@ -63,6 +70,9 @@ class ValidationResult:
     evaluator_names: list[str]
     evaluator_targets: list[str]
     score_targets: list[str]
+    judge_setup_status: str = "ready"
+    judge_default: str | None = None
+    binding_path: str | None = None
 
 
 @dataclass(frozen=True)
@@ -122,6 +132,16 @@ class ExperimentRunner:
             score_targets=[
                 evaluator_score_summary(config, evaluator) for evaluator in config.evaluators
             ],
+            judge_setup_status="ready",
+            judge_default=(
+                config.judge_setup.default_judge_model
+                or config.judge_setup.default_llm_connection
+            ),
+            binding_path=str(
+                config.judge_setup.binding_path
+                or Path("configs/langfuse/evaluator_bindings")
+                / f"{config.project.name}.yaml"
+            ),
         )
 
     def sync_dataset(self, project_path: Path) -> DatasetSyncResult:
@@ -145,6 +165,36 @@ class ExperimentRunner:
         validate_project_config(config)
         output_path = Path("reports") / f"evaluator-setup-{config.project.name}-{config.project.version}.md"
         return export_evaluator_setup(config, output_path)
+
+    def sync_judge_evaluators(
+        self,
+        project_path: Path,
+        *,
+        dry_run: bool = False,
+        audit: bool = False,
+    ) -> EvaluatorSetupResult:
+        config = load_project_config(project_path)
+        validate_project_config(config)
+        score_results = self.langfuse_client.sync_score_configs(config)
+        binding_path = config.judge_setup.binding_path or (
+            Path("configs/langfuse/evaluator_bindings") / f"{config.project.name}.yaml"
+        )
+        bindings = load_evaluator_bindings(binding_path)
+        if audit:
+            return audit_judge_evaluator_setup(
+                config,
+                self.langfuse_client,
+                score_results,
+                bindings=bindings,
+            )
+        if dry_run:
+            return plan_judge_evaluator_setup(
+                config,
+                self.langfuse_client,
+                score_results,
+                bindings=bindings,
+            )
+        return apply_judge_evaluator_setup(config, self.langfuse_client, score_results)
 
     def sync_annotation_queue(self, project_path: Path) -> AnnotationQueueSyncResult:
         config = load_project_config(project_path)

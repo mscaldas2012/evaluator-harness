@@ -10,6 +10,7 @@ from evaluator_harness.config import (
     EvaluatorFilterProfile,
     EvaluatorMode,
     EvaluatorRunType,
+    EvaluatorSourceType,
     EvaluatorTarget,
     ProjectConfig,
     ScoreConfigRef,
@@ -148,7 +149,11 @@ def _validate_evaluator(
     *,
     base: Path | None,
 ) -> None:
-    if evaluator.type == "llm_as_judge" and evaluator.prompt_path is None:
+    if (
+        evaluator.type == "llm_as_judge"
+        and evaluator.source_type == EvaluatorSourceType.CUSTOM
+        and evaluator.prompt_path is None
+    ):
         raise ConfigError(f"Evaluator {evaluator.name} requires prompt_path")
     if evaluator.target is None:
         raise ConfigError(f"Evaluator {evaluator.name} requires target")
@@ -219,12 +224,19 @@ class RenderedJudgePrompt:
     evaluator_name: str
     evaluator_version: str
     target: str
+    source_type: str
+    catalog_ref: str | None
     score: str
     shared_with_human_annotation_queue: bool
     score_sources: dict[str, str]
     filters: EvaluatorFilterProfile
     prompt_path: Path | None
     prompt_text: str
+    judge_model: str | None = None
+    llm_connection: str | None = None
+    sampling_percent: int = 100
+    historical_backfill: str = "disabled"
+    binding_path: Path | None = None
 
 
 def render_judge_prompt(config: ProjectConfig, evaluator: EvaluatorDefinition) -> RenderedJudgePrompt:
@@ -234,16 +246,32 @@ def render_judge_prompt(config: ProjectConfig, evaluator: EvaluatorDefinition) -
         if evaluator.prompt_path is not None
         else ""
     )
+    judge_model = evaluator.judge_model or config.judge_setup.default_judge_model
+    llm_connection = evaluator.llm_connection or config.judge_setup.default_llm_connection
     return RenderedJudgePrompt(
         evaluator_name=evaluator.name,
         evaluator_version=evaluator.version,
         target=f"{profile.target.value} role={profile.observation_role}",
+        source_type=evaluator.source_type.value,
+        catalog_ref=evaluator.catalog_ref,
         score=managed_score_name(config, evaluator.score),
         shared_with_human_annotation_queue=config.human_review.enabled,
         score_sources=score_source_mapping(),
         filters=profile,
         prompt_path=evaluator.prompt_path,
         prompt_text=prompt,
+        judge_model=judge_model,
+        llm_connection=llm_connection,
+        sampling_percent=(
+            evaluator.sampling_percent
+            or config.judge_setup.default_sampling_percent
+            or 100
+        ),
+        historical_backfill=(
+            evaluator.historical_backfill or config.judge_setup.historical_backfill
+        ).value,
+        binding_path=config.judge_setup.binding_path
+        or Path("configs/langfuse/evaluator_bindings") / f"{config.project.name}.yaml",
     )
 
 
@@ -305,8 +333,15 @@ def export_evaluator_setup(config: ProjectConfig, output_path: Path) -> Path:
             [
                 f"## {item.evaluator_name}/{item.evaluator_version}",
                 "",
+                f"- source_type: {item.source_type}",
+                f"- catalog_ref: {item.catalog_ref or ''}",
                 f"- target: {item.target}",
                 f"- score: {item.score}",
+                f"- judge_model: {item.judge_model or ''}",
+                f"- llm_connection: {item.llm_connection or ''}",
+                f"- sampling: {item.sampling_percent}",
+                f"- historical_backfill: {item.historical_backfill}",
+                f"- binding_path: {item.binding_path}",
                 f"- shared_with_human_annotation_queue: {str(item.shared_with_human_annotation_queue).lower()}",
                 "- score_sources:",
             ]

@@ -52,6 +52,8 @@ exports/
 artifacts/
 reports/*.csv
 reports/evaluator-setup-*.md
+reports/judge-evaluator-setup-*.json
+configs/langfuse/evaluator_bindings/*.generated.yaml
 tmp/
 temp/
 *.trace.jsonl

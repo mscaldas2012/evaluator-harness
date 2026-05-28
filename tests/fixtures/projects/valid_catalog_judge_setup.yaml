@@ -6,8 +6,8 @@ project:
 
 judge_setup:
   default_judge_model: gpt-4.1
+  default_llm_connection: lf-connection-default
   binding_path: configs/langfuse/evaluator_bindings/rewrite-quality.yaml
-  default_sampling_percent: 100
   historical_backfill: disabled
 
 dataset:
@@ -47,23 +47,19 @@ candidates:
       temperature: 0.2
 
 evaluators:
-  - name: clarity
+  - name: helpfulness
     type: llm_as_judge
     version: v1
-    dimension: clarity
-    source_type: custom
+    dimension: helpfulness
+    source_type: catalog
+    catalog_ref: langfuse/helpfulness
     target: observation
     target_observation_role: model_output
-    target_observation_name: OpenAI-generation
     run_types:
       - baseline
       - candidate
     mode: baseline_comparison
-    blind: true
-    prompt_path: prompts/rewrite_quality/evaluators/clarity.md
-    prompt_version: v1
-    sampling_percent:
-    historical_backfill:
+    llm_connection: lf-connection-catalog
     score:
       name: clarity
       managed_by_harness: true
@@ -73,9 +69,6 @@ evaluators:
       allowed_score_sources:
         - llm_judge
         - human_annotation
-    modes:
-      - baseline
-      - candidate
     required_inputs:
       - input
       - output
@@ -84,7 +77,6 @@ evaluators:
       - input
       - output
       - baseline_output
-      - ground_truth
     output_schema:
       reasoning: string
       score:
@@ -98,10 +90,9 @@ evaluators:
     filter_profile:
       target: observation
       observation_role: model_output
-      observation_name: OpenAI-generation
       project: rewrite-quality
       project_version: v1
-      evaluator_set_id: clarity:v1
+      evaluator_set_id: helpfulness:v1
       run_types:
         - baseline
         - candidate

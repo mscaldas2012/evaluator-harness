@@ -20,3 +20,6 @@ def test_export_evaluator_setup_writes_setup_markdown() -> None:
     assert "eh_rewrite_quality_clarity" in text
     assert "llm_judge: EVAL" in text
     assert "human_annotation: ANNOTATION" in text
+    assert "source_type: custom" in text
+    assert "sampling: 100" in text
+    assert "historical_backfill: disabled" in text
