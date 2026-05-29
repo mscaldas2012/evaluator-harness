@@ -946,22 +946,28 @@ class LangfuseClient:
             f'metadata.run_id = "{run_id}"',
             f"metadata.run_id = {run_id}",
         ]
+        direct_traces: list[dict[str, Any]] = []
         for filter_expression in filters:
             try:
                 page = list_traces(limit=100, filter=filter_expression)
             except Exception:
                 continue
-            traces = [
+            direct_traces = [
                 _live_trace_to_dict(trace)
                 for trace in (getattr(page, "data", None) or [])
             ]
-            traces = [trace for trace in traces if trace.get("run_id") == run_id]
-            if traces:
-                return traces
-        return self._live_dataset_run_traces_for_run(
+            direct_traces = [
+                trace for trace in direct_traces if trace.get("run_id") == run_id
+            ]
+            if direct_traces:
+                break
+        dataset_run_traces = self._live_dataset_run_traces_for_run(
             run_id,
             dataset_names=dataset_names,
         )
+        if dataset_run_traces:
+            return _merge_traces(direct_traces, dataset_run_traces)
+        return direct_traces
 
     def _live_dataset_run_traces_for_run(
         self,
@@ -1358,6 +1364,22 @@ def _live_trace_to_dict(trace: Any) -> dict[str, Any]:
         "metadata": dict(metadata),
         "timestamp": str(getattr(trace, "timestamp", None) or ""),
     }
+
+
+def _merge_traces(
+    primary: list[dict[str, Any]],
+    fallback: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    merged: dict[str, dict[str, Any]] = {}
+    for trace in fallback:
+        trace_id = trace.get("trace_id")
+        if trace_id:
+            merged[str(trace_id)] = trace
+    for trace in primary:
+        trace_id = trace.get("trace_id")
+        if trace_id:
+            merged[str(trace_id)] = trace
+    return list(merged.values())
 
 
 def _trace_from_metadata(metadata: dict[str, Any], *, run_id: str) -> dict[str, Any] | None:

@@ -319,6 +319,52 @@ def test_live_traces_for_run_prefers_all_dataset_run_items_over_run_metadata() -
     }
 
 
+def test_live_traces_for_run_merges_partial_trace_api_with_dataset_run_items() -> None:
+    run_metadata = {
+        "run_id": "baseline-dfe",
+        "run_type": "baseline",
+        "dataset_name": "dfe/v1",
+    }
+    item_metadata = [
+        {
+            **run_metadata,
+            "trace_id": f"trace-row-{index}",
+            "dataset_item_id": f"row-{index}",
+        }
+        for index in range(1, 13)
+    ]
+    sdk = FakeLangfuseSdk(
+        live_traces=[
+            SimpleNamespace(
+                id="trace-row-1",
+                metadata=item_metadata[0],
+                name="dfe/baseline",
+                input="source 1",
+                output="output 1",
+                timestamp="2026-05-29T00:00:00+00:00",
+            )
+        ],
+        dataset_runs_by_name={
+            "dfe/v1": [SimpleNamespace(name="baseline-dfe", metadata=run_metadata)],
+        },
+        dataset_run_items_by_name={
+            ("dfe/v1", "baseline-dfe"): [
+                SimpleNamespace(metadata=metadata) for metadata in item_metadata
+            ],
+        },
+    )
+    client = LangfuseClient(client=sdk)
+
+    traces = client.traces_for_run("baseline-dfe", dataset_names=["dfe/v1"])
+
+    assert len(traces) == 12
+    assert traces[0]["trace_id"] == "trace-row-1"
+    assert traces[0]["input"] == "source 1"
+    assert {trace["metadata"]["dataset_item_id"] for trace in traces} == {
+        f"row-{index}" for index in range(1, 13)
+    }
+
+
 class FakeDatasetRunItemsClient:
     def __init__(self, sdk: FakeLangfuseSdk) -> None:
         self.sdk = sdk
@@ -333,6 +379,7 @@ class FakeApi:
     def __init__(self, sdk: FakeLangfuseSdk) -> None:
         self.dataset_items = FakeDatasetItemsClient(sdk)
         self.dataset_run_items = FakeDatasetRunItemsClient(sdk)
+        self.trace = FakeTraceClient(sdk)
 
 
 class FakeLangfuseSdk:
@@ -343,6 +390,7 @@ class FakeLangfuseSdk:
         dataset_runs_by_name: dict[str, list[object]] | None = None,
         dataset_run_items: list[object] | None = None,
         dataset_run_items_by_name: dict[tuple[str, str], list[object]] | None = None,
+        live_traces: list[object] | None = None,
         existing_dataset_items: list[object] | None = None,
         fail_run_item_ids: set[str] | None = None,
     ) -> None:
@@ -353,6 +401,7 @@ class FakeLangfuseSdk:
         self.requested_dataset_names: list[str] = []
         self.dataset_run_items = dataset_run_items or []
         self.dataset_run_items_by_name = dataset_run_items_by_name or {}
+        self.live_traces = live_traces or []
         self.existing_dataset_items = existing_dataset_items or []
         self.fail_run_item_ids = fail_run_item_ids or set()
         self.api = FakeApi(self)
@@ -382,3 +431,11 @@ class FakeDatasetItemsClient:
 
     def list(self, **_kwargs):
         return SimpleNamespace(data=self.sdk.existing_dataset_items)
+
+
+class FakeTraceClient:
+    def __init__(self, sdk: FakeLangfuseSdk) -> None:
+        self.sdk = sdk
+
+    def list(self, **_kwargs):
+        return SimpleNamespace(data=self.sdk.live_traces)
