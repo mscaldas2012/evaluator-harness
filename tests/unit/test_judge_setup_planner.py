@@ -34,6 +34,9 @@ def test_planner_creates_missing_managed_evaluator() -> None:
     assert result.evaluators[0].operation == EvaluatorOperation.CREATE
     assert result.evaluators[0].activation_state == "active-on-apply"
     assert result.evaluators[0].binding_status == "will-create"
+    assert result.evaluators[0].output_definition["score"]["minValue"] == 0
+    assert result.evaluators[0].output_definition["score"]["maxValue"] == 1
+    assert "0.0 to 1.0" in result.evaluators[0].output_definition["score"]["description"]
 
 
 def test_safe_update_changes_only_operational_fields() -> None:
