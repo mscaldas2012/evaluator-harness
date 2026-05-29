@@ -911,10 +911,25 @@ class LangfuseClient:
                 return str(output) if output is not None else None
         return None
 
-    def fetch_scores(self, run_id: str) -> list[dict[str, Any]]:
+    def fetch_scores(
+        self,
+        run_id: str,
+        *,
+        trace_ids: list[str] | None = None,
+    ) -> list[dict[str, Any]]:
         self.check_reachable(operation="fetch-scores")
-        self.calls.append(("fetch_scores", {"run_id": run_id}))
-        return self.scores.get(run_id, [])
+        self.calls.append(("fetch_scores", {"run_id": run_id, "trace_ids": trace_ids}))
+        if self.client is not None:
+            return self._live_scores_for_traces(trace_ids or [])
+        scores = self.scores.get(run_id, [])
+        if not trace_ids:
+            return scores
+        trace_id_set = {str(trace_id) for trace_id in trace_ids}
+        return [
+            score
+            for score in scores
+            if str(score.get("trace_id")) in trace_id_set
+        ]
 
     def traces_for_run(
         self,
@@ -928,6 +943,38 @@ class LangfuseClient:
         live_traces = self._live_traces_for_run(run_id, dataset_names=dataset_names)
         self.traces.extend(live_traces)
         return live_traces
+
+    def _live_scores_for_traces(self, trace_ids: list[str]) -> list[dict[str, Any]]:
+        if not trace_ids:
+            return []
+        scores_client = getattr(getattr(self.client, "api", None), "scores", None)
+        get_many = getattr(scores_client, "get_many", None)
+        if not callable(get_many):
+            return []
+        scores: list[dict[str, Any]] = []
+        for trace_id in dict.fromkeys(trace_ids):
+            page_number = 1
+            while True:
+                try:
+                    page = get_many(
+                        trace_id=trace_id,
+                        fields="score",
+                        page=page_number,
+                        limit=100,
+                    )
+                except Exception:
+                    break
+                page_scores = [
+                    _object_to_score_dict(score)
+                    for score in (getattr(page, "data", None) or [])
+                ]
+                scores.extend(page_scores)
+                meta = getattr(page, "meta", None)
+                total_pages = int(getattr(meta, "total_pages", page_number) or page_number)
+                if page_number >= total_pages:
+                    break
+                page_number += 1
+        return scores
 
     def _live_traces_for_run(
         self,
@@ -1476,6 +1523,55 @@ def _object_to_score_config_dict(value: Any) -> dict[str, Any]:
     if hasattr(raw.get("data_type"), "value"):
         raw["data_type"] = raw["data_type"].value
     raw["categories"] = _normalize_score_categories(raw.get("categories"))
+    return raw
+
+
+def _object_to_score_dict(value: Any) -> dict[str, Any]:
+    if isinstance(value, dict):
+        raw = dict(value)
+    elif hasattr(value, "model_dump"):
+        raw = value.model_dump(mode="json")
+    elif hasattr(value, "dict"):
+        raw = value.dict()
+    else:
+        raw = {
+            key: getattr(value, key)
+            for key in (
+                "id",
+                "name",
+                "value",
+                "score",
+                "string_value",
+                "stringValue",
+                "trace_id",
+                "traceId",
+                "observation_id",
+                "observationId",
+                "dataset_run_id",
+                "datasetRunId",
+                "comment",
+                "source",
+                "timestamp",
+                "metadata",
+            )
+            if hasattr(value, key)
+        }
+    if "traceId" in raw and "trace_id" not in raw:
+        raw["trace_id"] = raw["traceId"]
+    if "observationId" in raw and "observation_id" not in raw:
+        raw["observation_id"] = raw["observationId"]
+    if "datasetRunId" in raw and "dataset_run_id" not in raw:
+        raw["dataset_run_id"] = raw["datasetRunId"]
+    if "stringValue" in raw and "string_value" not in raw:
+        raw["string_value"] = raw["stringValue"]
+    if "source" in raw and hasattr(raw["source"], "value"):
+        raw["source"] = raw["source"].value
+    if raw.get("trace_id") is not None:
+        raw["trace_id"] = str(raw["trace_id"])
+    if raw.get("observation_id") is not None:
+        raw["observation_id"] = str(raw["observation_id"])
+    if raw.get("dataset_run_id") is not None:
+        raw["dataset_run_id"] = str(raw["dataset_run_id"])
     return raw
 
 

@@ -312,7 +312,12 @@ class ExperimentRunner:
             raise ConfigError("annotation queue could not be resolved")
 
         traces = self.langfuse_client.traces_for_run(run_id)
-        scores = self.langfuse_client.fetch_scores(run_id)
+        trace_ids = [
+            str(trace["trace_id"])
+            for trace in traces
+            if trace.get("trace_id") is not None
+        ]
+        scores = self.langfuse_client.fetch_scores(run_id, trace_ids=trace_ids)
         candidates = [
             ReviewCandidate.from_trace(trace, scores=scores)
             for trace in traces
@@ -375,8 +380,14 @@ class ExperimentRunner:
             run_id,
             dataset_names=dataset_names or None,
         )
+        trace_ids = [
+            str(trace["trace_id"])
+            for trace in traces
+            if trace.get("trace_id") is not None
+        ]
+        scores = self.langfuse_client.fetch_scores(run_id, trace_ids=trace_ids)
         output_path = Path("reports") / f"{run_id}.csv"
-        return export_summary(traces, output_path)
+        return export_summary(traces, output_path, scores=scores)
 
     def _validate_dataset(self, config: ProjectConfig) -> list[DatasetItem]:
         if config.dataset.kind == DatasetKind.LANGFUSE:

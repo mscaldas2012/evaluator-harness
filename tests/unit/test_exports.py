@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import csv
 from pathlib import Path
 
 from evaluator_harness.exports import export_summary
+from evaluator_harness.langfuse_client import LangfuseClient
 
 
-def test_export_summary_writes_trace_rows_without_score_aggregation(tmp_path: Path) -> None:
+def test_export_summary_writes_trace_rows_with_score_columns(tmp_path: Path) -> None:
     traces = [
         {
             "trace_id": "trace-1",
@@ -44,7 +46,21 @@ def test_export_summary_writes_trace_rows_without_score_aggregation(tmp_path: Pa
     ]
     output_path = tmp_path / "summary.csv"
 
-    result = export_summary(traces, output_path)
+    scores = [
+        {
+            "trace_id": "trace-1",
+            "name": "EH DFE active voice",
+            "value": 0.75,
+            "comment": "Mostly active.",
+        },
+        {
+            "trace_id": "trace-1",
+            "name": "lists_preserved",
+            "score": 1,
+        },
+    ]
+
+    result = export_summary(traces, output_path, scores=scores)
 
     csv_text = output_path.read_text(encoding="utf-8")
     assert result.row_count == 1
@@ -57,4 +73,83 @@ def test_export_summary_writes_trace_rows_without_score_aggregation(tmp_path: Pa
     assert '[""system"", ""user""]' in csv_text
     assert "params-hash" in csv_text
     assert '""temperature"": 0.2' in csv_text
-    assert "score" not in csv_text.lower()
+    assert "score_eh_dfe_active_voice" in csv_text
+    assert "score_eh_dfe_active_voice_comment" in csv_text
+    assert "score_lists_preserved" in csv_text
+    assert "0.75" in csv_text
+    assert "Mostly active." in csv_text
+
+
+def test_export_summary_leaves_missing_scores_empty(tmp_path: Path) -> None:
+    traces = [
+        {
+            "trace_id": "trace-1",
+            "run_id": "baseline-1",
+            "metadata": {"dataset_item_id": "1"},
+        },
+        {
+            "trace_id": "trace-2",
+            "run_id": "baseline-1",
+            "metadata": {"dataset_item_id": "2"},
+        },
+    ]
+    output_path = tmp_path / "summary.csv"
+
+    export_summary(
+        traces,
+        output_path,
+        scores=[{"trace_id": "trace-1", "name": "clarity", "value": 1}],
+    )
+
+    rows = output_path.read_text(encoding="utf-8").splitlines()
+    assert "score_clarity" in rows[0]
+    assert "trace-1,baseline-1,1" in rows[1]
+    assert "trace-2,baseline-1,2" in rows[2]
+
+
+def test_fetch_scores_filters_fake_scores_by_trace_id() -> None:
+    client = LangfuseClient(
+        scores={
+            "baseline-1": [
+                {"trace_id": "trace-1", "name": "clarity", "score": 1},
+                {"trace_id": "trace-2", "name": "clarity", "score": 0},
+            ]
+        }
+    )
+
+    scores = client.fetch_scores("baseline-1", trace_ids=["trace-2"])
+
+    assert scores == [{"trace_id": "trace-2", "name": "clarity", "score": 0}]
+
+
+def test_export_summary_uses_latest_duplicate_score(tmp_path: Path) -> None:
+    traces = [
+        {
+            "trace_id": "trace-1",
+            "run_id": "baseline-1",
+            "metadata": {"dataset_item_id": "1"},
+        }
+    ]
+    output_path = tmp_path / "summary.csv"
+
+    export_summary(
+        traces,
+        output_path,
+        scores=[
+            {
+                "trace_id": "trace-1",
+                "name": "clarity",
+                "value": 0,
+                "timestamp": "2026-05-29T10:00:00Z",
+            },
+            {
+                "trace_id": "trace-1",
+                "name": "clarity",
+                "value": 1,
+                "timestamp": "2026-05-29T11:00:00Z",
+            },
+        ],
+    )
+
+    rows = list(csv.DictReader(output_path.open(encoding="utf-8")))
+    assert rows[0]["score_clarity"] == "1"
