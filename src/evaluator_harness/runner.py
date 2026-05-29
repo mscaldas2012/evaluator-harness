@@ -362,8 +362,19 @@ class ExperimentRunner:
     def export(self, project_path: Path, run_id: str, fmt: str) -> ExportResult:
         if fmt != "csv":
             raise ConfigError(f"Unsupported export format: {fmt}")
-        load_project_config(project_path)
-        traces = self.langfuse_client.traces_for_run(run_id)
+        config = load_project_config(project_path)
+        dataset_names = [
+            name
+            for name in [
+                config.dataset.langfuse_dataset_name,
+                config.dataset.langfuse_dataset_id,
+            ]
+            if name
+        ]
+        traces = self.langfuse_client.traces_for_run(
+            run_id,
+            dataset_names=dataset_names or None,
+        )
         output_path = Path("reports") / f"{run_id}.csv"
         return export_summary(traces, output_path)
 

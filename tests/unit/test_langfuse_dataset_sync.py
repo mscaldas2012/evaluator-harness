@@ -233,6 +233,56 @@ def test_live_traces_for_run_falls_back_to_dataset_run_metadata() -> None:
     assert traces[0]["metadata"]["model_name"] == "azure-mistral-large-3"
 
 
+def test_live_traces_for_run_uses_project_dataset_name_for_fallback() -> None:
+    metadata = {
+        "run_id": "candidate-dfe",
+        "run_type": "candidate",
+        "trace_id": "trace-dfe",
+        "dataset_item_id": "1",
+        "dataset_name": "dfe/v1",
+        "model_name": "azure-mistral-large-3",
+    }
+    sdk = FakeLangfuseSdk(
+        dataset_runs_by_name={
+            "rewrite-quality/v1": [],
+            "dfe/v1": [SimpleNamespace(name="candidate-dfe", metadata=metadata)],
+        },
+    )
+    client = LangfuseClient(client=sdk)
+
+    traces = client.traces_for_run("candidate-dfe", dataset_names=["dfe/v1"])
+
+    assert len(traces) == 1
+    assert traces[0]["trace_id"] == "trace-dfe"
+    assert sdk.requested_dataset_names == ["dfe/v1"]
+
+
+def test_live_traces_for_run_fallback_reads_dataset_run_item_metadata() -> None:
+    metadata = {
+        "run_id": "candidate-dfe",
+        "run_type": "candidate",
+        "trace_id": "trace-dfe-item",
+        "dataset_item_id": "1",
+        "dataset_name": "dfe/v1",
+        "model_name": "azure-mistral-large-3",
+    }
+    sdk = FakeLangfuseSdk(
+        dataset_runs_by_name={
+            "dfe/v1": [SimpleNamespace(name="candidate-dfe", metadata={})],
+        },
+        dataset_run_items_by_name={
+            ("dfe/v1", "candidate-dfe"): [SimpleNamespace(metadata=metadata)],
+        },
+    )
+    client = LangfuseClient(client=sdk)
+
+    traces = client.traces_for_run("candidate-dfe", dataset_names=["dfe/v1"])
+
+    assert len(traces) == 1
+    assert traces[0]["trace_id"] == "trace-dfe-item"
+    assert traces[0]["metadata"]["dataset_item_id"] == "1"
+
+
 class FakeDatasetRunItemsClient:
     def __init__(self, sdk: FakeLangfuseSdk) -> None:
         self.sdk = sdk
@@ -254,14 +304,19 @@ class FakeLangfuseSdk:
         self,
         *,
         dataset_runs: list[object] | None = None,
+        dataset_runs_by_name: dict[str, list[object]] | None = None,
         dataset_run_items: list[object] | None = None,
+        dataset_run_items_by_name: dict[tuple[str, str], list[object]] | None = None,
         existing_dataset_items: list[object] | None = None,
         fail_run_item_ids: set[str] | None = None,
     ) -> None:
         self.created_items: list[dict[str, object]] = []
         self.created_run_items: list[dict[str, object]] = []
         self.dataset_runs = dataset_runs or []
+        self.dataset_runs_by_name = dataset_runs_by_name or {}
+        self.requested_dataset_names: list[str] = []
         self.dataset_run_items = dataset_run_items or []
+        self.dataset_run_items_by_name = dataset_run_items_by_name or {}
         self.existing_dataset_items = existing_dataset_items or []
         self.fail_run_item_ids = fail_run_item_ids or set()
         self.api = FakeApi(self)
@@ -275,11 +330,14 @@ class FakeLangfuseSdk:
     def create_dataset_item(self, **kwargs):
         self.created_items.append(kwargs)
 
-    def get_dataset_runs(self, **_kwargs):
-        return SimpleNamespace(data=self.dataset_runs)
+    def get_dataset_runs(self, **kwargs):
+        dataset_name = str(kwargs.get("dataset_name") or "")
+        self.requested_dataset_names.append(dataset_name)
+        return SimpleNamespace(data=self.dataset_runs_by_name.get(dataset_name, self.dataset_runs))
 
-    def get_dataset_run(self, **_kwargs):
-        return SimpleNamespace(items=self.dataset_run_items)
+    def get_dataset_run(self, **kwargs):
+        key = (str(kwargs.get("dataset_name") or ""), str(kwargs.get("run_name") or ""))
+        return SimpleNamespace(items=self.dataset_run_items_by_name.get(key, self.dataset_run_items))
 
 
 class FakeDatasetItemsClient:

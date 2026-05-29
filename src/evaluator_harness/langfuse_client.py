@@ -916,19 +916,32 @@ class LangfuseClient:
         self.calls.append(("fetch_scores", {"run_id": run_id}))
         return self.scores.get(run_id, [])
 
-    def traces_for_run(self, run_id: str) -> list[dict[str, Any]]:
+    def traces_for_run(
+        self,
+        run_id: str,
+        *,
+        dataset_names: list[str] | None = None,
+    ) -> list[dict[str, Any]]:
         traces = [trace for trace in self.traces if trace.get("run_id") == run_id]
         if traces or self.client is None:
             return traces
-        live_traces = self._live_traces_for_run(run_id)
+        live_traces = self._live_traces_for_run(run_id, dataset_names=dataset_names)
         self.traces.extend(live_traces)
         return live_traces
 
-    def _live_traces_for_run(self, run_id: str) -> list[dict[str, Any]]:
+    def _live_traces_for_run(
+        self,
+        run_id: str,
+        *,
+        dataset_names: list[str] | None = None,
+    ) -> list[dict[str, Any]]:
         trace_client = getattr(getattr(self.client, "api", None), "trace", None)
         list_traces = getattr(trace_client, "list", None)
         if not callable(list_traces):
-            return self._live_dataset_run_traces_for_run(run_id)
+            return self._live_dataset_run_traces_for_run(
+                run_id,
+                dataset_names=dataset_names,
+            )
         filters = [
             f'metadata.run_id = "{run_id}"',
             f"metadata.run_id = {run_id}",
@@ -945,14 +958,22 @@ class LangfuseClient:
             traces = [trace for trace in traces if trace.get("run_id") == run_id]
             if traces:
                 return traces
-        return self._live_dataset_run_traces_for_run(run_id)
+        return self._live_dataset_run_traces_for_run(
+            run_id,
+            dataset_names=dataset_names,
+        )
 
-    def _live_dataset_run_traces_for_run(self, run_id: str) -> list[dict[str, Any]]:
+    def _live_dataset_run_traces_for_run(
+        self,
+        run_id: str,
+        *,
+        dataset_names: list[str] | None = None,
+    ) -> list[dict[str, Any]]:
         get_dataset_runs = getattr(self.client, "get_dataset_runs", None)
         if not callable(get_dataset_runs):
             return []
         traces: list[dict[str, Any]] = []
-        for dataset_name in self._candidate_dataset_names():
+        for dataset_name in dataset_names or self._candidate_dataset_names():
             try:
                 page = get_dataset_runs(dataset_name=dataset_name, limit=100)
             except Exception:
@@ -965,6 +986,13 @@ class LangfuseClient:
                 trace = _trace_from_metadata(dict(metadata), run_id=run_id)
                 if trace is not None:
                     traces.append(trace)
+                    continue
+                traces.extend(
+                    self._live_dataset_run_item_traces(
+                        dataset_name=str(dataset_name),
+                        run_id=run_id,
+                    )
+                )
         return traces
 
     def _candidate_dataset_names(self) -> list[str]:
@@ -974,6 +1002,30 @@ class LangfuseClient:
             if trace.get("metadata", {}).get("dataset_name")
         }
         return sorted(names or {"rewrite-quality/v1"})
+
+    def _live_dataset_run_item_traces(
+        self,
+        *,
+        dataset_name: str,
+        run_id: str,
+    ) -> list[dict[str, Any]]:
+        get_dataset_run = getattr(self.client, "get_dataset_run", None)
+        if not callable(get_dataset_run):
+            return []
+        try:
+            run_with_items = get_dataset_run(
+                dataset_name=dataset_name,
+                run_name=run_id,
+            )
+        except Exception:
+            return []
+        traces: list[dict[str, Any]] = []
+        for item in getattr(run_with_items, "items", None) or []:
+            metadata = getattr(item, "metadata", None) or {}
+            trace = _trace_from_metadata(dict(metadata), run_id=run_id)
+            if trace is not None:
+                traces.append(trace)
+        return traces
 
     def trace_by_id(self, trace_id: str) -> dict[str, Any]:
         for trace in self.traces:
