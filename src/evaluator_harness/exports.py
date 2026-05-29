@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from evaluator_harness.progress import NullProgressReporter, ProgressReporter
+
 
 EXPORT_FIELDS = [
     "trace_id",
@@ -50,23 +52,27 @@ def export_summary(
     output_path: Path,
     *,
     scores: list[dict[str, Any]] | None = None,
+    progress: ProgressReporter | None = None,
 ) -> ExportResult:
     score_columns = _score_columns(scores or [])
     fieldnames = [*EXPORT_FIELDS, *score_columns]
     scores_by_trace = _scores_by_trace(scores or [])
+    reporter = progress or NullProgressReporter()
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with output_path.open("w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=fieldnames)
         writer.writeheader()
-        for trace in traces:
-            row = _trace_row(trace)
-            row.update(
-                _score_row(
-                    scores_by_trace.get(str(trace.get("trace_id") or ""), []),
-                    score_columns,
+        with reporter.task("Writing export rows", total=len(traces)) as task:
+            for trace in traces:
+                row = _trace_row(trace)
+                row.update(
+                    _score_row(
+                        scores_by_trace.get(str(trace.get("trace_id") or ""), []),
+                        score_columns,
+                    )
                 )
-            )
-            writer.writerow(row)
+                writer.writerow(row)
+                task.advance()
     return ExportResult(output_path=output_path, row_count=len(traces))
 
 

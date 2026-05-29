@@ -224,7 +224,7 @@ def export(
     run_id: Annotated[str, typer.Option("--run")],
     fmt: Annotated[str, typer.Option("--format")] = "csv",
 ) -> None:
-    result = _handle_command(lambda: ExperimentRunner().export(project, run_id, fmt))
+    result = _handle_command(lambda: _runner().export(project, run_id, fmt))
     if result is not None:
         console.print(f"export: {result.output_path}")
         console.print(f"rows: {result.row_count}")

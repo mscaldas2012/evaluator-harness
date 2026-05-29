@@ -916,11 +916,12 @@ class LangfuseClient:
         run_id: str,
         *,
         trace_ids: list[str] | None = None,
+        progress: ProgressReporter | None = None,
     ) -> list[dict[str, Any]]:
         self.check_reachable(operation="fetch-scores")
         self.calls.append(("fetch_scores", {"run_id": run_id, "trace_ids": trace_ids}))
         if self.client is not None:
-            return self._live_scores_for_traces(trace_ids or [])
+            return self._live_scores_for_traces(trace_ids or [], progress=progress)
         scores = self.scores.get(run_id, [])
         if not trace_ids:
             return scores
@@ -944,7 +945,12 @@ class LangfuseClient:
         self.traces.extend(live_traces)
         return live_traces
 
-    def _live_scores_for_traces(self, trace_ids: list[str]) -> list[dict[str, Any]]:
+    def _live_scores_for_traces(
+        self,
+        trace_ids: list[str],
+        *,
+        progress: ProgressReporter | None = None,
+    ) -> list[dict[str, Any]]:
         if not trace_ids:
             return []
         scores_client = getattr(getattr(self.client, "api", None), "scores", None)
@@ -952,28 +958,32 @@ class LangfuseClient:
         if not callable(get_many):
             return []
         scores: list[dict[str, Any]] = []
-        for trace_id in dict.fromkeys(trace_ids):
-            page_number = 1
-            while True:
-                try:
-                    page = get_many(
-                        trace_id=trace_id,
-                        fields="score",
-                        page=page_number,
-                        limit=100,
-                    )
-                except Exception:
-                    break
-                page_scores = [
-                    _object_to_score_dict(score)
-                    for score in (getattr(page, "data", None) or [])
-                ]
-                scores.extend(page_scores)
-                meta = getattr(page, "meta", None)
-                total_pages = int(getattr(meta, "total_pages", page_number) or page_number)
-                if page_number >= total_pages:
-                    break
-                page_number += 1
+        unique_trace_ids = list(dict.fromkeys(trace_ids))
+        reporter = progress or NullProgressReporter()
+        with reporter.task("Fetching scores", total=len(unique_trace_ids)) as task:
+            for trace_id in unique_trace_ids:
+                page_number = 1
+                while True:
+                    try:
+                        page = get_many(
+                            trace_id=trace_id,
+                            fields="score",
+                            page=page_number,
+                            limit=100,
+                        )
+                    except Exception:
+                        break
+                    page_scores = [
+                        _object_to_score_dict(score)
+                        for score in (getattr(page, "data", None) or [])
+                    ]
+                    scores.extend(page_scores)
+                    meta = getattr(page, "meta", None)
+                    total_pages = int(getattr(meta, "total_pages", page_number) or page_number)
+                    if page_number >= total_pages:
+                        break
+                    page_number += 1
+                task.advance()
         return scores
 
     def _live_traces_for_run(
