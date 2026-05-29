@@ -572,7 +572,14 @@ def _output_definition(evaluator: EvaluatorDefinition) -> dict[str, Any] | None:
     base: dict[str, Any] = {
         "dataType": data_type,
         "reasoning": {"description": "Explain the score."},
-        "score": {"description": description},
+        "score": {
+            "description": (
+                f"{description} Return a value from "
+                f"{evaluator.score.min_value} to {evaluator.score.max_value}."
+            ),
+            "minValue": evaluator.score.min_value,
+            "maxValue": evaluator.score.max_value,
+        },
     }
     if data_type == "CATEGORICAL":
         base["score"]["categories"] = evaluator.score.categories or []
