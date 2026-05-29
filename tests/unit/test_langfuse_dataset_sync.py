@@ -283,6 +283,42 @@ def test_live_traces_for_run_fallback_reads_dataset_run_item_metadata() -> None:
     assert traces[0]["metadata"]["dataset_item_id"] == "1"
 
 
+def test_live_traces_for_run_prefers_all_dataset_run_items_over_run_metadata() -> None:
+    run_metadata = {
+        "run_id": "baseline-dfe",
+        "run_type": "baseline",
+        "trace_id": "trace-row-1",
+        "dataset_item_id": "row-1",
+        "dataset_name": "dfe/v1",
+    }
+    item_metadata = [
+        {
+            **run_metadata,
+            "trace_id": f"trace-row-{index}",
+            "dataset_item_id": f"row-{index}",
+        }
+        for index in range(1, 13)
+    ]
+    sdk = FakeLangfuseSdk(
+        dataset_runs_by_name={
+            "dfe/v1": [SimpleNamespace(name="baseline-dfe", metadata=run_metadata)],
+        },
+        dataset_run_items_by_name={
+            ("dfe/v1", "baseline-dfe"): [
+                SimpleNamespace(metadata=metadata) for metadata in item_metadata
+            ],
+        },
+    )
+    client = LangfuseClient(client=sdk)
+
+    traces = client.traces_for_run("baseline-dfe", dataset_names=["dfe/v1"])
+
+    assert len(traces) == 12
+    assert {trace["metadata"]["dataset_item_id"] for trace in traces} == {
+        f"row-{index}" for index in range(1, 13)
+    }
+
+
 class FakeDatasetRunItemsClient:
     def __init__(self, sdk: FakeLangfuseSdk) -> None:
         self.sdk = sdk

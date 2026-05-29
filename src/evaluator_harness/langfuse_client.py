@@ -982,17 +982,17 @@ class LangfuseClient:
                 run_name = getattr(run, "name", None) or getattr(run, "run_name", None)
                 if str(run_name) != run_id:
                     continue
+                item_traces = self._live_dataset_run_item_traces(
+                    dataset_name=str(dataset_name),
+                    run_id=run_id,
+                )
+                if item_traces:
+                    traces.extend(item_traces)
+                    continue
                 metadata = getattr(run, "metadata", None) or {}
                 trace = _trace_from_metadata(dict(metadata), run_id=run_id)
                 if trace is not None:
                     traces.append(trace)
-                    continue
-                traces.extend(
-                    self._live_dataset_run_item_traces(
-                        dataset_name=str(dataset_name),
-                        run_id=run_id,
-                    )
-                )
         return traces
 
     def _candidate_dataset_names(self) -> list[str]:
