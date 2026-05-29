@@ -195,7 +195,7 @@ def test_does_not_pass_langfuse_tracing_kwargs_to_raw_openai_client(
             params={},
             metadata={
                 "trace_id": "1234567890abcdef1234567890abcdef",
-                "trace_name": "test/rewrite-quality/baseline/item-1",
+                "trace_name": "test/rewrite-quality/baseline-gpt5.2-dgw-default",
                 "parent_observation_id": "abcdef1234567890",
             },
         )

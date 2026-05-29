@@ -141,6 +141,7 @@ class ModelConfig(BaseModel):
     provider: ProviderName
     auth_mode: AuthMode
     model: str
+    task_prompt: PromptRef | None = None
     endpoint: str | None = None
     azure: AzureCredentialRefs | None = None
     azure_api_key: AzureApiKeyCredentialRefs | None = None
@@ -394,6 +395,9 @@ class ProjectConfig(BaseModel):
     def validate_required_collections(self) -> ProjectConfig:
         if not self.candidates:
             raise ValueError("at least one candidate is required")
+        candidate_names = [candidate.name for candidate in self.candidates]
+        if len(candidate_names) != len(set(candidate_names)):
+            raise ValueError("Candidate names must be unique within a project")
         if not self.evaluators:
             raise ValueError("at least one evaluator is required")
         return self
@@ -526,6 +530,13 @@ def load_project_config(path: Path | str) -> ProjectConfig:
 def validate_project_config(config: ProjectConfig, *, base_dir: Path | None = None) -> None:
     base = base_dir or Path.cwd()
     _validate_prompt_ref(config.task_prompt, base=base, required_variables=["input"])
+    for candidate in config.candidates:
+        if candidate.task_prompt is not None:
+            _validate_prompt_ref(
+                candidate.task_prompt,
+                base=base,
+                required_variables=["input"],
+            )
     from evaluator_harness.evaluators import validate_evaluators
 
     validate_evaluators(config, base=base)

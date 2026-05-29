@@ -9,6 +9,7 @@ from evaluator_harness.config import (
     ConfigError,
     ProviderName,
     load_project_config,
+    validate_project_config,
 )
 
 
@@ -18,7 +19,12 @@ def test_loads_valid_project_config_from_yaml() -> None:
     assert config.project.name == "rewrite-quality"
     assert config.baseline.auth_mode == AuthMode.AZURE_CLIENT_CREDENTIALS
     assert config.baseline.provider == ProviderName.OPENAI_COMPATIBLE
-    assert config.candidates[0].name == "llama3-local"
+    assert [candidate.name for candidate in config.candidates] == [
+        "gpt5.2-dgw-default-prompt-v2",
+        "gpt5.2-dgw-default-temp-high",
+        "dry-run-candidate",
+        "azure-mistral-large-3",
+    ]
     assert config.evaluators[0].score.managed_by_harness is True
 
 
@@ -37,6 +43,115 @@ def test_loads_valid_azure_api_key_candidate_config() -> None:
     assert (
         candidate.azure_api_key.api_version_env
         == "API_KEY_PROJECT_MISTRAL_LARGE_3_API_VERSION"
+    )
+
+
+def test_accepts_candidate_level_task_prompt_override() -> None:
+    config = load_project_config(
+        Path("tests/fixtures/projects/valid_prompt_variant_candidate.yaml")
+    )
+
+    candidate = config.candidates[0]
+    assert candidate.task_prompt is not None
+    assert candidate.task_prompt.path == Path(
+        "tests/fixtures/prompts/rewrite_quality_task_prompt_v2.md"
+    )
+    assert candidate.task_prompt.version == "v2"
+    validate_project_config(config)
+
+
+def test_rejects_duplicate_candidate_names(tmp_path: Path) -> None:
+    project = tmp_path / "project.yaml"
+    project.write_text(
+        """
+project:
+  name: duplicate-candidates
+  version: v1
+  score_config_prefix: eh_duplicate_
+dataset:
+  kind: local_csv
+  path: datasets/rewrite_quality.csv
+task_prompt:
+  path: prompts/rewrite_quality/task_prompt.md
+  version: v1
+baseline:
+  name: baseline
+  provider: dry_run
+  auth_mode: none
+  model: dry-run
+  parameters:
+    temperature: 0.0
+candidates:
+  - name: candidate
+    provider: dry_run
+    auth_mode: none
+    model: dry-run
+    parameters:
+      temperature: 0.0
+  - name: candidate
+    provider: dry_run
+    auth_mode: none
+    model: dry-run
+    parameters:
+      temperature: 0.0
+evaluators:
+  - name: clarity
+    type: llm_as_judge
+    version: v1
+    prompt_path: prompts/rewrite_quality/evaluators/clarity.md
+    score:
+      name: clarity
+      data_type: NUMERIC
+      min_value: 0
+      max_value: 1
+    modes: [baseline, candidate]
+    variables: [input, output, baseline_output]
+    required_inputs: [input, output, baseline_output]
+    output_schema:
+      reasoning: string
+      score:
+        type: number
+        minimum: 0
+        maximum: 1
+      confidence:
+        type: number
+        minimum: 0
+        maximum: 1
+""".strip(),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ConfigError, match="Candidate names must be unique"):
+        load_project_config(project)
+
+
+def test_rejects_candidate_prompt_override_with_missing_file() -> None:
+    config = load_project_config(
+        Path("tests/fixtures/projects/invalid_prompt_variant_missing_prompt.yaml")
+    )
+
+    with pytest.raises(ConfigError, match="Prompt file not found"):
+        validate_project_config(config)
+
+
+def test_rejects_candidate_prompt_override_without_required_input_variable() -> None:
+    config = load_project_config(
+        Path("tests/fixtures/projects/invalid_prompt_variant_missing_input.yaml")
+    )
+
+    with pytest.raises(ConfigError, match="must declare variable input"):
+        validate_project_config(config)
+
+
+def test_generation_parameter_identity_changes_when_parameters_change() -> None:
+    from evaluator_harness.runner import generation_parameter_hash
+
+    config = load_project_config(
+        Path("tests/fixtures/projects/valid_parameter_variants.yaml")
+    )
+
+    assert generation_parameter_hash(config.candidates[0]) != generation_parameter_hash(
+        config.candidates[1]
     )
 
 

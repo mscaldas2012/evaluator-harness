@@ -394,13 +394,60 @@ uv run python run_experiment.py \
   --baseline latest-compatible
 ```
 
-Baseline reuse is valid only when the project, dataset version, task prompt
-version, evaluator set, and baseline model parameters are compatible.
+Baseline reuse is valid only when the project, dataset version, baseline task
+prompt version, evaluator set, and baseline model parameters are compatible.
 Use `--baseline latest-compatible` for the newest matching baseline, or pass an
 explicit baseline run ID such as `--baseline baseline-abc123` when you want a
 specific prior run. The harness rejects incompatible baselines instead of
 silently comparing against a different project, dataset, prompt, or baseline
 parameter set.
+
+Candidates may intentionally vary the model, task prompt, generation
+parameters, or a mix of those axes. The baseline reference stays tied to the
+baseline configuration, while candidate trace metadata records the active
+candidate identity for comparison in Langfuse.
+
+Prompt variant example:
+
+```yaml
+candidates:
+  - name: gpt5.2-dgw-default-prompt-v2
+    provider: openai_compatible
+    auth_mode: azure_client_credentials
+    model: gpt5.2-dgw-default
+    task_prompt:
+      path: prompts/rewrite_quality/task_prompt_v2.md
+      version: v2
+      template_variables:
+        - input
+    parameters:
+      temperature: 0.2
+      top_p: 1.0
+      max_tokens: 2048
+      token_limit_parameter: max_completion_tokens
+```
+
+Parameter variant example:
+
+```yaml
+candidates:
+  - name: gpt5.2-dgw-default-temp-high
+    provider: openai_compatible
+    auth_mode: azure_client_credentials
+    model: gpt5.2-dgw-default
+    parameters:
+      temperature: 0.8
+      top_p: 1.0
+      max_tokens: 2048
+      token_limit_parameter: max_completion_tokens
+```
+
+Prompt and parameter metadata is stored on runs, traces, evaluator payloads,
+annotation queue payloads, and CSV exports. Use `candidate_prompt_identity`,
+`baseline_prompt_identity`, `generation_parameter_hash`, `parameter_identity`,
+and `variant_identity` in Langfuse filters or exports when comparing variants.
+If a candidate changes more than one axis, the CLI prompts for confirmation;
+type `Y` or `y`, or pass `--confirm-mixed-variant` for scripted runs.
 
 ## 8.1 Add Another Model Configuration
 

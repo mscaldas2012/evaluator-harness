@@ -47,6 +47,45 @@ baseline:
     token_limit_parameter: max_completion_tokens
 
 candidates:
+  - name: gpt5.2-dgw-default-prompt-v2
+    provider: openai_compatible
+    auth_mode: azure_client_credentials
+    model: gpt5.2-dgw-default
+    azure:
+      tenant_id_env: EDAV_TENANT_ID
+      client_id_env: EDAV_CLIENT_ID
+      client_secret_env: EDAV_CLIENT_SECRET
+      scope_env: EDAV_SCOPE_TOKEN_AUDIENCE
+      subscription_key_env: EDAV_SUBSCRIPTION_KEY
+      api_version_env: EDAV_AZURE_OPENAI_API_VERSION
+      endpoint_env: EDAV_AZURE_OPENAI_ENDPOINT
+    task_prompt:
+      path: prompts/rewrite_quality/task_prompt_v2.md
+      version: v2
+      template_variables:
+        - input
+    parameters:
+      temperature: 0.2
+      top_p: 1.0
+      max_tokens: 2048
+      token_limit_parameter: max_completion_tokens
+  - name: gpt5.2-dgw-default-temp-high
+    provider: openai_compatible
+    auth_mode: azure_client_credentials
+    model: gpt5.2-dgw-default
+    azure:
+      tenant_id_env: EDAV_TENANT_ID
+      client_id_env: EDAV_CLIENT_ID
+      client_secret_env: EDAV_CLIENT_SECRET
+      scope_env: EDAV_SCOPE_TOKEN_AUDIENCE
+      subscription_key_env: EDAV_SUBSCRIPTION_KEY
+      api_version_env: EDAV_AZURE_OPENAI_API_VERSION
+      endpoint_env: EDAV_AZURE_OPENAI_ENDPOINT
+    parameters:
+      temperature: 0.8
+      top_p: 1.0
+      max_tokens: 2048
+      token_limit_parameter: max_completion_tokens
   - name: dry-run-candidate
     provider: dry_run
     auth_mode: none

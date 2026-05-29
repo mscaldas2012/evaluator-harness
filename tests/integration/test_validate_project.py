@@ -14,6 +14,8 @@ def test_validates_sample_rewrite_project_without_model_calls() -> None:
     assert result.item_count == 2
     assert result.baseline_name == "gpt5.2-dgw-default"
     assert result.candidate_names == [
+        "gpt5.2-dgw-default-prompt-v2",
+        "gpt5.2-dgw-default-temp-high",
         "dry-run-candidate",
         "azure-mistral-large-3",
     ]

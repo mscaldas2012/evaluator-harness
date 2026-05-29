@@ -1,7 +1,7 @@
 <!-- SPECKIT START -->
 For additional context about technologies to be used, project structure,
 shell commands, and other important information, read
-specs/009-azure-api-key-provider/plan.md
+specs/010-candidate-variants/plan.md
 <!-- SPECKIT END -->
 
 ## Python Environment

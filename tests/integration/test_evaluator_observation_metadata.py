@@ -65,3 +65,84 @@ def test_api_key_candidate_trace_metadata_is_evaluator_filterable() -> None:
             "manual_langfuse_generation",
             "langfuse_wrapped_client",
         }
+
+
+def test_prompt_variant_trace_metadata_includes_baseline_and_candidate_prompt_identity() -> None:
+    client = LangfuseClient()
+    runner = ExperimentRunner(
+        langfuse_client=client,
+        provider_factory=lambda _config: FakeModelProvider(),
+    )
+
+    baseline = runner.run(
+        "tests/fixtures/projects/valid_prompt_variant_candidate.yaml",
+        "baseline",
+    )
+    candidate = runner.run(
+        "tests/fixtures/projects/valid_prompt_variant_candidate.yaml",
+        "candidate",
+        candidate="dry-run-prompt-v2",
+        baseline=baseline.run_id,
+    )
+
+    trace = client.traces_for_run(candidate.run_id)[0]
+    metadata = trace["metadata"]
+    assert metadata["prompt_version"] == "v2"
+    assert metadata["candidate_prompt_identity"]["version"] == "v2"
+    assert metadata["baseline_prompt_identity"]["version"] == "v1"
+    assert metadata["candidate_prompt_identity"]["content_hash"]
+    assert metadata["baseline_prompt_identity"]["content_hash"]
+
+
+def test_parameter_variant_trace_metadata_includes_parameter_identity() -> None:
+    client = LangfuseClient()
+    runner = ExperimentRunner(
+        langfuse_client=client,
+        provider_factory=lambda _config: FakeModelProvider(),
+    )
+
+    baseline = runner.run(
+        "tests/fixtures/projects/valid_parameter_variants.yaml",
+        "baseline",
+    )
+    candidate = runner.run(
+        "tests/fixtures/projects/valid_parameter_variants.yaml",
+        "candidate",
+        candidate="llama3-local-temp-high",
+        baseline=baseline.run_id,
+    )
+
+    trace = client.traces_for_run(candidate.run_id)[0]
+    metadata = trace["metadata"]
+    assert metadata["parameter_identity"]["temperature"] == 0.8
+    assert metadata["generation_parameter_hash"]
+    assert metadata["variant_identity"]["generation_parameter_hash"] == metadata["generation_parameter_hash"]
+
+
+def test_mixed_variant_trace_metadata_remains_evaluator_filterable() -> None:
+    client = LangfuseClient()
+    runner = ExperimentRunner(
+        langfuse_client=client,
+        provider_factory=lambda _config: FakeModelProvider(),
+    )
+
+    baseline = runner.run(
+        "tests/fixtures/projects/valid_parameter_variants.yaml",
+        "baseline",
+    )
+    candidate = runner.run(
+        "tests/fixtures/projects/valid_parameter_variants.yaml",
+        "candidate",
+        candidate="llama3-local-prompt-v2-temp-high",
+        baseline=baseline.run_id,
+    )
+
+    trace = client.traces_for_run(candidate.run_id)[0]
+    metadata = trace["metadata"]
+    assert metadata["project"] == "parameter-variants"
+    assert metadata["run_type"] == "candidate"
+    assert metadata["observation_role"] == "model_output"
+    assert metadata["evaluator_set_id"] == "clarity:v1"
+    assert metadata["candidate_prompt_identity"]["version"] == "v2"
+    assert metadata["parameter_identity"]["temperature"] == 0.8
+    assert metadata["variant_identity"]["candidate"] == "llama3-local-prompt-v2-temp-high"

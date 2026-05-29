@@ -992,6 +992,12 @@ class LangfuseClient:
             "trace_context": {
                 "trace_id": selection.trace_id,
                 "run_id": selection.run_id,
+                "prompt_identity": metadata.get("prompt_identity"),
+                "baseline_prompt_identity": metadata.get("baseline_prompt_identity"),
+                "candidate_prompt_identity": metadata.get("candidate_prompt_identity"),
+                "parameter_identity": metadata.get("parameter_identity"),
+                "generation_parameter_hash": metadata.get("generation_parameter_hash"),
+                "variant_identity": metadata.get("variant_identity"),
             },
             "evaluators": [
                 {
