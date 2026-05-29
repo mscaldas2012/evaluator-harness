@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from enum import Enum
+import csv
+import json
 import os
 from pathlib import Path
 from typing import Any, Literal
@@ -529,14 +531,25 @@ def load_project_config(path: Path | str) -> ProjectConfig:
 
 def validate_project_config(config: ProjectConfig, *, base_dir: Path | None = None) -> None:
     base = base_dir or Path.cwd()
-    _validate_prompt_ref(config.task_prompt, base=base, required_variables=["input"])
+    dataset_columns = _dataset_columns(config, base=base)
+    project_prompt = _validate_prompt_ref(
+        config.task_prompt,
+        base=base,
+        required_variables=["input"],
+        dataset_columns=dataset_columns,
+    )
+    _validate_model_prompt_roles(config.baseline, project_prompt)
     for candidate in config.candidates:
         if candidate.task_prompt is not None:
-            _validate_prompt_ref(
+            candidate_prompt = _validate_prompt_ref(
                 candidate.task_prompt,
                 base=base,
                 required_variables=["input"],
+                dataset_columns=dataset_columns,
             )
+        else:
+            candidate_prompt = project_prompt
+        _validate_model_prompt_roles(candidate, candidate_prompt)
     from evaluator_harness.evaluators import validate_evaluators
 
     validate_evaluators(config, base=base)
@@ -584,15 +597,49 @@ def _validate_judge_setup(config: ProjectConfig, *, base: Path) -> None:
             )
 
 
-def _validate_prompt_ref(prompt_ref: PromptRef, *, base: Path, required_variables: list[str]) -> None:
+def _validate_prompt_ref(
+    prompt_ref: PromptRef,
+    *,
+    base: Path,
+    required_variables: list[str],
+    dataset_columns: set[str] | None = None,
+) -> Any:
     if not prompt_ref.version:
         raise ConfigError(f"Prompt {prompt_ref.path} requires a version")
     prompt_text = _validate_prompt_file(prompt_ref.path, base=base)
+    from evaluator_harness.prompts import parse_prompt_text, validate_dataset_variables
+
+    prompt = parse_prompt_text(prompt_text, path=prompt_ref.path, version=prompt_ref.version)
+    if prompt.variable_references:
+        declared = set(prompt_ref.template_variables)
+        missing_declarations = [
+            ref.name for ref in prompt.variable_references if ref.name not in declared
+        ]
+        if missing_declarations:
+            raise ConfigError(
+                f"Prompt {prompt_ref.path} must declare variables: "
+                + ", ".join(missing_declarations)
+            )
+        if dataset_columns is not None:
+            validate_dataset_variables(prompt, dataset_columns)
+        return prompt
     for variable in required_variables:
         if variable not in prompt_ref.template_variables:
             raise ConfigError(f"Prompt {prompt_ref.path} must declare variable {variable}")
         if "{{" + variable + "}}" not in prompt_text:
             raise ConfigError(f"Prompt {prompt_ref.path} must include {{{{{variable}}}}}")
+    return prompt
+
+
+def _validate_model_prompt_roles(model_config: ModelConfig, prompt: Any) -> None:
+    if getattr(prompt, "shape", None) != "messages":
+        return
+    from evaluator_harness.providers.base import validate_provider_roles
+
+    validate_provider_roles(
+        model_config.provider,
+        [message.role for message in prompt.messages],
+    )
 
 
 def _validate_prompt_file(path: Path, *, base: Path) -> str:
@@ -603,6 +650,26 @@ def _validate_prompt_file(path: Path, *, base: Path) -> str:
     if not text.strip():
         raise ConfigError(f"Prompt file is empty: {path}")
     return text
+
+
+def _dataset_columns(config: ProjectConfig, *, base: Path) -> set[str] | None:
+    if config.dataset.kind == DatasetKind.LANGFUSE or config.dataset.path is None:
+        return None
+    path = config.dataset.path if config.dataset.path.is_absolute() else base / config.dataset.path
+    if not path.exists():
+        return None
+    if path.suffix.lower() == ".csv":
+        with path.open(newline="", encoding="utf-8-sig") as handle:
+            return set(csv.DictReader(handle).fieldnames or [])
+    if path.suffix.lower() == ".json":
+        data = json.loads(path.read_text(encoding="utf-8"))
+        if isinstance(data, list):
+            columns: set[str] = set()
+            for row in data:
+                if isinstance(row, dict):
+                    columns.update(str(key) for key in row.keys())
+            return columns
+    return None
 
 
 def _require_variables(evaluator: EvaluatorDefinition, variables: list[str]) -> None:

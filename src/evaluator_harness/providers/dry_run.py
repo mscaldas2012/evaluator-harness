@@ -12,7 +12,12 @@ class DryRunProvider:
 
     def generate(self, request: ModelRequest) -> ModelResponse:
         item_id = str(request.metadata.get("item_id") or "unknown")
-        digest = hashlib.sha256(request.prompt.encode("utf-8")).hexdigest()[:12]
+        prompt_text = (
+            getattr(request.rendered_prompt, "display_text", None)
+            if request.rendered_prompt is not None
+            else request.prompt
+        )
+        digest = hashlib.sha256(str(prompt_text).encode("utf-8")).hexdigest()[:12]
         return ModelResponse(
             output=f"[dry-run:{self.config.name}:{item_id}:{digest}]",
             latency_ms=0,
@@ -23,5 +28,10 @@ class DryRunProvider:
                 "dry_run": True,
                 "tracing_strategy": "synthetic",
                 "retry_count": 0,
+                "prompt_shape": (
+                    getattr(request.rendered_prompt, "shape", "text")
+                    if request.rendered_prompt is not None
+                    else "text"
+                ),
             },
         )

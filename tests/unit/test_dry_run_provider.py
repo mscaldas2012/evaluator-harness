@@ -7,6 +7,7 @@ from evaluator_harness.config import AuthMode, ModelConfig, ModelParameters, Pro
 from evaluator_harness.providers import create_provider, provider_tracing_metadata
 from evaluator_harness.providers.base import ModelRequest
 from evaluator_harness.providers.dry_run import DryRunProvider
+from evaluator_harness.prompts import RenderedPrompt, RenderedPromptMessage
 
 
 def _dry_run_config() -> ModelConfig:
@@ -29,6 +30,29 @@ def test_dry_run_provider_is_first_class_provider() -> None:
     assert response.output.startswith("[dry-run:dry-run-candidate:item-1:")
     assert response.raw["dry_run"] is True
     assert response.cost_usd == 0.0
+
+
+def test_dry_run_provider_hashes_role_messages() -> None:
+    provider = DryRunProvider(_dry_run_config())
+
+    response = provider.generate(
+        ModelRequest(
+            prompt="fallback",
+            params={},
+            metadata={"item_id": "item-1"},
+            rendered_prompt=RenderedPrompt(
+                shape="messages",
+                text="",
+                messages=[
+                    RenderedPromptMessage(role="system", content="System"),
+                    RenderedPromptMessage(role="user", content="User"),
+                ],
+            ),
+        )
+    )
+
+    assert response.output.startswith("[dry-run:dry-run-candidate:item-1:")
+    assert response.raw["prompt_shape"] == "messages"
 
 
 def test_dry_run_provider_tracing_metadata_is_synthetic() -> None:

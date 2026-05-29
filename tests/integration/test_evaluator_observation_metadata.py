@@ -94,6 +94,27 @@ def test_prompt_variant_trace_metadata_includes_baseline_and_candidate_prompt_id
     assert metadata["baseline_prompt_identity"]["content_hash"]
 
 
+def test_role_prompt_trace_metadata_includes_shape_roles_and_variables() -> None:
+    client = LangfuseClient()
+    runner = ExperimentRunner(
+        langfuse_client=client,
+        provider_factory=lambda _config: FakeModelProvider(),
+    )
+
+    result = runner.run(
+        "tests/fixtures/projects/valid_role_prompt_project.yaml",
+        "baseline",
+    )
+
+    metadata = client.traces_for_run(result.run_id)[0]["metadata"]
+    assert metadata["prompt_shape"] == "messages"
+    assert metadata["prompt_roles"] == ["system", "user", "reviewer-note"]
+    assert metadata["prompt_identity"]["variable_references"] == [
+        "dataset.input",
+        "dataset.ground_truth",
+    ]
+
+
 def test_parameter_variant_trace_metadata_includes_parameter_identity() -> None:
     client = LangfuseClient()
     runner = ExperimentRunner(

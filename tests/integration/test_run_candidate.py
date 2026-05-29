@@ -142,6 +142,37 @@ def test_prompt_variant_candidate_renders_candidate_prompt_override() -> None:
     assert "project instructions" in baseline_provider.calls[0].prompt
 
 
+def test_role_prompt_candidate_override_replaces_full_prompt() -> None:
+    langfuse = LangfuseClient()
+    baseline_provider = FakeModelProvider(response=ModelResponse(output="baseline output"))
+    candidate_provider = FakeModelProvider(response=ModelResponse(output="candidate output"))
+
+    def provider_factory(config):
+        return candidate_provider if config.name == "dry-run-role-prompt-v2" else baseline_provider
+
+    runner = ExperimentRunner(langfuse_client=langfuse, provider_factory=provider_factory)
+    baseline = runner.run(
+        Path("tests/fixtures/projects/valid_role_prompt_project.yaml"),
+        "baseline",
+    )
+    runner.run(
+        Path("tests/fixtures/projects/valid_role_prompt_project.yaml"),
+        "candidate",
+        candidate="dry-run-role-prompt-v2",
+        baseline=baseline.run_id,
+    )
+
+    baseline_rendered = baseline_provider.calls[0].rendered_prompt
+    candidate_rendered = candidate_provider.calls[0].rendered_prompt
+    assert [message.role for message in baseline_rendered.messages] == [
+        "system",
+        "user",
+        "reviewer-note",
+    ]
+    assert [message.role for message in candidate_rendered.messages] == ["system", "user"]
+    assert "custom note" not in candidate_rendered.messages[1].content
+
+
 def test_rewrite_quality_example_runs_same_model_with_prompt_v2_candidate() -> None:
     langfuse = LangfuseClient()
     baseline_provider = FakeModelProvider(response=ModelResponse(output="baseline output"))

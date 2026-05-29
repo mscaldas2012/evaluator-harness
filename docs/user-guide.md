@@ -241,6 +241,32 @@ Input:
 {{input}}
 ```
 
+For chat-style prompts, use role sections in the same Markdown prompt file.
+Each message starts with a level-2 heading in the form
+`## role: <role-label>`. Role labels are generic; `system`, `user`, and
+`assistant` are common examples.
+
+Example `prompts/dfe/task_prompt.md`:
+
+```markdown
+## role: system
+
+You are a careful editor.
+
+## role: user
+
+Rewrite the following text:
+
+{dataset.input}
+```
+
+Use `{dataset.<field>}` to substitute values from the active dataset row.
+`{dataset.input}` resolves to the dataset `input` column. Other dataset columns
+can be referenced the same way, as long as the column exists. Empty row values
+render as empty strings. If the selected provider cannot send the configured
+role labels exactly, validation fails before any model call. Candidate prompt
+overrides replace the full prompt; partial role inheritance is out of scope.
+
 Track prompt versions. If the prompt changes, treat it as a new version so
 baseline reuse rules remain clear.
 
@@ -569,6 +595,56 @@ evaluator bindings are stored as non-secret YAML under
 `configs/langfuse/evaluator_bindings/` and are required before updates or
 inactivation. Sampling defaults to `100`; historical backfill is disabled
 unless explicitly enabled and supported by the selected Langfuse target.
+
+The project config is the source of truth for the evaluator definition. It
+declares what evaluator should exist, including its `name`, `version`,
+`source_type`, target, prompt path, output schema, filters, judge model, and
+score configuration. The evaluator binding file is sync state. It records which
+Langfuse evaluator and score config were created or reused for that project
+evaluator key.
+
+For example, `configs/projects/rewrite_quality.yaml` declares the desired
+`clarity` evaluator and points at the binding file:
+
+```yaml
+judge_setup:
+  binding_path: configs/langfuse/evaluator_bindings/rewrite-quality.yaml
+
+evaluators:
+  - name: clarity
+    version: v1
+    source_type: custom
+    target: observation
+    prompt_path: prompts/rewrite_quality/evaluators/clarity.md
+    score:
+      name: clarity
+      managed_by_harness: true
+```
+
+After `sync-judge-evaluators` runs, the binding file records the remote
+Langfuse resources for the same key:
+
+```yaml
+bindings:
+  - project: rewrite-quality
+    project_version: v1
+    evaluator_name: clarity
+    evaluator_version: v1
+    source_type: custom
+    target: observation
+    langfuse_evaluator_id: cmpokarfl00lmad0e8ko1tlz4
+    langfuse_display_name: EH_rewrite-quality_v1_judge_clarity_v1_custom_observation
+    score_config_id: cb709a27-8a26-4923-8828-f1ea9df2182d
+    score_config_name: eh_rewrite_quality_clarity
+```
+
+The binding key is `project`, `project_version`, `evaluator_name`,
+`evaluator_version`, `source_type`, and `target`. Changing one of those fields
+creates a different binding identity. Changing implementation details such as
+prompt text while keeping the same key lets the sync planner update or reuse the
+existing harness-managed Langfuse evaluator. Edit the project config for normal
+evaluator changes; edit the binding file only when intentionally repairing or
+re-pointing local sync state to existing Langfuse resources.
 
 Manual Langfuse checks remain useful:
 

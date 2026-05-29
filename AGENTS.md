@@ -1,7 +1,7 @@
 <!-- SPECKIT START -->
 For additional context about technologies to be used, project structure,
 shell commands, and other important information, read
-specs/010-candidate-variants/plan.md
+specs/011-prompt-roles-variables/plan.md
 <!-- SPECKIT END -->
 
 ## Python Environment

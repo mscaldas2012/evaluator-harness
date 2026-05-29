@@ -6,6 +6,7 @@ from evaluator_harness.config import load_project_config
 from evaluator_harness.errors import ProviderError, RuntimeDependencyError
 from evaluator_harness.providers.base import ModelRequest
 from evaluator_harness.providers.openai_compatible import OpenAICompatibleProvider
+from evaluator_harness.prompts import RenderedPrompt, RenderedPromptMessage
 
 
 class FakeCredential:
@@ -206,6 +207,97 @@ def test_does_not_pass_langfuse_tracing_kwargs_to_raw_openai_client(
     assert "trace_id" not in call
     assert "parent_observation_id" not in call
     assert "name" not in call
+
+
+def test_openai_rest_sends_rendered_role_messages(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = load_project_config("configs/projects/rewrite_quality.yaml").baseline
+    monkeypatch.setenv("EDAV_TENANT_ID", "tenant")
+    monkeypatch.setenv("EDAV_CLIENT_ID", "client")
+    monkeypatch.setenv("EDAV_CLIENT_SECRET", "secret")
+    monkeypatch.setenv("EDAV_SCOPE_TOKEN_AUDIENCE", "scope")
+    monkeypatch.setenv("EDAV_SUBSCRIPTION_KEY", "subscription")
+    monkeypatch.setenv("EDAV_AZURE_OPENAI_API_VERSION", "2024-12-01-preview")
+    monkeypatch.setenv("EDAV_AZURE_OPENAI_ENDPOINT", "https://example.test")
+    calls: list[dict[str, object]] = []
+
+    class FakeHttpResponse:
+        status_code = 200
+
+        def json(self):
+            return {
+                "id": "completion-1",
+                "choices": [{"message": {"content": "ok"}}],
+                "usage": {"prompt_tokens": 2, "completion_tokens": 1},
+            }
+
+    def fake_post(url, *, headers, json, timeout):
+        calls.append({"url": url, "headers": headers, "json": json, "timeout": timeout})
+        return FakeHttpResponse()
+
+    monkeypatch.setattr("httpx.post", fake_post)
+
+    OpenAICompatibleProvider(config, credential_class=FakeCredential).generate(
+        ModelRequest(
+            prompt="fallback text",
+            params={},
+            metadata={},
+            rendered_prompt=RenderedPrompt(
+                shape="messages",
+                text="",
+                messages=[
+                    RenderedPromptMessage(role="system", content="System instructions"),
+                    RenderedPromptMessage(role="user", content="User request"),
+                ],
+            ),
+        )
+    )
+
+    assert calls[0]["json"]["messages"] == [
+        {"role": "system", "content": "System instructions"},
+        {"role": "user", "content": "User request"},
+    ]
+
+
+def test_openai_sdk_sends_rendered_role_messages(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = load_project_config("configs/projects/rewrite_quality.yaml").baseline
+    monkeypatch.setenv("EDAV_TENANT_ID", "tenant")
+    monkeypatch.setenv("EDAV_CLIENT_ID", "client")
+    monkeypatch.setenv("EDAV_CLIENT_SECRET", "secret")
+    monkeypatch.setenv("EDAV_SCOPE_TOKEN_AUDIENCE", "scope")
+    monkeypatch.setenv("EDAV_SUBSCRIPTION_KEY", "subscription")
+    monkeypatch.setenv("EDAV_AZURE_OPENAI_API_VERSION", "2024-12-01-preview")
+    monkeypatch.setenv("EDAV_AZURE_OPENAI_ENDPOINT", "https://example.test")
+    FakeAzureOpenAIWithCompletions.completions = FakeCompletions()
+
+    OpenAICompatibleProvider(
+        config,
+        credential_class=FakeCredential,
+        azure_openai_class=FakeAzureOpenAIWithCompletions,
+    ).generate(
+        ModelRequest(
+            prompt="fallback text",
+            params={},
+            metadata={},
+            rendered_prompt=RenderedPrompt(
+                shape="messages",
+                text="",
+                messages=[
+                    RenderedPromptMessage(role="system", content="System instructions"),
+                    RenderedPromptMessage(role="user", content="User request"),
+                ],
+            ),
+        )
+    )
+
+    call = FakeAzureOpenAIWithCompletions.completions.calls[0]
+    assert call["messages"] == [
+        {"role": "system", "content": "System instructions"},
+        {"role": "user", "content": "User request"},
+    ]
 
 
 def test_live_azure_path_uses_rest_not_openai_sdk(

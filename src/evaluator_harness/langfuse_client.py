@@ -992,6 +992,8 @@ class LangfuseClient:
             "trace_context": {
                 "trace_id": selection.trace_id,
                 "run_id": selection.run_id,
+                "prompt_shape": metadata.get("prompt_shape"),
+                "prompt_roles": metadata.get("prompt_roles"),
                 "prompt_identity": metadata.get("prompt_identity"),
                 "baseline_prompt_identity": metadata.get("baseline_prompt_identity"),
                 "candidate_prompt_identity": metadata.get("candidate_prompt_identity"),

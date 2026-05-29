@@ -205,7 +205,7 @@ class OpenAICompatibleProvider:
     ) -> dict[str, object]:
         kwargs: dict[str, object] = {
             "model": self.config.model,
-            "messages": [{"role": "user", "content": request.prompt}],
+            "messages": _messages_for_request(request),
             "temperature": self.config.parameters.temperature,
             "top_p": self.config.parameters.top_p,
         }
@@ -378,3 +378,13 @@ class OpenAICompatibleProvider:
             if value:
                 redacted = redacted.replace(value, "[REDACTED]")
         return redacted
+
+
+def _messages_for_request(request: ModelRequest) -> list[dict[str, str]]:
+    rendered = getattr(request, "rendered_prompt", None)
+    if rendered is not None and getattr(rendered, "shape", None) == "messages":
+        return [
+            {"role": str(message.role), "content": str(message.content)}
+            for message in getattr(rendered, "messages", [])
+        ]
+    return [{"role": "user", "content": request.prompt}]
