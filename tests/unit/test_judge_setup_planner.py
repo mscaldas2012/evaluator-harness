@@ -120,6 +120,37 @@ def test_safe_update_filters_replace_existing_provider_specific_top_level_filter
     }
 
 
+def test_safe_update_filters_replace_exact_evaluator_set_id_operator() -> None:
+    changes = safe_update_changes(
+        expected={
+            "filters": {
+                "observation_role": "model_output",
+                "project": "dfe",
+                "project_version": "v1",
+                "evaluator_set_id": "jargon_minimized:v1",
+            }
+        },
+        remote={
+            "filters": {
+                "observation_role": "model_output",
+                "project": "dfe",
+                "project_version": "v1",
+                "evaluator_set_id": "jargon_minimized:v1",
+                "_evaluator_set_id_operator": "=",
+            }
+        },
+    )
+
+    assert changes == {
+        "filters": {
+            "observation_role": "model_output",
+            "project": "dfe",
+            "project_version": "v1",
+            "evaluator_set_id": "jargon_minimized:v1",
+        }
+    }
+
+
 def test_backfill_request_blocks_when_unsupported() -> None:
     config = load_project_config("tests/fixtures/projects/invalid_judge_setup_unsafe_backfill.yaml")
 

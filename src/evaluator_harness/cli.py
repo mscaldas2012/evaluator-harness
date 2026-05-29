@@ -7,10 +7,21 @@ import typer
 from rich.console import Console
 
 from evaluator_harness.errors import HarnessError
+from evaluator_harness.progress import RichProgressReporter
 from evaluator_harness.runner import ExperimentRunner
 
 app = typer.Typer(no_args_is_help=True)
 console = Console()
+_DEFAULT_RUNNER_CLASS = ExperimentRunner
+
+
+def _runner() -> ExperimentRunner:
+    try:
+        return ExperimentRunner(progress=RichProgressReporter(console))
+    except TypeError:
+        if ExperimentRunner is _DEFAULT_RUNNER_CLASS:
+            raise
+        return ExperimentRunner()
 
 
 def _handle_command(callback: object) -> None:
@@ -46,7 +57,7 @@ def validate(project: Annotated[Path, typer.Option("--project")]) -> None:
 
 @app.command("sync-dataset")
 def sync_dataset(project: Annotated[Path, typer.Option("--project")]) -> None:
-    result = _handle_command(lambda: ExperimentRunner().sync_dataset(project))
+    result = _handle_command(lambda: _runner().sync_dataset(project))
     if result is not None:
         console.print(f"dataset: {result.name}")
         console.print(f"version: {result.version}")
@@ -58,7 +69,7 @@ def sync_dataset(project: Annotated[Path, typer.Option("--project")]) -> None:
 
 @app.command("sync-score-configs")
 def sync_score_configs(project: Annotated[Path, typer.Option("--project")]) -> None:
-    results = _handle_command(lambda: ExperimentRunner().sync_score_configs(project))
+    results = _handle_command(lambda: _runner().sync_score_configs(project))
     if results is not None:
         for result in results:
             console.print(f"score-config: {result.name}")
@@ -69,7 +80,7 @@ def sync_score_configs(project: Annotated[Path, typer.Option("--project")]) -> N
 
 @app.command("sync-annotation-queue")
 def sync_annotation_queue(project: Annotated[Path, typer.Option("--project")]) -> None:
-    result = _handle_command(lambda: ExperimentRunner().sync_annotation_queue(project))
+    result = _handle_command(lambda: _runner().sync_annotation_queue(project))
     if result is not None:
         console.print(f"queue: {result.queue_id or 'none'}")
         if result.queue_name:
@@ -128,7 +139,7 @@ def sync_judge_evaluators(
     audit: Annotated[bool, typer.Option("--audit")] = False,
 ) -> None:
     result = _handle_command(
-        lambda: ExperimentRunner().sync_judge_evaluators(
+        lambda: _runner().sync_judge_evaluators(
             project,
             dry_run=dry_run,
             audit=audit,
@@ -152,12 +163,12 @@ def run(
         ),
     ] = False,
 ) -> None:
-    runner = ExperimentRunner()
+    runner = _runner()
 
     def execute_run() -> object:
         if mode == "candidate" and candidate and not confirm_mixed_variant:
             axes = runner.mixed_variant_axes(project, candidate)
-            if len(axes) > 1:
+            if "prompt" in axes and len(axes) > 1:
                 console.print(
                     "[yellow]Candidate variant changes multiple comparison axes: "
                     + ", ".join(axes)

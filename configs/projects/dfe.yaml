@@ -1,0 +1,412 @@
+project:
+  name: dfe
+  description: Evaluate DFE public health content rewrites.
+  version: v1
+  score_config_prefix: eh_dfe_
+  metadata:
+    environment: local
+    tags:
+      - dfe
+      - readability
+
+judge_setup:
+  default_judge_model: gpt-4.1
+  default_sampling_percent: 100
+  historical_backfill: disabled
+
+dataset:
+  kind: local_csv
+  path: datasets/DFE.csv
+  langfuse_dataset_name: dfe/v1
+  item_id_strategy: explicit_or_hash
+
+task_prompt:
+  path: prompts/dfe/task_prompt_generic.md
+  version: v1
+  template_variables:
+    - dataset.input
+
+baseline:
+  name: gpt5.2-dgw-default
+  provider: openai_compatible
+  auth_mode: azure_client_credentials
+  model: gpt5.2-dgw-default
+  azure:
+    tenant_id_env: EDAV_TENANT_ID
+    client_id_env: EDAV_CLIENT_ID
+    client_secret_env: EDAV_CLIENT_SECRET
+    scope_env: EDAV_SCOPE_TOKEN_AUDIENCE
+    subscription_key_env: EDAV_SUBSCRIPTION_KEY
+    api_version_env: EDAV_AZURE_OPENAI_API_VERSION
+    endpoint_env: EDAV_AZURE_OPENAI_ENDPOINT
+  parameters:
+    temperature: 0.9
+    top_p: 0.9
+    max_tokens: 4096
+    token_limit_parameter: max_completion_tokens
+
+candidates:
+  - name: dry-run-candidate
+    provider: dry_run
+    auth_mode: none
+    model: dry-run
+    parameters:
+      temperature: 0.0
+      top_p: 1.0
+      max_tokens: 2048
+  - name: azure-mistral-large-3
+    provider: openai_compatible
+    auth_mode: api_key
+    model: mistral-large-3
+    azure_api_key:
+      api_key_env: REWRITE_QUALITY_MISTRAL_LARGE_3_API_KEY
+      endpoint_env: REWRITE_QUALITY_MISTRAL_LARGE_3_ENDPOINT
+      api_version_env: REWRITE_QUALITY_MISTRAL_LARGE_3_API_VERSION
+    parameters:
+      temperature: 0.2
+      top_p: 1.0
+      max_tokens: 2048
+      token_limit_parameter: max_completion_tokens
+evaluators:
+  - name: lists_preserved
+    type: llm_as_judge
+    version: v1
+    dimension: lists_preserved
+    source_type: custom
+    target: observation
+    target_observation_role: model_output
+    run_types:
+      - baseline
+      - candidate
+    mode: single_output
+    blind: true
+    prompt_path: prompts/dfe/evaluators/lists_preserved.md
+    prompt_version: v1
+    score:
+      name: lists_preserved
+      managed_by_harness: true
+      data_type: NUMERIC
+      min_value: 0
+      max_value: 1
+      description: Bulleted and numbered lists are retained.
+      allowed_score_sources:
+        - llm_judge
+        - human_annotation
+    required_inputs: &single_output_inputs
+      - input
+      - output
+    variables: &judge_variables
+      - input
+      - output
+    output_schema: &numeric_judge_schema
+      reasoning: string
+      score:
+        type: number
+        minimum: 0
+        maximum: 1
+      confidence:
+        type: number
+        minimum: 0
+        maximum: 1
+    filter_profile:
+      target: observation
+      observation_role: model_output
+      project: dfe
+      project_version: v1
+      evaluator_set_id: lists_preserved:v1
+      run_types:
+        - baseline
+        - candidate
+
+  - name: formatting_essence_maintained
+    type: llm_as_judge
+    version: v1
+    dimension: formatting_essence_maintained
+    source_type: custom
+    target: observation
+    target_observation_role: model_output
+    run_types: &baseline_and_candidate
+      - baseline
+      - candidate
+    mode: single_output
+    blind: true
+    prompt_path: prompts/dfe/evaluators/formatting_essence_maintained.md
+    prompt_version: v1
+    score:
+      name: formatting_essence_maintained
+      managed_by_harness: true
+      data_type: NUMERIC
+      min_value: 0
+      max_value: 1
+      description: Formatting essence is maintained.
+      allowed_score_sources: &llm_and_human_sources
+        - llm_judge
+        - human_annotation
+    required_inputs: *single_output_inputs
+    variables: *judge_variables
+    output_schema: *numeric_judge_schema
+    filter_profile:
+      target: observation
+      observation_role: model_output
+      project: dfe
+      project_version: v1
+      evaluator_set_id: formatting_essence_maintained:v1
+      run_types: *baseline_and_candidate
+
+  - name: bold_limit
+    type: llm_as_judge
+    version: v1
+    dimension: bold_limit
+    source_type: custom
+    target: observation
+    target_observation_role: model_output
+    run_types: *baseline_and_candidate
+    mode: single_output
+    blind: true
+    prompt_path: prompts/dfe/evaluators/bold_limit.md
+    prompt_version: v1
+    score:
+      name: bold_limit
+      managed_by_harness: true
+      data_type: NUMERIC
+      min_value: 0
+      max_value: 1
+      description: No more than five consecutive words are bolded.
+      allowed_score_sources: *llm_and_human_sources
+    required_inputs: *single_output_inputs
+    variables: *judge_variables
+    output_schema: *numeric_judge_schema
+    filter_profile:
+      target: observation
+      observation_role: model_output
+      project: dfe
+      project_version: v1
+      evaluator_set_id: bold_limit:v1
+      run_types: *baseline_and_candidate
+
+  - name: list_item_length
+    type: llm_as_judge
+    version: v1
+    dimension: list_item_length
+    source_type: custom
+    target: observation
+    target_observation_role: model_output
+    run_types: *baseline_and_candidate
+    mode: single_output
+    blind: true
+    prompt_path: prompts/dfe/evaluators/list_item_length.md
+    prompt_version: v1
+    score:
+      name: list_item_length
+      managed_by_harness: true
+      data_type: NUMERIC
+      min_value: 0
+      max_value: 1
+      description: List items are concise without losing meaning.
+      allowed_score_sources: *llm_and_human_sources
+    required_inputs: *single_output_inputs
+    variables: *judge_variables
+    output_schema: *numeric_judge_schema
+    filter_profile:
+      target: observation
+      observation_role: model_output
+      project: dfe
+      project_version: v1
+      evaluator_set_id: list_item_length:v1
+      run_types: *baseline_and_candidate
+
+  - name: sentence_length
+    type: llm_as_judge
+    version: v1
+    dimension: sentence_length
+    source_type: custom
+    target: observation
+    target_observation_role: model_output
+    run_types: *baseline_and_candidate
+    mode: single_output
+    blind: true
+    prompt_path: prompts/dfe/evaluators/sentence_length.md
+    prompt_version: v1
+    score:
+      name: sentence_length
+      managed_by_harness: true
+      data_type: NUMERIC
+      min_value: 0
+      max_value: 1
+      description: Sentences are 14 words or less.
+      allowed_score_sources: *llm_and_human_sources
+    required_inputs: *single_output_inputs
+    variables: *judge_variables
+    output_schema: *numeric_judge_schema
+    filter_profile:
+      target: observation
+      observation_role: model_output
+      project: dfe
+      project_version: v1
+      evaluator_set_id: sentence_length:v1
+      run_types: *baseline_and_candidate
+
+  - name: paragraph_length
+    type: llm_as_judge
+    version: v1
+    dimension: paragraph_length
+    source_type: custom
+    target: observation
+    target_observation_role: model_output
+    run_types: *baseline_and_candidate
+    mode: single_output
+    blind: true
+    prompt_path: prompts/dfe/evaluators/paragraph_length.md
+    prompt_version: v1
+    score:
+      name: paragraph_length
+      managed_by_harness: true
+      data_type: NUMERIC
+      min_value: 0
+      max_value: 1
+      description: Paragraphs have no more than three sentences.
+      allowed_score_sources: *llm_and_human_sources
+    required_inputs: *single_output_inputs
+    variables: *judge_variables
+    output_schema: *numeric_judge_schema
+    filter_profile:
+      target: observation
+      observation_role: model_output
+      project: dfe
+      project_version: v1
+      evaluator_set_id: paragraph_length:v1
+      run_types: *baseline_and_candidate
+
+  - name: necessary_facts_no_added_assumptions
+    type: llm_as_judge
+    version: v1
+    dimension: necessary_facts_no_added_assumptions
+    source_type: custom
+    target: observation
+    target_observation_role: model_output
+    run_types: *baseline_and_candidate
+    mode: single_output
+    blind: true
+    prompt_path: prompts/dfe/evaluators/necessary_facts_no_added_assumptions.md
+    prompt_version: v1
+    score:
+      name: necessary_facts_no_added_assumptions
+      managed_by_harness: true
+      data_type: NUMERIC
+      min_value: 0
+      max_value: 1
+      description: Necessary facts are retained and unsupported assumptions are avoided.
+      allowed_score_sources: *llm_and_human_sources
+    required_inputs: *single_output_inputs
+    variables: *judge_variables
+    output_schema: *numeric_judge_schema
+    filter_profile:
+      target: observation
+      observation_role: model_output
+      project: dfe
+      project_version: v1
+      evaluator_set_id: necessary_facts_no_added_assumptions:v1
+      run_types: *baseline_and_candidate
+
+  - name: semi_casual_supportive_tone
+    type: llm_as_judge
+    version: v1
+    dimension: tone
+    source_type: custom
+    target: observation
+    target_observation_role: model_output
+    run_types: *baseline_and_candidate
+    mode: single_output
+    blind: true
+    prompt_path: prompts/dfe/evaluators/semi_casual_supportive_tone.md
+    prompt_version: v1
+    score:
+      name: semi_casual_supportive_tone
+      managed_by_harness: true
+      data_type: NUMERIC
+      min_value: 0
+      max_value: 1
+      description: Tone is semi-casual, supportive, and aligned to CDC health communicator style.
+      allowed_score_sources: *llm_and_human_sources
+    required_inputs: *single_output_inputs
+    variables: *judge_variables
+    output_schema: *numeric_judge_schema
+    filter_profile:
+      target: observation
+      observation_role: model_output
+      project: dfe
+      project_version: v1
+      evaluator_set_id: semi_casual_supportive_tone:v1
+      run_types: *baseline_and_candidate
+
+  - name: active_voice
+    type: llm_as_judge
+    version: v1
+    dimension: active_voice
+    source_type: custom
+    target: observation
+    target_observation_role: model_output
+    run_types: *baseline_and_candidate
+    mode: single_output
+    blind: true
+    prompt_path: prompts/dfe/evaluators/active_voice.md
+    prompt_version: v1
+    score:
+      name: active_voice
+      managed_by_harness: true
+      data_type: NUMERIC
+      min_value: 0
+      max_value: 1
+      description: Output primarily uses active voice.
+      allowed_score_sources: *llm_and_human_sources
+    required_inputs: *single_output_inputs
+    variables: *judge_variables
+    output_schema: *numeric_judge_schema
+    filter_profile:
+      target: observation
+      observation_role: model_output
+      project: dfe
+      project_version: v1
+      evaluator_set_id: active_voice:v1
+      run_types: *baseline_and_candidate
+
+  - name: jargon_minimized
+    type: llm_as_judge
+    version: v1
+    dimension: jargon_minimized
+    source_type: custom
+    target: observation
+    target_observation_role: model_output
+    run_types: *baseline_and_candidate
+    mode: single_output
+    blind: true
+    prompt_path: prompts/dfe/evaluators/jargon_minimized.md
+    prompt_version: v1
+    score:
+      name: jargon_minimized
+      managed_by_harness: true
+      data_type: NUMERIC
+      min_value: 0
+      max_value: 1
+      description: Jargon is minimized and defined when needed.
+      allowed_score_sources: *llm_and_human_sources
+    required_inputs: *single_output_inputs
+    variables: *judge_variables
+    output_schema: *numeric_judge_schema
+    filter_profile:
+      target: observation
+      observation_role: model_output
+      project: dfe
+      project_version: v1
+      evaluator_set_id: jargon_minimized:v1
+      run_types: *baseline_and_candidate
+
+human_review:
+  enabled: true
+  queue_ownership: managed_by_harness
+  review_policy_version: default
+  minimum_sample_percent: 5
+  prioritize:
+    - failures
+    - low_confidence
+    - disputed

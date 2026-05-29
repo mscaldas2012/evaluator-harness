@@ -238,6 +238,44 @@ def test_evaluator_create_does_not_emit_provider_specific_top_level_filters() ->
     )
 
 
+def test_evaluator_set_id_filter_uses_contains_operator_for_composite_trace_metadata() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        _assert_basic_auth(request)
+        body = _json(request)
+        if request.url.path == "/api/public/unstable/evaluators":
+            return httpx.Response(
+                200,
+                json={"id": "evaltmpl-1", "name": body["name"], "scope": "project"},
+            )
+        if request.url.path == "/api/public/unstable/evaluation-rules":
+            evaluator_filter = [
+                item for item in body["filter"] if item.get("key") == "evaluator_set_id"
+            ][0]
+            assert evaluator_filter["operator"] == "contains"
+            assert evaluator_filter["value"] == "jargon_minimized:v1"
+            return httpx.Response(200, json={"id": "rule-1", **body})
+        raise AssertionError(f"unexpected path: {request.url.path}")
+
+    client = _client_without_sdk_evaluators(httpx.MockTransport(handler))
+
+    client.create_evaluator(
+        {
+            "display_name": "EH_dfe_v1_judge_jargon_minimized_v1_custom_observation",
+            "source_type": "custom",
+            "target": "observation",
+            "active": True,
+            "prompt": "Judge {{input}} and {{output}}.",
+            "filters": {
+                "project": "dfe",
+                "project_version": "v1",
+                "evaluator_set_id": "jargon_minimized:v1",
+                "observation_role": "model_output",
+            },
+            "variables": {"input": "observation.input", "output": "observation.output"},
+        }
+    )
+
+
 def test_evaluator_update_falls_back_to_unstable_rest_patch_not_delete() -> None:
     seen_methods: list[str] = []
 

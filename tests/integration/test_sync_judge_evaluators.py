@@ -51,6 +51,9 @@ def test_sync_judge_evaluators_partial_success_preserves_created_evaluator(tmp_p
     class FailingSecondCreateClient(LangfuseClient):
         def create_evaluator(self, payload):
             if self.evaluators:
+                store = load_evaluator_bindings(tmp_path / "bindings.yaml")
+                assert len(store.bindings) == 1
+                assert store.bindings[0].langfuse_evaluator_id == "eval-1"
                 raise RuntimeError("simulated remote failure")
             return super().create_evaluator(payload)
 
