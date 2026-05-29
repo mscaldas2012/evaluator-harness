@@ -1026,12 +1026,27 @@ class LangfuseClient:
         except Exception:
             return []
         traces: list[dict[str, Any]] = []
-        for item in getattr(run_with_items, "items", None) or []:
+        for item in _dataset_run_items(run_with_items):
+            trace_id = getattr(item, "trace_id", None)
+            fetched_trace = self._live_trace_by_id(str(trace_id)) if trace_id else None
+            if fetched_trace is not None:
+                traces.append(fetched_trace)
+                continue
             metadata = getattr(item, "metadata", None) or {}
             trace = _trace_from_metadata(dict(metadata), run_id=run_id)
             if trace is not None:
                 traces.append(trace)
         return traces
+
+    def _live_trace_by_id(self, trace_id: str) -> dict[str, Any] | None:
+        trace_client = getattr(getattr(self.client, "api", None), "trace", None)
+        get_trace = getattr(trace_client, "get", None)
+        if not callable(get_trace):
+            return None
+        try:
+            return _live_trace_to_dict(get_trace(trace_id))
+        except Exception:
+            return None
 
     def trace_by_id(self, trace_id: str) -> dict[str, Any]:
         for trace in self.traces:
@@ -1364,6 +1379,15 @@ def _live_trace_to_dict(trace: Any) -> dict[str, Any]:
         "metadata": dict(metadata),
         "timestamp": str(getattr(trace, "timestamp", None) or ""),
     }
+
+
+def _dataset_run_items(run_with_items: Any) -> list[Any]:
+    return list(
+        getattr(run_with_items, "dataset_run_items", None)
+        or getattr(run_with_items, "items", None)
+        or getattr(run_with_items, "data", None)
+        or []
+    )
 
 
 def _merge_traces(
