@@ -18,6 +18,14 @@ uv sync
 Store credentials in `.env`, your shell, or a secret manager. Project YAML files
 store only environment variable names such as `EDAV_CLIENT_SECRET`.
 
+Azure-hosted model configs use one Azure/OpenAI-compatible provider family with
+explicit auth per baseline or candidate. A baseline can use
+`auth_mode: azure_client_credentials` while a candidate uses `auth_mode:
+api_key`; the harness builds provider behavior from each model config and does
+not infer auth from whichever environment variables are set. Prefer
+project/model-specific names such as `REWRITE_QUALITY_BASELINE_AZURE_ENDPOINT`
+and `REWRITE_QUALITY_MISTRAL_LARGE_3_API_KEY` to avoid credential collisions.
+
 Required for Langfuse:
 
 ```powershell
@@ -41,6 +49,14 @@ $env:EDAV_AZURE_OPENAI_API_VERSION="..."
 $env:EDAV_AZURE_OPENAI_ENDPOINT="..."
 ```
 
+Required for the sample Azure endpoint/API-key candidate:
+
+```powershell
+$env:REWRITE_QUALITY_MISTRAL_LARGE_3_API_KEY="..."
+$env:REWRITE_QUALITY_MISTRAL_LARGE_3_ENDPOINT="https://example.openai.azure.com"
+$env:REWRITE_QUALITY_MISTRAL_LARGE_3_API_VERSION="2024-12-01-preview"
+```
+
 ## Quickstart
 
 ```powershell
@@ -59,6 +75,25 @@ uv run python run_experiment.py run `
   --candidate dry-run-candidate `
   --baseline latest-compatible
 
+uv run python run_experiment.py run `
+  --project configs/projects/rewrite_quality.yaml `
+  --mode candidate `
+  --candidate gpt5.2-dgw-default-prompt-v2 `
+  --baseline latest-compatible
+
+uv run python run_experiment.py run `
+  --project configs/projects/rewrite_quality.yaml `
+  --mode candidate `
+  --candidate gpt5.2-dgw-default-temp-high `
+  --baseline latest-compatible
+
+uv run python run_experiment.py run `
+  --project configs/projects/rewrite_quality.yaml `
+  --mode candidate `
+  --candidate azure-mistral-large-3 `
+  --baseline latest-compatible `
+  --confirm-mixed-variant
+
 uv run python run_experiment.py select-review `
   --project configs/projects/rewrite_quality.yaml `
   --run <candidate-run-id>
@@ -66,6 +101,15 @@ uv run python run_experiment.py select-review `
 
 Use Langfuse to run evaluators, inspect scores, compare baseline and candidate
 runs, and review selected items in Human Annotation Queues.
+
+Candidates can vary by model, task prompt, generation parameters, or a mix of
+those axes. Add `task_prompt` under a candidate to test prompt-v2 against an
+existing compatible prompt-v1 baseline; the harness records both prompt
+identities on runs, traces, evaluator payloads, and review payloads. Parameter
+variants are separate candidates with distinct `parameters`; traces and exports
+include `generation_parameter_hash`, `parameter_identity`, and
+`variant_identity`. If a candidate changes more than one axis, the CLI asks for
+`Y`/`y` confirmation unless `--confirm-mixed-variant` is supplied.
 
 ## LLM-as-Judge Setup
 
@@ -147,14 +191,16 @@ Do not create source-specific score configs such as
 Trace names use a stable, scannable format:
 
 ```text
-rewrite-quality/baseline/item-1
-rewrite-quality/candidate/item-2
-test/rewrite-quality/baseline/item-1
+rewrite-quality/baseline-gpt5.2-dgw-default
+rewrite-quality/gpt5.2-dgw-default-prompt-v2
+test/rewrite-quality/baseline-gpt5.2-dgw-default
 ```
 
-The `test/` prefix is added for pytest-driven live smoke traces. Model names,
-provider names, run IDs, prompt versions, and parameters are stored in trace
-metadata instead of the trace name. For Azure/OpenAI runs, the meaningful
+The `test/` prefix is added for pytest-driven live smoke traces. Candidate
+trace names use the candidate config name, baseline trace names use
+`baseline-<baseline config name>`, and item IDs, model names, provider names,
+run IDs, prompt versions, and parameters are stored in trace metadata instead
+of the trace name. For Azure/OpenAI runs, the meaningful
 `OpenAI-generation` observation is linked to the same parent trace ID where the
 harness stores dataset input, final output, and evaluation metadata.
 

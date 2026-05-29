@@ -15,6 +15,7 @@ from evaluator_harness.baseline_registry import (
     build_baseline_fingerprint,
     fingerprint_metadata,
 )
+from evaluator_harness.certificates import configure_tls_truststore
 from evaluator_harness.annotation_queues import (
     AnnotationQueueReferenceStore,
     AnnotationQueueSyncResult,
@@ -55,7 +56,17 @@ from evaluator_harness.langfuse_client import (
 )
 from evaluator_harness.providers import create_provider
 from evaluator_harness.providers import provider_tracing_metadata
-from evaluator_harness.providers.base import ModelProvider, ModelRequest
+from evaluator_harness.providers.base import (
+    ModelProvider,
+    ModelRequest,
+    validate_provider_roles,
+)
+from evaluator_harness.prompts import (
+    RenderedPrompt,
+    parse_prompt_file,
+    prompt_identity as prompt_file_identity,
+    render_prompt,
+)
 from evaluator_harness.review_selection import ReviewCandidate, select_review_items
 
 
@@ -102,6 +113,7 @@ class ExperimentRunner:
         provider_factory: Any | None = None,
         baseline_registry: BaselineRegistry | None = None,
     ) -> None:
+        configure_tls_truststore()
         load_env_file()
         self.langfuse_client = langfuse_client or (
             LangfuseClient.from_env()
@@ -231,6 +243,26 @@ class ExperimentRunner:
             candidate_name=_required_str(kwargs.get("candidate"), "--candidate"),
             baseline_selector=str(kwargs.get("baseline") or "latest-compatible"),
         )
+
+    def mixed_variant_axes(
+        self,
+        project_path: Path,
+        candidate_name: str,
+    ) -> list[str]:
+        config = load_project_config(project_path)
+        validate_project_config(config)
+        candidate = self._candidate_by_name(config, candidate_name)
+        axes: list[str] = []
+        if model_identity(config.baseline) != model_identity(candidate):
+            axes.append("model")
+        if prompt_identity_for_model(config, candidate) != prompt_identity_for_model(
+            config,
+            config.baseline,
+        ):
+            axes.append("prompt")
+        if generation_parameter_hash(config.baseline) != generation_parameter_hash(candidate):
+            axes.append("params")
+        return axes
 
     def select_review(self, project_path: Path, run_id: str) -> ReviewSelectionResult:
         config = load_project_config(project_path)
@@ -383,15 +415,18 @@ class ExperimentRunner:
 
         completed = 0
         failed = 0
+        baseline_prompt_ref = config.task_prompt
         for item in items:
             trace_id = self.langfuse_client.create_trace_id(f"{run_id}:{item.item_id}")
             trace_name = self._trace_name(config, run_type="baseline", item=item)
-            prompt = self._render_prompt(config.task_prompt.path, {"input": item.input})
+            rendered_prompt = self._render_prompt_payload(baseline_prompt_ref, item)
+            prompt = rendered_prompt.display_text
             request = ModelRequest(
                 prompt=prompt,
                 params=config.baseline.parameters.model_dump(mode="json", exclude_none=True),
                 metadata=self._request_metadata(
                     config=config,
+                    model_config=config.baseline,
                     item=item,
                     run_id=run_id,
                     run_type="baseline",
@@ -399,7 +434,9 @@ class ExperimentRunner:
                     trace_name=trace_name,
                     dataset_sync=dataset_sync,
                     fingerprint=fingerprint,
+                    rendered_prompt=rendered_prompt,
                 ),
+                rendered_prompt=rendered_prompt,
             )
             with self.langfuse_client.trace_span(
                 trace_id=trace_id,
@@ -413,6 +450,7 @@ class ExperimentRunner:
                 if parent_observation_id:
                     request.metadata["parent_observation_id"] = parent_observation_id
                 try:
+                    self._validate_provider_prompt_roles(config.baseline, rendered_prompt)
                     response = self._generate_with_optional_langfuse_generation(
                         provider,
                         request,
@@ -433,10 +471,19 @@ class ExperimentRunner:
                         error=None,
                         dataset_sync=dataset_sync,
                         fingerprint=fingerprint,
+                        rendered_prompt=rendered_prompt,
                     )
                     if self.langfuse_client.update_trace_span(parent_observation, trace):
                         trace["_live_observation_logged"] = True
                     self.langfuse_client.log_trace(trace)
+                    self.langfuse_client.record_dataset_run_item(
+                        dataset_sync=dataset_sync,
+                        item_id=item.item_id,
+                        run_name=run_id,
+                        trace_id=trace_id,
+                        observation_id=parent_observation_id,
+                        metadata=trace["metadata"],
+                    )
                     self.langfuse_client.enqueue_baseline_evaluator_payload(
                         {
                             "run_id": run_id,
@@ -473,10 +520,19 @@ class ExperimentRunner:
                         error=str(exc),
                         dataset_sync=dataset_sync,
                         fingerprint=fingerprint,
+                        rendered_prompt=rendered_prompt,
                     )
                     if self.langfuse_client.update_trace_span(parent_observation, trace):
                         trace["_live_observation_logged"] = True
                     self.langfuse_client.log_trace(trace)
+                    self.langfuse_client.record_dataset_run_item(
+                        dataset_sync=dataset_sync,
+                        item_id=item.item_id,
+                        run_name=run_id,
+                        trace_id=trace_id,
+                        observation_id=parent_observation_id,
+                        metadata=trace["metadata"],
+                    )
 
         self.baseline_registry.record(run_id, fingerprint, reference)
         self.langfuse_client.record_baseline_reference(run_id, reference)
@@ -532,6 +588,11 @@ class ExperimentRunner:
         run_id = f"candidate-{uuid4().hex[:12]}"
         run_name = f"{config.project.name}-{config.project.version}-{candidate.name}-{run_id}"
         parameter_hash = _parameter_hash(candidate)
+        baseline_prompt_identity = prompt_identity_for_model(config, config.baseline)
+        candidate_prompt_identity = prompt_identity_for_model(config, candidate)
+        candidate_parameter_identity = parameter_identity(candidate)
+        candidate_generation_parameter_hash = generation_parameter_hash(candidate)
+        candidate_variant_identity = variant_identity(config, candidate)
         self.langfuse_client.create_run(
             run_id=run_id,
             run_name=run_name,
@@ -543,21 +604,35 @@ class ExperimentRunner:
                 **fingerprint_metadata(fingerprint),
                 "candidate": candidate.name,
                 "parameter_hash": parameter_hash,
+                "parameter_identity": candidate_parameter_identity,
+                "generation_parameter_hash": candidate_generation_parameter_hash,
+                "variant_identity": candidate_variant_identity,
+                "prompt_identity": candidate_prompt_identity,
+                "baseline_prompt_identity": baseline_prompt_identity,
+                "candidate_prompt_identity": candidate_prompt_identity,
             },
         )
 
         completed = 0
         failed = 0
+        candidate_prompt_ref = candidate.task_prompt or config.task_prompt
         for item in items:
             trace_id = self.langfuse_client.create_trace_id(f"{run_id}:{item.item_id}")
-            trace_name = self._trace_name(config, run_type="candidate", item=item)
-            prompt = self._render_prompt(config.task_prompt.path, {"input": item.input})
+            trace_name = self._trace_name(
+                config,
+                run_type="candidate",
+                item=item,
+                model_config=candidate,
+            )
+            rendered_prompt = self._render_prompt_payload(candidate_prompt_ref, item)
+            prompt = rendered_prompt.display_text
             request = ModelRequest(
                 prompt=prompt,
                 params=candidate.parameters.model_dump(mode="json", exclude_none=True),
                 metadata={
                     **self._request_metadata(
                         config=config,
+                        model_config=candidate,
                         item=item,
                         run_id=run_id,
                         run_type="candidate",
@@ -565,9 +640,11 @@ class ExperimentRunner:
                         trace_name=trace_name,
                         dataset_sync=dataset_sync,
                         fingerprint=fingerprint,
+                        rendered_prompt=rendered_prompt,
                     ),
                     "baseline_run_id": baseline_run_id,
                 },
+                rendered_prompt=rendered_prompt,
             )
             with self.langfuse_client.trace_span(
                 trace_id=trace_id,
@@ -581,6 +658,7 @@ class ExperimentRunner:
                 if parent_observation_id:
                     request.metadata["parent_observation_id"] = parent_observation_id
                 try:
+                    self._validate_provider_prompt_roles(candidate, rendered_prompt)
                     response = self._generate_with_optional_langfuse_generation(
                         provider,
                         request,
@@ -604,10 +682,19 @@ class ExperimentRunner:
                         fingerprint=fingerprint,
                         baseline_reference=baseline_reference,
                         parameter_hash=parameter_hash,
+                        rendered_prompt=rendered_prompt,
                     )
                     if self.langfuse_client.update_trace_span(parent_observation, trace):
                         trace["_live_observation_logged"] = True
                     self.langfuse_client.log_trace(trace)
+                    self.langfuse_client.record_dataset_run_item(
+                        dataset_sync=dataset_sync,
+                        item_id=item.item_id,
+                        run_name=run_id,
+                        trace_id=trace_id,
+                        observation_id=parent_observation_id,
+                        metadata=trace["metadata"],
+                    )
                     self.langfuse_client.enqueue_candidate_evaluator_payload(
                         {
                             "run_id": run_id,
@@ -621,6 +708,12 @@ class ExperimentRunner:
                             ),
                             "ground_truth": item.ground_truth,
                             "baseline_reference": baseline_reference.model_dump(mode="json"),
+                            "prompt_identity": candidate_prompt_identity,
+                            "baseline_prompt_identity": baseline_prompt_identity,
+                            "candidate_prompt_identity": candidate_prompt_identity,
+                            "parameter_identity": candidate_parameter_identity,
+                            "generation_parameter_hash": candidate_generation_parameter_hash,
+                            "variant_identity": candidate_variant_identity,
                             "evaluators": [
                                 {"name": evaluator.name, "version": evaluator.version}
                                 for evaluator in config.evaluators
@@ -644,10 +737,19 @@ class ExperimentRunner:
                         fingerprint=fingerprint,
                         baseline_reference=baseline_reference,
                         parameter_hash=parameter_hash,
+                        rendered_prompt=rendered_prompt,
                     )
                     if self.langfuse_client.update_trace_span(parent_observation, trace):
                         trace["_live_observation_logged"] = True
                     self.langfuse_client.log_trace(trace)
+                    self.langfuse_client.record_dataset_run_item(
+                        dataset_sync=dataset_sync,
+                        item_id=item.item_id,
+                        run_name=run_id,
+                        trace_id=trace_id,
+                        observation_id=parent_observation_id,
+                        metadata=trace["metadata"],
+                    )
 
         return RunResult(
             run_id=run_id,
@@ -674,8 +776,17 @@ class ExperimentRunner:
         fingerprint: BaselineFingerprint | None = None,
         baseline_reference: BaselineReference | None = None,
         parameter_hash: str | None = None,
+        rendered_prompt: RenderedPrompt | None = None,
     ) -> dict[str, Any]:
         active_model = model_config or config.baseline
+        active_prompt_identity = prompt_identity_for_model(config, active_model)
+        baseline_prompt_identity = prompt_identity_for_model(config, config.baseline)
+        candidate_prompt_identity = (
+            active_prompt_identity if baseline_reference is not None else None
+        )
+        active_parameter_identity = parameter_identity(active_model)
+        active_generation_parameter_hash = generation_parameter_hash(active_model)
+        active_variant_identity = variant_identity(config, active_model)
         return {
             "trace_id": trace_id,
             "run_id": run_id,
@@ -684,6 +795,7 @@ class ExperimentRunner:
             "output": response.output if response is not None else None,
             "error": error,
             "metadata": {
+                **(fingerprint_metadata(fingerprint) if fingerprint else {}),
                 "project": config.project.name,
                 "project_version": config.project.version,
                 "run_type": "candidate" if baseline_reference is not None else "baseline",
@@ -710,7 +822,18 @@ class ExperimentRunner:
                 "dataset_run_item_id": (
                     f"{run_id}:{item.item_id}" if dataset_sync else None
                 ),
-                "prompt_version": config.task_prompt.version,
+                "prompt_version": active_prompt_identity["version"],
+                "prompt_shape": active_prompt_identity.get("shape"),
+                "prompt_roles": active_prompt_identity.get("roles", []),
+                "prompt_identity": active_prompt_identity,
+                "baseline_prompt_version": baseline_prompt_identity["version"],
+                "baseline_prompt_identity": baseline_prompt_identity,
+                "candidate_prompt_version": (
+                    candidate_prompt_identity["version"]
+                    if candidate_prompt_identity is not None
+                    else None
+                ),
+                "candidate_prompt_identity": candidate_prompt_identity,
                 "evaluator_set_id": fingerprint.evaluator_set_id if fingerprint else None,
                 "ground_truth": item.ground_truth,
                 "provider": active_model.provider.value,
@@ -718,6 +841,9 @@ class ExperimentRunner:
                 "model_name": active_model.name,
                 "temperature": active_model.parameters.temperature,
                 "parameter_hash": parameter_hash or _parameter_hash(active_model),
+                "parameter_identity": active_parameter_identity,
+                "generation_parameter_hash": active_generation_parameter_hash,
+                "variant_identity": active_variant_identity,
                 "baseline_reference": (
                     baseline_reference.model_dump(mode="json")
                     if baseline_reference is not None
@@ -737,6 +863,9 @@ class ExperimentRunner:
                 "provider_tracing_strategy": provider_tracing_metadata(active_model),
             },
             "prompt": prompt,
+            "rendered_prompt": (
+                rendered_prompt.model_dump(mode="json") if rendered_prompt else None
+            ),
             "timestamp": _utc_now(),
         }
 
@@ -744,6 +873,7 @@ class ExperimentRunner:
         self,
         *,
         config: ProjectConfig,
+        model_config: ModelConfig,
         item: DatasetItem,
         run_id: str,
         run_type: str,
@@ -751,7 +881,15 @@ class ExperimentRunner:
         trace_name: str,
         dataset_sync: DatasetSyncResult,
         fingerprint: BaselineFingerprint,
+        rendered_prompt: RenderedPrompt | None = None,
     ) -> dict[str, Any]:
+        active_prompt_identity = prompt_identity_for_model(config, model_config)
+        baseline_prompt_identity = prompt_identity_for_model(config, config.baseline)
+        candidate_prompt_identity = (
+            active_prompt_identity if run_type == "candidate" else None
+        )
+        active_parameter_identity = parameter_identity(model_config)
+        active_generation_parameter_hash = generation_parameter_hash(model_config)
         return {
             "project": config.project.name,
             "project_version": config.project.version,
@@ -765,8 +903,25 @@ class ExperimentRunner:
             "evaluator_set_id": fingerprint.evaluator_set_id,
             "trace_id": trace_id,
             "trace_name": trace_name,
-            "prompt_version": config.task_prompt.version,
+            "prompt_version": active_prompt_identity["version"],
+            "prompt_shape": active_prompt_identity.get("shape"),
+            "prompt_roles": active_prompt_identity.get("roles", []),
+            "prompt_identity": active_prompt_identity,
+            "baseline_prompt_version": baseline_prompt_identity["version"],
+            "baseline_prompt_identity": baseline_prompt_identity,
+            "candidate_prompt_version": (
+                candidate_prompt_identity["version"]
+                if candidate_prompt_identity is not None
+                else None
+            ),
+            "candidate_prompt_identity": candidate_prompt_identity,
+            "parameter_identity": active_parameter_identity,
+            "generation_parameter_hash": active_generation_parameter_hash,
+            "variant_identity": variant_identity(config, model_config),
             "observation_role": "model_output",
+            "rendered_prompt": (
+                rendered_prompt.model_dump(mode="json") if rendered_prompt else None
+            ),
         }
 
     def _render_prompt(self, path: Path, variables: dict[str, str]) -> str:
@@ -776,9 +931,44 @@ class ExperimentRunner:
             text = text.replace("{{" + key + "}}", value)
         return text
 
-    def _trace_name(self, config: ProjectConfig, *, run_type: str, item: DatasetItem) -> str:
+    def _render_prompt_payload(self, prompt_ref: Any, item: DatasetItem) -> RenderedPrompt:
+        prompt = parse_prompt_file(prompt_ref.path, version=prompt_ref.version)
+        return render_prompt(prompt, self._dataset_row_context(item))
+
+    def _dataset_row_context(self, item: DatasetItem) -> dict[str, Any]:
+        return {
+            **item.metadata,
+            "input": item.input,
+            "ground_truth": item.ground_truth,
+            "reference_output": item.reference_output,
+        }
+
+    def _validate_provider_prompt_roles(
+        self,
+        model_config: ModelConfig,
+        rendered_prompt: RenderedPrompt,
+    ) -> None:
+        if rendered_prompt.shape != "messages":
+            return
+        validate_provider_roles(
+            model_config.provider,
+            [message.role for message in rendered_prompt.messages],
+        )
+
+    def _trace_name(
+        self,
+        config: ProjectConfig,
+        *,
+        run_type: str,
+        item: DatasetItem,
+        model_config: ModelConfig | None = None,
+    ) -> str:
         prefix = "test/" if _is_test_run() else ""
-        return f"{prefix}{config.project.name}/{run_type}/item-{item.item_id}"
+        if run_type == "candidate" and model_config is not None:
+            variant_name = model_config.name
+        else:
+            variant_name = f"baseline-{config.baseline.name}"
+        return f"{prefix}{config.project.name}/{variant_name}"
 
     def _candidate_by_name(self, config: ProjectConfig, candidate_name: str) -> ModelConfig:
         for candidate in config.candidates:
@@ -804,6 +994,45 @@ def _parameter_hash(config: ModelConfig) -> str:
         "parameters": config.parameters.model_dump(mode="json", exclude_none=True),
     }
     return hashlib.sha256(json.dumps(payload, sort_keys=True).encode("utf-8")).hexdigest()
+
+
+def model_identity(config: ModelConfig) -> dict[str, str]:
+    return {
+        "provider": config.provider.value,
+        "auth_mode": config.auth_mode.value,
+        "model": config.model,
+    }
+
+
+def prompt_identity(prompt_ref: Any) -> dict[str, Any]:
+    return prompt_file_identity(Path(prompt_ref.path), prompt_ref.version)
+
+
+def prompt_identity_for_model(
+    config: ProjectConfig,
+    model_config: ModelConfig,
+) -> dict[str, str]:
+    prompt_ref = model_config.task_prompt or config.task_prompt
+    return prompt_identity(prompt_ref)
+
+
+def generation_parameter_hash(config: ModelConfig) -> str:
+    payload = config.parameters.model_dump(mode="json", exclude_none=True)
+    return hashlib.sha256(json.dumps(payload, sort_keys=True).encode("utf-8")).hexdigest()
+
+
+def parameter_identity(config: ModelConfig) -> dict[str, Any]:
+    return config.parameters.model_dump(mode="json", exclude_none=True)
+
+
+def variant_identity(config: ProjectConfig, model_config: ModelConfig) -> dict[str, Any]:
+    return {
+        "candidate": model_config.name,
+        "model": model_identity(model_config),
+        "prompt": prompt_identity_for_model(config, model_config),
+        "parameters": model_config.parameters.model_dump(mode="json", exclude_none=True),
+        "generation_parameter_hash": generation_parameter_hash(model_config),
+    }
 
 
 def _is_test_run() -> bool:

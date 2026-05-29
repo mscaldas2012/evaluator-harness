@@ -144,14 +144,37 @@ def run(
     mode: Annotated[str, typer.Option("--mode")],
     candidate: Annotated[str | None, typer.Option("--candidate")] = None,
     baseline: Annotated[str | None, typer.Option("--baseline")] = None,
+    confirm_mixed_variant: Annotated[
+        bool,
+        typer.Option(
+            "--confirm-mixed-variant",
+            help="Bypass confirmation when a candidate changes multiple comparison axes.",
+        ),
+    ] = False,
 ) -> None:
-    result = _handle_command(
-        lambda: ExperimentRunner().run(
+    runner = ExperimentRunner()
+
+    def execute_run() -> object:
+        if mode == "candidate" and candidate and not confirm_mixed_variant:
+            axes = runner.mixed_variant_axes(project, candidate)
+            if len(axes) > 1:
+                console.print(
+                    "[yellow]Candidate variant changes multiple comparison axes: "
+                    + ", ".join(axes)
+                    + ".[/yellow]"
+                )
+                response = console.input("Type Y to continue: ")
+                if response not in {"Y", "y"}:
+                    raise HarnessError("Candidate run cancelled.")
+        return runner.run(
             project,
             mode,
             candidate=candidate,
             baseline=baseline,
         )
+
+    result = _handle_command(
+        execute_run
     )
     if result is not None:
         console.print(f"run: {result.run_id}")

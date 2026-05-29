@@ -1,0 +1,64 @@
+project:
+  name: invalid-prompt-variant
+  version: v1
+  score_config_prefix: eh_invalid_prompt_variant_
+
+judge_setup:
+  default_judge_model: gpt-4.1
+  binding_path: configs/langfuse/evaluator_bindings/rewrite-quality.yaml
+
+dataset:
+  kind: local_csv
+  path: datasets/rewrite_quality.csv
+  langfuse_dataset_name: invalid-prompt-variant/v1
+
+task_prompt:
+  path: prompts/rewrite_quality/task_prompt.md
+  version: v1
+  template_variables:
+    - input
+
+baseline:
+  name: dry-run-baseline
+  provider: dry_run
+  auth_mode: none
+  model: dry-run
+  parameters:
+    temperature: 0.0
+
+candidates:
+  - name: missing-prompt-candidate
+    provider: dry_run
+    auth_mode: none
+    model: dry-run
+    task_prompt:
+      path: tests/fixtures/prompts/missing_prompt.md
+      version: v2
+      template_variables:
+        - input
+    parameters:
+      temperature: 0.0
+
+evaluators:
+  - name: clarity
+    type: llm_as_judge
+    version: v1
+    prompt_path: prompts/rewrite_quality/evaluators/clarity.md
+    score:
+      name: clarity
+      data_type: NUMERIC
+      min_value: 0
+      max_value: 1
+    modes: [baseline, candidate]
+    variables: [input, output, baseline_output]
+    required_inputs: [input, output, baseline_output]
+    output_schema:
+      reasoning: string
+      score:
+        type: number
+        minimum: 0
+        maximum: 1
+      confidence:
+        type: number
+        minimum: 0
+        maximum: 1

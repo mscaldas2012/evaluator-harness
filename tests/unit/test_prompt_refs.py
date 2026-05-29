@@ -6,12 +6,43 @@ import pytest
 
 from evaluator_harness.config import load_project_config, validate_project_config
 from evaluator_harness.errors import ConfigError
+from evaluator_harness.runner import prompt_identity
 
 
 def test_validates_prompt_paths_versions_modes_and_variables() -> None:
     config = load_project_config(Path("configs/projects/rewrite_quality.yaml"))
 
     validate_project_config(config)
+
+
+def test_prompt_identity_includes_version_path_and_content_hash() -> None:
+    config = load_project_config(
+        Path("tests/fixtures/projects/valid_prompt_variant_candidate.yaml")
+    )
+
+    identity = prompt_identity(config.candidates[0].task_prompt)
+
+    assert identity["path"] == "tests/fixtures/prompts/rewrite_quality_task_prompt_v2.md"
+    assert identity["version"] == "v2"
+    assert len(identity["content_hash"]) == 64
+
+
+def test_prompt_identity_changes_when_prompt_content_changes(tmp_path: Path) -> None:
+    first = tmp_path / "first.md"
+    second = tmp_path / "second.md"
+    first.write_text("Rewrite:\n{{input}}\n", encoding="utf-8")
+    second.write_text("Rewrite clearly:\n{{input}}\n", encoding="utf-8")
+
+    from evaluator_harness.config import PromptRef
+
+    first_identity = prompt_identity(
+        PromptRef(path=first, version="v2", template_variables=["input"])
+    )
+    second_identity = prompt_identity(
+        PromptRef(path=second, version="v2", template_variables=["input"])
+    )
+
+    assert first_identity["content_hash"] != second_identity["content_hash"]
 
 
 def test_rejects_invalid_score_config_prefix(tmp_path: Path) -> None:
@@ -79,11 +110,11 @@ task_prompt:
   version: v1
 baseline:
   name: baseline
-  provider: openai_compatible
-  auth_mode: api_key
-  model: gpt-4.1
+  provider: dry_run
+  auth_mode: none
+  model: dry-run
   parameters:
-    temperature: 0.2
+    temperature: 0.0
 candidates:
   - name: candidate
     provider: ollama

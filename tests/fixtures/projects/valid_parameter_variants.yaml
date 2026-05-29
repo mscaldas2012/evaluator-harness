@@ -1,0 +1,105 @@
+project:
+  name: parameter-variants
+  description: Compare parameter variants for a rewrite task.
+  version: v1
+  score_config_prefix: eh_parameter_variants_
+
+judge_setup:
+  default_judge_model: gpt-4.1
+  binding_path: configs/langfuse/evaluator_bindings/rewrite-quality.yaml
+
+dataset:
+  kind: local_csv
+  path: datasets/rewrite_quality.csv
+  langfuse_dataset_name: parameter-variants/v1
+  item_id_strategy: explicit_or_hash
+
+task_prompt:
+  path: prompts/rewrite_quality/task_prompt.md
+  version: v1
+  template_variables:
+    - input
+
+baseline:
+  name: dry-run-baseline
+  provider: dry_run
+  auth_mode: none
+  model: dry-run
+  parameters:
+    temperature: 0.0
+    top_p: 1.0
+    max_tokens: 2048
+
+candidates:
+  - name: llama3-local
+    provider: ollama
+    auth_mode: none
+    model: llama3
+    parameters:
+      temperature: 0.2
+      top_p: 1.0
+      max_tokens: 2048
+  - name: llama3-local-temp-high
+    provider: ollama
+    auth_mode: none
+    model: llama3
+    parameters:
+      temperature: 0.8
+      top_p: 1.0
+      max_tokens: 2048
+  - name: llama3-local-prompt-v2-temp-high
+    provider: ollama
+    auth_mode: none
+    model: llama3
+    task_prompt:
+      path: tests/fixtures/prompts/rewrite_quality_task_prompt_v2.md
+      version: v2
+      template_variables:
+        - input
+    parameters:
+      temperature: 0.8
+      top_p: 1.0
+      max_tokens: 2048
+
+evaluators:
+  - name: clarity
+    type: llm_as_judge
+    version: v1
+    source_type: custom
+    target: observation
+    target_observation_role: model_output
+    run_types:
+      - baseline
+      - candidate
+    mode: baseline_comparison
+    blind: true
+    prompt_path: prompts/rewrite_quality/evaluators/clarity.md
+    prompt_version: v1
+    score:
+      name: clarity
+      managed_by_harness: true
+      data_type: NUMERIC
+      min_value: 0
+      max_value: 1
+      allowed_score_sources:
+        - llm_judge
+        - human_annotation
+    required_inputs:
+      - input
+      - output
+      - baseline_output
+    variables:
+      - input
+      - output
+      - baseline_output
+      - ground_truth
+    output_schema:
+      reasoning: string
+      score:
+        type: number
+        minimum: 0
+        maximum: 1
+      confidence:
+        type: number
+        minimum: 0
+        maximum: 1

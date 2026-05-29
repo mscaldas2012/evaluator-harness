@@ -9,6 +9,9 @@ from evaluator_harness.providers.ollama import OllamaProvider
 from evaluator_harness.providers.openai_compatible import OpenAICompatibleProvider
 
 
+OLLAMA_PROJECT = "tests/fixtures/projects/valid_rewrite_quality.yaml"
+
+
 def test_provider_factory_selects_openai_compatible_provider() -> None:
     config = load_project_config("configs/projects/rewrite_quality.yaml")
 
@@ -18,7 +21,7 @@ def test_provider_factory_selects_openai_compatible_provider() -> None:
 
 
 def test_provider_factory_selects_ollama_provider() -> None:
-    config = load_project_config("configs/projects/rewrite_quality.yaml")
+    config = load_project_config(OLLAMA_PROJECT)
 
     provider = create_provider(config.candidates[0])
 
@@ -42,10 +45,34 @@ def test_provider_tracing_metadata_prefers_langfuse_for_openai_compatible() -> N
     assert metadata["manual_fallback_reason"] is None
 
 
+def test_provider_tracing_metadata_documents_api_key_manual_fallback() -> None:
+    config = load_project_config("tests/fixtures/projects/valid_azure_api_key_candidate.yaml")
+
+    metadata = provider_tracing_metadata(config.candidates[0])
+
+    assert metadata["provider"] == "openai_compatible"
+    assert metadata["tracing_strategy"] == "manual_langfuse_generation"
+    assert (
+        metadata["manual_fallback_reason"]
+        == "api_key_path_preserves_existing_parent_trace_and_observation_metadata"
+    )
+
+
 def test_provider_tracing_metadata_documents_ollama_manual_fallback() -> None:
-    config = load_project_config("configs/projects/rewrite_quality.yaml")
+    config = load_project_config(OLLAMA_PROJECT)
 
     metadata = provider_tracing_metadata(config.candidates[0])
 
     assert metadata["tracing_strategy"] == "manual"
     assert metadata["manual_fallback_reason"] == "ollama_has_no_langfuse_wrapped_client"
+
+
+def test_provider_factory_preserves_dry_run_provider() -> None:
+    config = load_project_config("configs/projects/rewrite_quality.yaml")
+    candidate = next(
+        candidate for candidate in config.candidates if candidate.name == "dry-run-candidate"
+    )
+
+    provider = create_provider(candidate)
+
+    assert provider.__class__.__name__ == "DryRunProvider"

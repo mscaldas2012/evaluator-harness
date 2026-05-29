@@ -15,7 +15,9 @@ def test_validate_cli_success_output() -> None:
     assert "rewrite-quality/v1" in result.stdout
     assert "dataset: local_csv" in result.stdout
     assert "baseline: gpt5.2-dgw-default" in result.stdout
-    assert "candidates: llama3-local" in result.stdout
+    assert "candidates: gpt5.2-dgw-default-prompt-v2" in result.stdout
+    assert "dry-run-candidate" in result.stdout
+    assert "azure-mistral-large-3" in result.stdout
     assert "evaluators: clarity/v1" in result.stdout
     assert "evaluator-targets: clarity=observation/model_output" in result.stdout
     assert "score-targets: clarity=eh_rewrite_quality_clarity" in result.stdout
@@ -29,3 +31,34 @@ def test_validate_cli_failure_output() -> None:
 
     assert result.exit_code == 1
     assert "dataset" in result.stdout
+
+
+def test_validate_cli_reports_invalid_api_key_candidate_config() -> None:
+    result = CliRunner().invoke(
+        app,
+        [
+            "validate",
+            "--project",
+            "tests/fixtures/projects/invalid_azure_api_key_candidate_missing_refs.yaml",
+        ],
+    )
+
+    assert result.exit_code == 1
+    assert "azure_api_key credential env" in result.stdout
+    assert "references are required" in result.stdout
+    assert "azure-api-key-candidate" in result.stdout
+
+
+def test_validate_cli_accepts_prompt_variant_project_config() -> None:
+    result = CliRunner().invoke(
+        app,
+        [
+            "validate",
+            "--project",
+            "tests/fixtures/projects/valid_prompt_variant_candidate.yaml",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "prompt-variant-project/v1" in result.stdout
+    assert "candidates: dry-run-prompt-v2" in result.stdout

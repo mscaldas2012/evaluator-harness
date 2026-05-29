@@ -25,8 +25,7 @@ def test_runner_uses_langfuse_valid_trace_ids_for_outputs() -> None:
         for trace in langfuse.traces
     )
     assert {trace["name"] for trace in langfuse.traces} == {
-        "test/rewrite-quality/baseline/item-1",
-        "test/rewrite-quality/baseline/item-2",
+        "test/rewrite-quality/baseline-gpt5.2-dgw-default",
     }
 
 

@@ -21,11 +21,19 @@ def test_export_summary_writes_trace_rows_without_score_aggregation(tmp_path: Pa
                 "dataset_name": "rewrite-quality/v1",
                 "dataset_version": "latest",
                 "prompt_version": "v1",
+                "prompt_shape": "messages",
+                "prompt_roles": ["system", "user"],
                 "evaluator_set_id": "clarity:v1",
                 "provider": "ollama",
                 "model": "llama3",
                 "model_name": "llama3-local",
                 "temperature": 0.2,
+                "generation_parameter_hash": "params-hash",
+                "parameter_identity": {"temperature": 0.2, "top_p": 1.0},
+                "variant_identity": {
+                    "candidate": "llama3-local",
+                    "generation_parameter_hash": "params-hash",
+                },
                 "latency_ms": 123,
                 "input_tokens": None,
                 "output_tokens": None,
@@ -43,4 +51,10 @@ def test_export_summary_writes_trace_rows_without_score_aggregation(tmp_path: Pa
     assert result.output_path == output_path
     assert "trace_id,run_id,item_id,project" in csv_text
     assert "trace-1,candidate-1,1,rewrite-quality" in csv_text
+    assert "generation_parameter_hash" in csv_text
+    assert "prompt_shape" in csv_text
+    assert "messages" in csv_text
+    assert '[""system"", ""user""]' in csv_text
+    assert "params-hash" in csv_text
+    assert '""temperature"": 0.2' in csv_text
     assert "score" not in csv_text.lower()

@@ -1,0 +1,3 @@
+id,input,ground_truth,optional_note
+1,"Rewrite this text","Expected rewrite",
+2,"Value with {literal} braces","Expected braces","custom note"

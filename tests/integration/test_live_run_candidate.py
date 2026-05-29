@@ -56,7 +56,7 @@ def test_candidate_partial_failures_record_successful_and_failed_items() -> None
     candidate = runner.run(
         Path("configs/projects/rewrite_quality.yaml"),
         "candidate",
-        candidate="llama3-local",
+        candidate="dry-run-candidate",
         baseline="latest-compatible",
     )
 

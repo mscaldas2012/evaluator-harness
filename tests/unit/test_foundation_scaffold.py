@@ -22,6 +22,11 @@ def test_project_model_accepts_repo_safe_secret_references() -> None:
         provider=ProviderName.OPENAI_COMPATIBLE,
         auth_mode=AuthMode.API_KEY,
         model="gpt-4.1",
+        azure_api_key={
+            "api_key_env": "REWRITE_QUALITY_GPT41_API_KEY",
+            "endpoint_env": "REWRITE_QUALITY_GPT41_ENDPOINT",
+            "api_version_env": "REWRITE_QUALITY_GPT41_API_VERSION",
+        },
         parameters=ModelParameters(temperature=0.2),
     )
 

@@ -20,6 +20,13 @@ def test_builds_candidate_annotation_payload_without_provider_identity_for_blind
             "model_name": "llama3-local",
             "ground_truth": "Expected",
             "baseline_reference": {"baseline_run_id": "baseline-1"},
+            "prompt_shape": "messages",
+            "prompt_roles": ["system", "user"],
+            "prompt_identity": {
+                "version": "v1",
+                "shape": "messages",
+                "roles": ["system", "user"],
+            },
         },
     }
     client.traces.append(trace)
@@ -41,6 +48,8 @@ def test_builds_candidate_annotation_payload_without_provider_identity_for_blind
     assert payload["candidate_output"] == "Candidate"
     assert payload["baseline_output"] == "Baseline"
     assert payload["ground_truth"] == "Expected"
+    assert payload["trace_context"]["prompt_shape"] == "messages"
+    assert payload["trace_context"]["prompt_roles"] == ["system", "user"]
     evaluator_payload = payload["evaluators"][0]
     assert evaluator_payload["name"] == "clarity"
     assert "provider" not in evaluator_payload

@@ -54,3 +54,49 @@ def test_select_review_routes_configured_queue_items() -> None:
     assert result.queued_count == result.selected_count
     assert result.queue_id == "annotation-queue-1"
     assert langfuse.annotation_queue_items[0]["baseline_output"] == "Baseline 1"
+
+
+def test_select_review_uses_live_trace_lookup_across_runner_instances() -> None:
+    langfuse = LangfuseClient()
+    langfuse.traces.append(
+        {
+            "trace_id": "trace-1",
+            "run_id": "candidate-1",
+            "input": "Source 1",
+            "output": "Candidate 1",
+            "metadata": {
+                "run_id": "candidate-1",
+                "dataset_item_id": "1",
+                "dataset_name": "rewrite-quality/v1",
+                "dataset_version": "latest",
+                "baseline_reference": {"baseline_run_id": "baseline-1"},
+            },
+        }
+    )
+    fresh_client = LangfuseClient(client=FakeTraceApi(langfuse.traces))
+
+    result = ExperimentRunner(langfuse_client=fresh_client).select_review(
+        Path("configs/projects/rewrite_quality.yaml"),
+        "candidate-1",
+    )
+
+    assert result.selected_count == 1
+    assert result.queued_count == 1
+
+
+class FakeTraceApi:
+    def __init__(self, traces):
+        self.api = type("Api", (), {"trace": self})()
+        self._traces = traces
+
+    def auth_check(self):
+        return True
+
+    def list(self, **kwargs):
+        run_id = kwargs.get("filter")
+        data = []
+        for trace in self._traces:
+            if run_id and str(trace["metadata"]["run_id"]) not in str(run_id):
+                continue
+            data.append(type("Trace", (), trace)())
+        return type("Page", (), {"data": data})()

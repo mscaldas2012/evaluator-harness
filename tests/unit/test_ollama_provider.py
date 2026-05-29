@@ -8,6 +8,9 @@ from evaluator_harness.providers.base import ModelRequest
 from evaluator_harness.providers.ollama import OllamaProvider
 
 
+OLLAMA_PROJECT = "tests/fixtures/projects/valid_rewrite_quality.yaml"
+
+
 class FakeResponse:
     def __init__(self, payload: dict[str, object]) -> None:
         self._payload = payload
@@ -33,7 +36,7 @@ class FakeHttpClient:
 
 
 def test_ollama_posts_generate_request_and_parses_response() -> None:
-    config = load_project_config("configs/projects/rewrite_quality.yaml").candidates[0]
+    config = load_project_config(OLLAMA_PROJECT).candidates[0]
     client = FakeHttpClient(
         payload={
             "response": "local rewrite",
@@ -57,7 +60,7 @@ def test_ollama_posts_generate_request_and_parses_response() -> None:
 
 
 def test_ollama_records_unavailable_usage_metadata_explicitly() -> None:
-    config = load_project_config("configs/projects/rewrite_quality.yaml").candidates[0]
+    config = load_project_config(OLLAMA_PROJECT).candidates[0]
     provider = OllamaProvider(config, http_client=FakeHttpClient())
 
     response = provider.generate(ModelRequest(prompt="Rewrite", params={}))
@@ -68,7 +71,7 @@ def test_ollama_records_unavailable_usage_metadata_explicitly() -> None:
 
 
 def test_ollama_timeout_raises_provider_error_with_retry_count() -> None:
-    config = load_project_config("configs/projects/rewrite_quality.yaml").candidates[0]
+    config = load_project_config(OLLAMA_PROJECT).candidates[0]
     provider = OllamaProvider(
         config,
         http_client=FakeHttpClient(error=TimeoutError("timeout")),

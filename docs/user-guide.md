@@ -73,6 +73,15 @@ project settings and environment variable names such as `EDAV_CLIENT_SECRET`.
 Actual credential values belong in `.env`, the host environment, or a secret
 manager, and must not be checked in.
 
+Azure-hosted models use one Azure/OpenAI-compatible provider family with an
+explicit `auth_mode` per baseline or candidate. Use
+`azure_client_credentials` for tenant/client auth and `api_key` for
+endpoint/API-key auth. The harness must not auto-detect auth mode from
+environment variables, because a shell may contain credentials for several
+baselines and candidates at once. Prefer project/model-specific variable names
+such as `REWRITE_QUALITY_BASELINE_AZURE_ENDPOINT` and
+`REWRITE_QUALITY_MISTRAL_LARGE_3_API_KEY`.
+
 Example:
 
 ```yaml
@@ -125,6 +134,19 @@ candidates:
       temperature: 0.0
       top_p: 1.0
       max_tokens: 2048
+  - name: azure-mistral-large-3
+    provider: openai_compatible
+    auth_mode: api_key
+    model: mistral-large-3
+    azure_api_key:
+      api_key_env: REWRITE_QUALITY_MISTRAL_LARGE_3_API_KEY
+      endpoint_env: REWRITE_QUALITY_MISTRAL_LARGE_3_ENDPOINT
+      api_version_env: REWRITE_QUALITY_MISTRAL_LARGE_3_API_VERSION
+    parameters:
+      temperature: 0.2
+      top_p: 1.0
+      max_tokens: 2048
+      token_limit_parameter: max_completion_tokens
 
 evaluators:
   - name: clarity
@@ -162,7 +184,9 @@ human_review:
 The Azure `*_env` fields are references to environment variables, not the secret
 values themselves. For example, `client_secret_env: EDAV_CLIENT_SECRET` tells the
 harness to read the client secret from an environment variable named
-`EDAV_CLIENT_SECRET`.
+`EDAV_CLIENT_SECRET`. For API-key candidates, `api_key_env` and `endpoint_env`
+are also environment variable names; do not place API keys or endpoint values
+directly in project YAML.
 
 Rewrite quality is only one project. Future projects should define their own
 datasets, prompts, baseline, candidates, and evaluator prompts.
@@ -216,6 +240,32 @@ Rewrite the following text according to the project instructions.
 Input:
 {{input}}
 ```
+
+For chat-style prompts, use role sections in the same Markdown prompt file.
+Each message starts with a level-2 heading in the form
+`## role: <role-label>`. Role labels are generic; `system`, `user`, and
+`assistant` are common examples.
+
+Example `prompts/dfe/task_prompt.md`:
+
+```markdown
+## role: system
+
+You are a careful editor.
+
+## role: user
+
+Rewrite the following text:
+
+{dataset.input}
+```
+
+Use `{dataset.<field>}` to substitute values from the active dataset row.
+`{dataset.input}` resolves to the dataset `input` column. Other dataset columns
+can be referenced the same way, as long as the column exists. Empty row values
+render as empty strings. If the selected provider cannot send the configured
+role labels exactly, validation fails before any model call. Candidate prompt
+overrides replace the full prompt; partial role inheritance is out of scope.
 
 Track prompt versions. If the prompt changes, treat it as a new version so
 baseline reuse rules remain clear.
@@ -370,13 +420,60 @@ uv run python run_experiment.py \
   --baseline latest-compatible
 ```
 
-Baseline reuse is valid only when the project, dataset version, task prompt
-version, evaluator set, and baseline model parameters are compatible.
+Baseline reuse is valid only when the project, dataset version, baseline task
+prompt version, evaluator set, and baseline model parameters are compatible.
 Use `--baseline latest-compatible` for the newest matching baseline, or pass an
 explicit baseline run ID such as `--baseline baseline-abc123` when you want a
 specific prior run. The harness rejects incompatible baselines instead of
 silently comparing against a different project, dataset, prompt, or baseline
 parameter set.
+
+Candidates may intentionally vary the model, task prompt, generation
+parameters, or a mix of those axes. The baseline reference stays tied to the
+baseline configuration, while candidate trace metadata records the active
+candidate identity for comparison in Langfuse.
+
+Prompt variant example:
+
+```yaml
+candidates:
+  - name: gpt5.2-dgw-default-prompt-v2
+    provider: openai_compatible
+    auth_mode: azure_client_credentials
+    model: gpt5.2-dgw-default
+    task_prompt:
+      path: prompts/rewrite_quality/task_prompt_v2.md
+      version: v2
+      template_variables:
+        - input
+    parameters:
+      temperature: 0.2
+      top_p: 1.0
+      max_tokens: 2048
+      token_limit_parameter: max_completion_tokens
+```
+
+Parameter variant example:
+
+```yaml
+candidates:
+  - name: gpt5.2-dgw-default-temp-high
+    provider: openai_compatible
+    auth_mode: azure_client_credentials
+    model: gpt5.2-dgw-default
+    parameters:
+      temperature: 0.8
+      top_p: 1.0
+      max_tokens: 2048
+      token_limit_parameter: max_completion_tokens
+```
+
+Prompt and parameter metadata is stored on runs, traces, evaluator payloads,
+annotation queue payloads, and CSV exports. Use `candidate_prompt_identity`,
+`baseline_prompt_identity`, `generation_parameter_hash`, `parameter_identity`,
+and `variant_identity` in Langfuse filters or exports when comparing variants.
+If a candidate changes more than one axis, the CLI prompts for confirmation;
+type `Y` or `y`, or pass `--confirm-mixed-variant` for scripted runs.
 
 ## 8.1 Add Another Model Configuration
 
@@ -406,6 +503,25 @@ candidates:
       max_tokens: 1024
 ```
 
+Azure endpoint/API-key candidate example:
+
+```yaml
+candidates:
+  - name: azure-mistral-large-3
+    provider: openai_compatible
+    auth_mode: api_key
+    model: mistral-large-3
+    azure_api_key:
+      api_key_env: REWRITE_QUALITY_MISTRAL_LARGE_3_API_KEY
+      endpoint_env: REWRITE_QUALITY_MISTRAL_LARGE_3_ENDPOINT
+      api_version_env: REWRITE_QUALITY_MISTRAL_LARGE_3_API_VERSION
+    parameters:
+      temperature: 0.2
+      top_p: 1.0
+      max_tokens: 2048
+      token_limit_parameter: max_completion_tokens
+```
+
 Ollama local candidate example:
 
 ```yaml
@@ -427,15 +543,17 @@ Run the new model with the same CLI shape:
 uv run python run_experiment.py run \
   --project configs/projects/rewrite_quality.yaml \
   --mode candidate \
-  --candidate azure-gpt41-mini-low-temp \
+  --candidate azure-mistral-large-3 \
   --baseline latest-compatible
 ```
 
 The provider factory is driven by `provider`. `openai_compatible` uses the
-Langfuse-wrapped Azure OpenAI path when available. `ollama` uses manual tracing
-metadata because there is no compatible Langfuse-wrapped Ollama client in the
-MVP. Project configs should not include a tracing mode; adapters choose and
-record the tracing strategy internally.
+Langfuse-wrapped Azure OpenAI path when available for tenant/client auth. The
+API-key path currently uses the harness manual generation span so it can attach
+the generation to the existing parent trace and preserve evaluator metadata.
+`ollama` uses manual tracing metadata because there is no compatible
+Langfuse-wrapped Ollama client in the MVP. Project configs should not include a
+tracing mode; adapters choose and record the tracing strategy internally.
 
 If a provider is not `openai_compatible` or `ollama`, add a small adapter under
 `src/evaluator_harness/providers/` and register it in the provider factory.
@@ -477,6 +595,56 @@ evaluator bindings are stored as non-secret YAML under
 `configs/langfuse/evaluator_bindings/` and are required before updates or
 inactivation. Sampling defaults to `100`; historical backfill is disabled
 unless explicitly enabled and supported by the selected Langfuse target.
+
+The project config is the source of truth for the evaluator definition. It
+declares what evaluator should exist, including its `name`, `version`,
+`source_type`, target, prompt path, output schema, filters, judge model, and
+score configuration. The evaluator binding file is sync state. It records which
+Langfuse evaluator and score config were created or reused for that project
+evaluator key.
+
+For example, `configs/projects/rewrite_quality.yaml` declares the desired
+`clarity` evaluator and points at the binding file:
+
+```yaml
+judge_setup:
+  binding_path: configs/langfuse/evaluator_bindings/rewrite-quality.yaml
+
+evaluators:
+  - name: clarity
+    version: v1
+    source_type: custom
+    target: observation
+    prompt_path: prompts/rewrite_quality/evaluators/clarity.md
+    score:
+      name: clarity
+      managed_by_harness: true
+```
+
+After `sync-judge-evaluators` runs, the binding file records the remote
+Langfuse resources for the same key:
+
+```yaml
+bindings:
+  - project: rewrite-quality
+    project_version: v1
+    evaluator_name: clarity
+    evaluator_version: v1
+    source_type: custom
+    target: observation
+    langfuse_evaluator_id: cmpokarfl00lmad0e8ko1tlz4
+    langfuse_display_name: EH_rewrite-quality_v1_judge_clarity_v1_custom_observation
+    score_config_id: cb709a27-8a26-4923-8828-f1ea9df2182d
+    score_config_name: eh_rewrite_quality_clarity
+```
+
+The binding key is `project`, `project_version`, `evaluator_name`,
+`evaluator_version`, `source_type`, and `target`. Changing one of those fields
+creates a different binding identity. Changing implementation details such as
+prompt text while keeping the same key lets the sync planner update or reuse the
+existing harness-managed Langfuse evaluator. Edit the project config for normal
+evaluator changes; edit the binding file only when intentionally repairing or
+re-pointing local sync state to existing Langfuse resources.
 
 Manual Langfuse checks remain useful:
 
