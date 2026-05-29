@@ -383,8 +383,23 @@ class OpenAICompatibleProvider:
 def _messages_for_request(request: ModelRequest) -> list[dict[str, str]]:
     rendered = getattr(request, "rendered_prompt", None)
     if rendered is not None and getattr(rendered, "shape", None) == "messages":
-        return [
+        messages = [
             {"role": str(message.role), "content": str(message.content)}
             for message in getattr(rendered, "messages", [])
         ]
+        if (
+            len(messages) >= 2
+            and messages[-1]["role"] == "assistant"
+            and messages[-2]["role"] == "user"
+        ):
+            assistant_instruction = messages.pop()["content"]
+            messages[-1] = {
+                **messages[-1],
+                "content": (
+                    messages[-1]["content"]
+                    + "\n\nAssistant response instruction:\n"
+                    + assistant_instruction
+                ),
+            }
+        return messages
     return [{"role": "user", "content": request.prompt}]

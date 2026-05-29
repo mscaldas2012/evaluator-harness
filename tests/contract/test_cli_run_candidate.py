@@ -81,7 +81,7 @@ def test_run_candidate_cli_failure_exit(monkeypatch) -> None:
     assert "No compatible baseline found" in result.stdout
 
 
-def test_run_candidate_cli_prompts_for_mixed_variant(monkeypatch) -> None:
+def test_run_candidate_cli_does_not_prompt_for_model_and_parameter_variant(monkeypatch) -> None:
     class FakeRunner:
         def mixed_variant_axes(self, project, candidate):
             assert project == Path("configs/projects/rewrite_quality.yaml")
@@ -106,11 +106,44 @@ def test_run_candidate_cli_prompts_for_mixed_variant(monkeypatch) -> None:
             "--baseline",
             "latest-compatible",
         ],
+    )
+
+    assert result.exit_code == 0
+    assert "Candidate variant changes multiple comparison axes" not in result.stdout
+    assert "Type Y to continue:" not in result.stdout
+    assert "run: candidate-123" in result.stdout
+
+
+def test_run_candidate_cli_prompts_for_prompt_mixed_variant(monkeypatch) -> None:
+    class FakeRunner:
+        def mixed_variant_axes(self, project, candidate):
+            assert project == Path("configs/projects/rewrite_quality.yaml")
+            assert candidate == "azure-mistral-large-3"
+            return ["model", "prompt", "params"]
+
+        def run(self, *_args, **_kwargs):
+            return FakeRunResult()
+
+    monkeypatch.setattr(cli, "ExperimentRunner", FakeRunner)
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "run",
+            "--project",
+            "configs/projects/rewrite_quality.yaml",
+            "--mode",
+            "candidate",
+            "--candidate",
+            "azure-mistral-large-3",
+            "--baseline",
+            "latest-compatible",
+        ],
         input="y\n",
     )
 
     assert result.exit_code == 0
-    assert "Candidate variant changes multiple comparison axes: model, params." in result.stdout
+    assert "Candidate variant changes multiple comparison axes: model, prompt, params." in result.stdout
     assert "Type Y to continue:" in result.stdout
     assert "run: candidate-123" in result.stdout
 
@@ -118,7 +151,7 @@ def test_run_candidate_cli_prompts_for_mixed_variant(monkeypatch) -> None:
 def test_run_candidate_cli_accepts_uppercase_y_for_mixed_variant(monkeypatch) -> None:
     class FakeRunner:
         def mixed_variant_axes(self, *_args, **_kwargs):
-            return ["model", "params"]
+            return ["prompt", "params"]
 
         def run(self, *_args, **_kwargs):
             return FakeRunResult()
@@ -147,7 +180,7 @@ def test_run_candidate_cli_accepts_uppercase_y_for_mixed_variant(monkeypatch) ->
 def test_run_candidate_cli_aborts_mixed_variant_without_y(monkeypatch) -> None:
     class FakeRunner:
         def mixed_variant_axes(self, *_args, **_kwargs):
-            return ["model", "params"]
+            return ["prompt", "params"]
 
         def run(self, *_args, **_kwargs):
             raise AssertionError("run should not be called")
@@ -175,7 +208,7 @@ def test_run_candidate_cli_aborts_mixed_variant_without_y(monkeypatch) -> None:
 def test_run_candidate_cli_confirm_flag_bypasses_mixed_variant_prompt(monkeypatch) -> None:
     class FakeRunner:
         def mixed_variant_axes(self, *_args, **_kwargs):
-            return ["model", "params"]
+            return ["prompt", "params"]
 
         def run(self, *_args, **_kwargs):
             return FakeRunResult()

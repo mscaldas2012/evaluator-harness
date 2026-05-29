@@ -61,6 +61,7 @@ from evaluator_harness.providers.base import (
     ModelRequest,
     validate_provider_roles,
 )
+from evaluator_harness.progress import NullProgressReporter, ProgressReporter
 from evaluator_harness.prompts import (
     RenderedPrompt,
     parse_prompt_file,
@@ -112,6 +113,7 @@ class ExperimentRunner:
         langfuse_client: LangfuseClient | None = None,
         provider_factory: Any | None = None,
         baseline_registry: BaselineRegistry | None = None,
+        progress: ProgressReporter | None = None,
     ) -> None:
         configure_tls_truststore()
         load_env_file()
@@ -123,6 +125,7 @@ class ExperimentRunner:
         self.provider_factory = provider_factory or create_provider
         self.baseline_registry = baseline_registry or BaselineRegistry()
         self.annotation_queue_store = AnnotationQueueReferenceStore()
+        self.progress = progress or NullProgressReporter()
 
     def validate_project(self, project_path: Path) -> ValidationResult:
         config = load_project_config(project_path)
@@ -160,12 +163,16 @@ class ExperimentRunner:
         config = load_project_config(project_path)
         validate_project_config(config)
         items = self._validate_dataset(config)
-        return self.langfuse_client.sync_dataset(config.dataset, items)
+        return self.langfuse_client.sync_dataset(
+            config.dataset,
+            items,
+            progress=self.progress,
+        )
 
     def sync_score_configs(self, project_path: Path) -> list[ScoreConfigSyncResult]:
         config = load_project_config(project_path)
         validate_project_config(config)
-        return self.langfuse_client.sync_score_configs(config)
+        return self.langfuse_client.sync_score_configs(config, progress=self.progress)
 
     def render_judge_prompts(self, project_path: Path) -> list[Any]:
         config = load_project_config(project_path)
@@ -187,7 +194,10 @@ class ExperimentRunner:
     ) -> EvaluatorSetupResult:
         config = load_project_config(project_path)
         validate_project_config(config)
-        score_results = self.langfuse_client.sync_score_configs(config)
+        score_results = self.langfuse_client.sync_score_configs(
+            config,
+            progress=self.progress,
+        )
         binding_path = config.judge_setup.binding_path or (
             Path("configs/langfuse/evaluator_bindings") / f"{config.project.name}.yaml"
         )
@@ -198,6 +208,7 @@ class ExperimentRunner:
                 self.langfuse_client,
                 score_results,
                 bindings=bindings,
+                progress=self.progress,
             )
         if dry_run:
             return plan_judge_evaluator_setup(
@@ -205,14 +216,20 @@ class ExperimentRunner:
                 self.langfuse_client,
                 score_results,
                 bindings=bindings,
+                progress=self.progress,
             )
-        return apply_judge_evaluator_setup(config, self.langfuse_client, score_results)
+        return apply_judge_evaluator_setup(
+            config,
+            self.langfuse_client,
+            score_results,
+            progress=self.progress,
+        )
 
     def sync_annotation_queue(self, project_path: Path) -> AnnotationQueueSyncResult:
         config = load_project_config(project_path)
         validate_project_config(config)
         score_results = (
-            self.langfuse_client.sync_score_configs(config)
+            self.langfuse_client.sync_score_configs(config, progress=self.progress)
             if config.human_review.enabled and config.human_review.queue_ownership == "managed_by_harness"
             else []
         )
@@ -232,8 +249,12 @@ class ExperimentRunner:
         config = load_project_config(project_path)
         validate_project_config(config)
         items = self._validate_dataset(config)
-        dataset_sync = self.langfuse_client.sync_dataset(config.dataset, items)
-        self.langfuse_client.sync_score_configs(config)
+        dataset_sync = self.langfuse_client.sync_dataset(
+            config.dataset,
+            items,
+            progress=self.progress,
+        )
+        self.langfuse_client.sync_score_configs(config, progress=self.progress)
         if mode == "baseline":
             return self._run_baseline(config, items, dataset_sync)
         return self._run_candidate(
@@ -277,7 +298,7 @@ class ExperimentRunner:
                 reasons={},
             )
         score_results = (
-            self.langfuse_client.sync_score_configs(config)
+            self.langfuse_client.sync_score_configs(config, progress=self.progress)
             if config.human_review.queue_ownership == "managed_by_harness"
             else []
         )
@@ -355,6 +376,18 @@ class ExperimentRunner:
             raise ConfigError("Local datasets require path")
         return load_dataset(config.dataset.path)
 
+    def _progress_items(
+        self,
+        description: str,
+        items: list[DatasetItem],
+    ) -> Any:
+        with self.progress.task(description, total=len(items)) as task:
+            for item in items:
+                try:
+                    yield item
+                finally:
+                    task.advance()
+
     def _generate_with_optional_langfuse_generation(
         self,
         provider: ModelProvider,
@@ -416,7 +449,7 @@ class ExperimentRunner:
         completed = 0
         failed = 0
         baseline_prompt_ref = config.task_prompt
-        for item in items:
+        for item in self._progress_items("Running baseline items", items):
             trace_id = self.langfuse_client.create_trace_id(f"{run_id}:{item.item_id}")
             trace_name = self._trace_name(config, run_type="baseline", item=item)
             rendered_prompt = self._render_prompt_payload(baseline_prompt_ref, item)
@@ -616,7 +649,7 @@ class ExperimentRunner:
         completed = 0
         failed = 0
         candidate_prompt_ref = candidate.task_prompt or config.task_prompt
-        for item in items:
+        for item in self._progress_items("Running candidate items", items):
             trace_id = self.langfuse_client.create_trace_id(f"{run_id}:{item.item_id}")
             trace_name = self._trace_name(
                 config,

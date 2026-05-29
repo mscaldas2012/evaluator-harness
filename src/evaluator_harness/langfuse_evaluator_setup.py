@@ -27,6 +27,7 @@ from evaluator_harness.evaluator_bindings import (
 from evaluator_harness.evaluators import build_filter_profile, load_judge_prompt
 from evaluator_harness.evaluators import prompt_placeholders
 from evaluator_harness.langfuse_client import LangfuseClient, ScoreConfigSyncResult
+from evaluator_harness.progress import NullProgressReporter, ProgressReporter
 
 
 MANAGED_NAME_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
@@ -226,6 +227,11 @@ def _filters_compatible(expected: dict[str, Any], remote: dict[str, Any]) -> boo
         or remote.get("_has_top_level_type_filter")
     ):
         return False
+    if (
+        expected.get("evaluator_set_id")
+        and remote.get("_evaluator_set_id_operator") not in {None, "contains"}
+    ):
+        return False
     compared_keys = {
         "observation_role",
         "project",
@@ -242,16 +248,21 @@ def plan_judge_evaluator_setup(
     *,
     bindings: EvaluatorBindingStore | None = None,
     validate_config: bool = True,
+    progress: ProgressReporter | None = None,
 ) -> EvaluatorSetupResult:
     if validate_config:
         validate_project_config(config)
     store = bindings or EvaluatorBindingStore()
     binding_path = _binding_path(config)
-    plans = [
-        _plan_one(config, evaluator, client, score_results, store)
-        for evaluator in config.evaluators
-        if evaluator.type == "llm_as_judge"
+    judge_evaluators = [
+        evaluator for evaluator in config.evaluators if evaluator.type == "llm_as_judge"
     ]
+    plans = []
+    reporter = progress or NullProgressReporter()
+    with reporter.task("Planning judge evaluators", total=len(judge_evaluators)) as task:
+        for evaluator in judge_evaluators:
+            plans.append(_plan_one(config, evaluator, client, score_results, store))
+            task.advance()
     for inactivation in _superseded_inactivation_plans(config, client, store, plans):
         plans.append(inactivation)
     return EvaluatorSetupResult(
@@ -268,6 +279,8 @@ def apply_judge_evaluator_setup(
     config: ProjectConfig,
     client: LangfuseClient,
     score_results: list[ScoreConfigSyncResult],
+    *,
+    progress: ProgressReporter | None = None,
 ) -> EvaluatorSetupResult:
     validate_project_config(config)
     binding_path = _binding_path(config)
@@ -280,33 +293,39 @@ def apply_judge_evaluator_setup(
     )
     result.mode = "apply"
     applied: list[EvaluatorSetupPlan] = []
-    for plan in result.evaluators:
-        if plan.operation in {EvaluatorOperation.BLOCK, EvaluatorOperation.FAIL}:
-            applied.append(plan)
-            continue
-        try:
-            if plan.operation == EvaluatorOperation.CREATE:
-                created = client.create_evaluator(_payload_from_plan(plan))
-                plan.remote_evaluator_id = str(created["id"])
-                plan.binding_status = "created"
-                _upsert_binding(config, store, plan)
-            elif plan.operation == EvaluatorOperation.UPDATE:
-                updated = client.update_evaluator(str(plan.remote_evaluator_id), plan.changes)
-                plan.remote_evaluator_id = str(updated["id"])
-                plan.binding_status = "refreshed"
-                _upsert_binding(config, store, plan)
-            elif plan.operation == EvaluatorOperation.INACTIVATE:
-                client.inactivate_evaluator(
-                    str(plan.remote_evaluator_id),
-                    comment=f"Superseded by {plan.evaluator_name}/{plan.evaluator_version}",
-                )
-                plan.activation_state = "inactive"
-            applied.append(plan)
-        except (ConfigError, NotImplementedError, RuntimeError) as exc:
-            plan.operation = EvaluatorOperation.FAIL
-            plan.reason = str(exc)
-            plan.remediation = "Resolve the reported Langfuse evaluator setup issue and rerun."
-            applied.append(plan)
+    reporter = progress or NullProgressReporter()
+    with reporter.task("Applying judge evaluators", total=len(result.evaluators)) as task:
+        for plan in result.evaluators:
+            try:
+                if plan.operation in {EvaluatorOperation.BLOCK, EvaluatorOperation.FAIL}:
+                    applied.append(plan)
+                    continue
+                if plan.operation == EvaluatorOperation.CREATE:
+                    created = client.create_evaluator(_payload_from_plan(plan))
+                    plan.remote_evaluator_id = str(created["id"])
+                    plan.binding_status = "created"
+                    _upsert_binding(config, store, plan)
+                    save_evaluator_bindings(binding_path, store)
+                elif plan.operation == EvaluatorOperation.UPDATE:
+                    updated = client.update_evaluator(str(plan.remote_evaluator_id), plan.changes)
+                    plan.remote_evaluator_id = str(updated["id"])
+                    plan.binding_status = "refreshed"
+                    _upsert_binding(config, store, plan)
+                    save_evaluator_bindings(binding_path, store)
+                elif plan.operation == EvaluatorOperation.INACTIVATE:
+                    client.inactivate_evaluator(
+                        str(plan.remote_evaluator_id),
+                        comment=f"Superseded by {plan.evaluator_name}/{plan.evaluator_version}",
+                    )
+                    plan.activation_state = "inactive"
+                applied.append(plan)
+            except (ConfigError, NotImplementedError, RuntimeError) as exc:
+                plan.operation = EvaluatorOperation.FAIL
+                plan.reason = str(exc)
+                plan.remediation = "Resolve the reported Langfuse evaluator setup issue and rerun."
+                applied.append(plan)
+            finally:
+                task.advance()
     result.evaluators = applied
     result.overall_status = _overall_status(applied)
     save_evaluator_bindings(binding_path, store)
@@ -319,12 +338,14 @@ def audit_judge_evaluator_setup(
     score_results: list[ScoreConfigSyncResult],
     *,
     bindings: EvaluatorBindingStore | None = None,
+    progress: ProgressReporter | None = None,
 ) -> EvaluatorSetupResult:
     result = plan_judge_evaluator_setup(
         config,
         client,
         score_results,
         bindings=bindings or EvaluatorBindingStore(),
+        progress=progress,
     )
     result.mode = "audit"
     return result

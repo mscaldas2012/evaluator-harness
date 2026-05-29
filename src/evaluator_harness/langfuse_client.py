@@ -17,6 +17,7 @@ from evaluator_harness.config import (
 )
 from evaluator_harness.dataset_loader import dataset_compatibility_version
 from evaluator_harness.errors import FailureContext, LangfuseError, ConfigError
+from evaluator_harness.progress import NullProgressReporter, ProgressReporter
 
 
 _FINGERPRINT_FIELDS = [
@@ -131,6 +132,8 @@ class LangfuseClient:
         self,
         source: DatasetSource,
         items: list[DatasetItem],
+        *,
+        progress: ProgressReporter | None = None,
     ) -> DatasetSyncResult:
         self.check_reachable(operation="sync-dataset")
         name = source.langfuse_dataset_name or source.langfuse_dataset_id
@@ -139,6 +142,7 @@ class LangfuseClient:
         compatibility_version = source.langfuse_dataset_version or dataset_compatibility_version(items)
         self.calls.append(("sync_dataset", {"name": name, "item_count": len(items)}))
         if source.kind != DatasetKind.LANGFUSE:
+            create_dataset_item = None
             if self.client is not None:
                 create_dataset = getattr(self.client, "create_dataset", None)
                 if callable(create_dataset):
@@ -154,8 +158,11 @@ class LangfuseClient:
                         # Dataset may already exist; item sync below is idempotent by source ID.
                         pass
                 create_dataset_item = getattr(self.client, "create_dataset_item", None)
-                if callable(create_dataset_item):
-                    for item in items:
+            synced_items: list[dict[str, Any]] = []
+            reporter = progress or NullProgressReporter()
+            with reporter.task("Syncing dataset items", total=len(items)) as task:
+                for item in items:
+                    if callable(create_dataset_item):
                         create_dataset_item(
                             dataset_name=name,
                             id=f"{name}:{item.item_id}",
@@ -168,20 +175,21 @@ class LangfuseClient:
                                 "compatibility_version": compatibility_version,
                             },
                         )
-            self.datasets[name] = [
-                {
-                    "id": item.item_id,
-                    "langfuse_item_id": f"{name}:{item.item_id}",
-                    "input": item.input,
-                    "expected_output": item.ground_truth or item.reference_output,
-                    "metadata": {
-                        **item.metadata,
-                        "item_id": item.item_id,
-                        "input_hash": item.input_hash,
-                    },
-                }
-                for item in items
-            ]
+                    synced_items.append(
+                        {
+                            "id": item.item_id,
+                            "langfuse_item_id": f"{name}:{item.item_id}",
+                            "input": item.input,
+                            "expected_output": item.ground_truth or item.reference_output,
+                            "metadata": {
+                                **item.metadata,
+                                "item_id": item.item_id,
+                                "input_hash": item.input_hash,
+                            },
+                        }
+                    )
+                    task.advance()
+            self.datasets[name] = synced_items
             status = "synced"
         else:
             self.datasets.setdefault(name, [])
@@ -256,57 +264,67 @@ class LangfuseClient:
                 return str(value) if value else None
         return None
 
-    def sync_score_configs(self, config: ProjectConfig) -> list[ScoreConfigSyncResult]:
+    def sync_score_configs(
+        self,
+        config: ProjectConfig,
+        *,
+        progress: ProgressReporter | None = None,
+    ) -> list[ScoreConfigSyncResult]:
         self.check_reachable(operation="sync-score-configs")
         results: list[ScoreConfigSyncResult] = []
-        for evaluator in config.evaluators:
-            score = evaluator.score
-            if not score.managed_by_harness:
-                score_config_id = score.langfuse_score_config_id
-                if not score_config_id:
-                    raise ConfigError(
-                        f"Evaluator {evaluator.name} requires langfuse_score_config_id"
-                    )
-                results.append(
-                    ScoreConfigSyncResult(
-                        evaluator_name=evaluator.name,
-                        name=score_config_id,
-                        score_config_id=score_config_id,
-                        status="user_owned",
-                        ownership="user_owned",
-                    )
-                )
-                continue
-
-            managed_name = f"{config.project.score_config_prefix}{score.name}"
-            payload = self._score_payload(managed_name, score)
-            self._load_live_score_configs_by_name(managed_name, payload)
-            existing = self.score_configs.get(managed_name)
-            if existing is None:
-                score_config_id = f"score-config-{len(self.score_configs) + 1}"
-                if self.client is not None:
-                    score_config_id = self._create_live_score_config(payload) or score_config_id
-                self.score_configs[managed_name] = {
-                    "id": score_config_id,
-                    **payload,
-                    "archived": False,
-                }
-                status = "created"
-            else:
-                self._assert_score_config_compatible(managed_name, existing, payload)
-                score_config_id = str(existing["id"])
-                status = "reused"
-            results.append(
-                ScoreConfigSyncResult(
-                    evaluator_name=evaluator.name,
-                    name=managed_name,
-                    score_config_id=score_config_id,
-                    status=status,
-                    ownership="managed_by_harness",
-                )
-            )
+        reporter = progress or NullProgressReporter()
+        with reporter.task("Syncing score configs", total=len(config.evaluators)) as task:
+            for evaluator in config.evaluators:
+                results.append(self._sync_one_score_config(config, evaluator))
+                task.advance()
         self.calls.append(("sync_score_configs", {"count": len(results)}))
         return results
+
+    def _sync_one_score_config(
+        self,
+        config: ProjectConfig,
+        evaluator: Any,
+    ) -> ScoreConfigSyncResult:
+        score = evaluator.score
+        if not score.managed_by_harness:
+            score_config_id = score.langfuse_score_config_id
+            if not score_config_id:
+                raise ConfigError(
+                    f"Evaluator {evaluator.name} requires langfuse_score_config_id"
+                )
+            return ScoreConfigSyncResult(
+                evaluator_name=evaluator.name,
+                name=score_config_id,
+                score_config_id=score_config_id,
+                status="user_owned",
+                ownership="user_owned",
+            )
+
+        managed_name = f"{config.project.score_config_prefix}{score.name}"
+        payload = self._score_payload(managed_name, score)
+        self._load_live_score_configs_by_name(managed_name, payload)
+        existing = self.score_configs.get(managed_name)
+        if existing is None:
+            score_config_id = f"score-config-{len(self.score_configs) + 1}"
+            if self.client is not None:
+                score_config_id = self._create_live_score_config(payload) or score_config_id
+            self.score_configs[managed_name] = {
+                "id": score_config_id,
+                **payload,
+                "archived": False,
+            }
+            status = "created"
+        else:
+            self._assert_score_config_compatible(managed_name, existing, payload)
+            score_config_id = str(existing["id"])
+            status = "reused"
+        return ScoreConfigSyncResult(
+            evaluator_name=evaluator.name,
+            name=managed_name,
+            score_config_id=score_config_id,
+            status=status,
+            ownership="managed_by_harness",
+        )
 
     def list_evaluators(self) -> list[dict[str, Any]]:
         self.check_reachable(operation="list-evaluators")
@@ -1467,7 +1485,7 @@ def _rest_evaluation_rule_filters(filters: dict[str, Any]) -> list[dict[str, Any
                     "type": "stringObject",
                     "column": "metadata",
                     "key": key,
-                    "operator": "=",
+                    "operator": "contains" if key == "evaluator_set_id" else "=",
                     "value": str(filters[key]),
                 }
             )
@@ -1557,7 +1575,10 @@ def _rest_filters_to_internal(filters: Any) -> dict[str, Any]:
         elif column == "type":
             internal["_has_top_level_type_filter"] = True
         elif column == "metadata" and item.get("key"):
-            internal[str(item["key"])] = value
+            key = str(item["key"])
+            internal[key] = value
+            if key == "evaluator_set_id":
+                internal["_evaluator_set_id_operator"] = item.get("operator")
     return internal
 
 
