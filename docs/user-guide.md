@@ -48,13 +48,18 @@ In Langfuse, set up the workspace that will store experiments:
 1. Create or select a Langfuse project.
 2. Create API credentials for the harness.
 3. Decide where datasets are authored:
-   - local CSV/JSON for low-friction authoring, or
-   - Langfuse Datasets managed in the Langfuse UI.
-4. Let the harness import or resolve local datasets as Langfuse Datasets before
-   valid experiment execution.
-5. Let the harness create or resolve harness-managed evaluator score configs
+   - Prefer local CSV/JSON committed with the project. This is the normal path
+     today.
+   - Langfuse Datasets managed directly in the Langfuse UI are useful for
+     review and comparison, but the harness does not yet fetch Langfuse-authored
+     dataset rows for execution.
+4. Let the harness import local datasets as Langfuse Datasets before valid
+   experiment execution.
+5. Optionally sync task and LLM judge prompts to Langfuse for review and prompt
+   version visibility.
+6. Let the harness create or resolve harness-managed evaluator score configs
    with the project score prefix.
-6. Let the harness create or resolve a project-managed Human Annotation Queue,
+7. Let the harness create or resolve a project-managed Human Annotation Queue,
    or configure a user-owned queue ID when you want to manage the queue
    manually.
 
@@ -222,11 +227,46 @@ Rules:
   can use it as a reference value. When absent, baseline and candidate runs
   should still proceed; evaluators that do not require ground truth can still
   run.
-- Before a valid experiment run, the harness should create, update, or resolve a
-  matching Langfuse Dataset and record the Langfuse dataset identity and version.
+- Before a valid experiment run, the harness should create or update a matching
+  Langfuse Dataset from the local file and record the Langfuse dataset identity
+  and version.
 - If Langfuse does not expose a dataset version, the harness derives a dataset
   compatibility version from stable item IDs and input hashes for baseline
   matching.
+
+For example, DFE uses a committed CSV as the source of truth:
+
+```yaml
+dataset:
+  kind: local_csv
+  path: datasets/DFE.csv
+  langfuse_dataset_name: dfe/v1
+  item_id_strategy: explicit_or_hash
+```
+
+Run `sync-dataset` to upload or update the rows in Langfuse:
+
+```bash
+uv run python run_experiment.py sync-dataset \
+  --project configs/projects/dfe.yaml
+```
+
+The harness still executes from `datasets/DFE.csv`. Langfuse receives the
+dataset items so traces can be attached to dataset runs, compared in the UI,
+and routed to review workflows.
+
+Langfuse-authored datasets can be referenced by name:
+
+```yaml
+dataset:
+  kind: langfuse
+  langfuse_dataset_name: dfe/v1
+  langfuse_dataset_version: v1
+```
+
+Use this only when you do not need the harness to execute over those rows yet.
+At the moment, project runs need local CSV/JSON items so the runner has inputs
+to send to the baseline and candidates.
 
 ## 5. Write the Task Prompt
 
@@ -773,16 +813,24 @@ uv run python run_experiment.py sync-dataset \
 uv run python run_experiment.py sync-score-configs \
   --project configs/projects/rewrite_quality.yaml
 
+# Optional: publish task and LLM judge prompts to Langfuse
+uv run python run_experiment.py sync-prompts \
+  --project configs/projects/rewrite_quality.yaml \
+  --dry-run
+
+uv run python run_experiment.py sync-prompts \
+  --project configs/projects/rewrite_quality.yaml
+
 uv run python run_experiment.py sync-annotation-queue \
   --project configs/projects/rewrite_quality.yaml
 
 # Run or create the baseline
-uv run python run_experiment.py \
+uv run python run_experiment.py run \
   --project configs/projects/rewrite_quality.yaml \
   --mode baseline
 
 # Run one candidate against the compatible baseline
-uv run python run_experiment.py \
+uv run python run_experiment.py run \
   --project configs/projects/rewrite_quality.yaml \
   --mode candidate \
   --candidate llama3-local \
