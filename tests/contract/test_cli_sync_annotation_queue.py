@@ -23,7 +23,8 @@ class FakeQueueResult:
 
 def test_sync_annotation_queue_cli_success_output(monkeypatch) -> None:
     class FakeRunner:
-        def sync_annotation_queue(self, project):
+        def sync_annotation_queue(self, project, *, dry_run=False):
+            assert dry_run is False
             return FakeQueueResult(score_config_ids=["score-config-1"])
 
     monkeypatch.setattr(cli, "ExperimentRunner", FakeRunner)
@@ -42,7 +43,7 @@ def test_sync_annotation_queue_cli_success_output(monkeypatch) -> None:
 
 def test_sync_annotation_queue_cli_skipped_output(monkeypatch) -> None:
     class FakeRunner:
-        def sync_annotation_queue(self, project):
+        def sync_annotation_queue(self, project, *, dry_run=False):
             return FakeQueueResult(
                 queue_id=None,
                 queue_name=None,
@@ -65,7 +66,7 @@ def test_sync_annotation_queue_cli_skipped_output(monkeypatch) -> None:
 
 def test_sync_annotation_queue_cli_failure_output(monkeypatch) -> None:
     class FakeRunner:
-        def sync_annotation_queue(self, project):
+        def sync_annotation_queue(self, project, *, dry_run=False):
             raise ConfigError("score config IDs are required")
 
     monkeypatch.setattr(cli, "ExperimentRunner", FakeRunner)
@@ -77,3 +78,61 @@ def test_sync_annotation_queue_cli_failure_output(monkeypatch) -> None:
 
     assert result.exit_code == 1
     assert "score config" in result.stdout
+
+
+def test_sync_annotation_queue_cli_dry_run_output(monkeypatch) -> None:
+    class FakeRunner:
+        def sync_annotation_queue(self, project, *, dry_run=False):
+            assert dry_run is True
+            return FakeQueueResult(
+                queue_id=None,
+                status="planned",
+                score_config_ids=["score-config-1"],
+                reference_path=None,
+                message="annotation queue would be created",
+            )
+
+    monkeypatch.setattr(cli, "ExperimentRunner", FakeRunner)
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "sync-annotation-queue",
+            "--project",
+            "configs/projects/rewrite_quality.yaml",
+            "--dry-run",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "status: planned" in result.stdout
+    assert "message: annotation queue would be created" in result.stdout
+
+
+def test_sync_annotation_queue_cli_conflict_exits_nonzero(monkeypatch) -> None:
+    class FakeRunner:
+        def sync_annotation_queue(self, project, *, dry_run=False):
+            return FakeQueueResult(
+                queue_id="queue-1",
+                status="conflict",
+                score_config_ids=["other-score-config"],
+                reference_path=None,
+                message="Existing annotation queue has score configs that do not match this project.",
+            )
+
+    monkeypatch.setattr(cli, "ExperimentRunner", FakeRunner)
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "sync-annotation-queue",
+            "--project",
+            "configs/projects/rewrite_quality.yaml",
+            "--dry-run",
+        ],
+    )
+
+    assert result.exit_code == 1
+    assert "status: conflict" in result.stdout
+    assert "do not match this" in result.stdout
+    assert "project" in result.stdout

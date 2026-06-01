@@ -43,9 +43,11 @@ class AnnotationQueueSyncResult(BaseModel):
         "created",
         "reused",
         "resolved",
+        "planned",
         "skipped",
         "user_owned",
         "environment_override",
+        "conflict",
         "failed",
     ]
     score_config_ids: list[str] = Field(default_factory=list)
@@ -145,6 +147,7 @@ def sync_annotation_queue(
     score_config_results: list[object],
     *,
     store: AnnotationQueueReferenceStore | None = None,
+    dry_run: bool = False,
 ) -> AnnotationQueueSyncResult:
     policy = config.human_review
     review_version = queue_review_policy_version(config)
@@ -175,7 +178,7 @@ def sync_annotation_queue(
         for result in score_config_results
         if getattr(result, "score_config_id", None)
     ]
-    if not score_config_ids:
+    if not score_config_ids and not dry_run:
         raise ConfigError("score config IDs are required before annotation queue sync")
 
     queue_name = policy.queue_name or managed_queue_name(
@@ -188,6 +191,15 @@ def sync_annotation_queue(
         config.project.version,
         review_version,
     )
+    if dry_run:
+        return _dry_run_annotation_queue(
+            config,
+            review_version,
+            queue_name,
+            langfuse_client,
+            score_config_results,
+            existing_reference,
+        )
     if existing_reference is not None:
         try:
             existing_queue = _get_annotation_queue(langfuse_client, existing_reference.queue_id)
@@ -350,6 +362,117 @@ def _save_queue_reference(
         status=status,
         score_config_ids=reference.score_config_ids,
         reference_path=str(path),
+        message=message,
+    )
+
+
+def _dry_run_annotation_queue(
+    config: ProjectConfig,
+    review_version: str,
+    queue_name: str,
+    langfuse_client: object,
+    score_config_results: list[object],
+    existing_reference: AnnotationQueueReference | None,
+) -> AnnotationQueueSyncResult:
+    desired_ids = {
+        str(getattr(result, "score_config_id"))
+        for result in score_config_results
+        if getattr(result, "score_config_id", None)
+    }
+    score_config_names = [
+        str(getattr(result, "name"))
+        for result in score_config_results
+        if getattr(result, "name", None)
+    ]
+    if not desired_ids:
+        return AnnotationQueueSyncResult(
+            queue_name=queue_name,
+            ownership="managed_by_harness",
+            status="planned",
+            score_config_ids=[],
+            message=(
+                "annotation queue would be checked after score configs are applied: "
+                + ", ".join(score_config_names)
+            ),
+        )
+
+    if existing_reference is not None:
+        try:
+            queue = _get_annotation_queue(langfuse_client, existing_reference.queue_id)
+        except (ConfigError, LangfuseError) as exc:
+            if isinstance(exc, LangfuseError) and "not found" not in str(exc).lower():
+                raise
+        else:
+            return _dry_run_queue_match_result(
+                queue,
+                desired_ids,
+                score_config_ids=sorted(desired_ids),
+                message="local annotation queue reference points to an existing queue",
+            )
+
+    for queue in _list_annotation_queues(langfuse_client):
+        if queue.get("name") == queue_name:
+            return _dry_run_queue_match_result(
+                queue,
+                desired_ids,
+                score_config_ids=sorted(desired_ids),
+                message="matching Langfuse annotation queue already exists",
+            )
+
+    queues = _list_annotation_queues(langfuse_client)
+    if len(queues) == 1:
+        queue = queues[0]
+        queue_score_ids = set(_queue_score_config_ids(queue))
+        if queue_score_ids and queue_score_ids != desired_ids:
+            return AnnotationQueueSyncResult(
+                queue_id=str(queue.get("id") or ""),
+                queue_name=str(queue.get("name") or queue_name),
+                ownership="managed_by_harness",
+                status="conflict",
+                score_config_ids=_queue_score_config_ids(queue),
+                message=(
+                    "Existing annotation queue has score configs that do not match this project. "
+                    "Delete the queue if you want this project's scores attached to it, "
+                    "or use a separate Langfuse project."
+                ),
+            )
+
+    return AnnotationQueueSyncResult(
+        queue_name=queue_name,
+        ownership="managed_by_harness",
+        status="planned",
+        score_config_ids=sorted(desired_ids),
+        message="annotation queue would be created",
+    )
+
+
+def _dry_run_queue_match_result(
+    queue: dict[str, object],
+    desired_ids: set[str],
+    *,
+    score_config_ids: list[str],
+    message: str,
+) -> AnnotationQueueSyncResult:
+    queue_score_ids = set(_queue_score_config_ids(queue))
+    if queue_score_ids and queue_score_ids != desired_ids:
+        return AnnotationQueueSyncResult(
+            queue_id=str(queue.get("id") or ""),
+            queue_name=str(queue.get("name") or ""),
+            ownership="managed_by_harness",
+            status="conflict",
+            score_config_ids=_queue_score_config_ids(queue),
+            message=(
+                "Existing annotation queue has score configs that do not match this project. "
+                "Delete the queue if you want this project's scores attached to it, "
+                "or use a separate Langfuse project."
+            ),
+        )
+    return AnnotationQueueSyncResult(
+        queue_id=str(queue.get("id") or ""),
+        queue_name=str(queue.get("name") or ""),
+        ownership="managed_by_harness",
+        status="reused",
+        score_config_ids=score_config_ids,
         message=message,
     )
 

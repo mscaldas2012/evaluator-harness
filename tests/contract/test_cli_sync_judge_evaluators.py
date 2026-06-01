@@ -20,7 +20,10 @@ def _project_with_binding(tmp_path: Path, source: str = "tests/fixtures/projects
     return project
 
 
-def test_sync_judge_evaluators_dry_run_reports_preview_plan(tmp_path: Path) -> None:
+def test_sync_judge_evaluators_dry_run_reports_preview_plan(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setenv("EVALUATOR_HARNESS_LIVE", "0")
     project = _project_with_binding(tmp_path)
     result = CliRunner().invoke(
         app,
@@ -41,7 +44,10 @@ def test_sync_judge_evaluators_dry_run_reports_preview_plan(tmp_path: Path) -> N
     assert "activation: active-on-apply" in result.output
 
 
-def test_sync_judge_evaluators_apply_reports_status(tmp_path: Path) -> None:
+def test_sync_judge_evaluators_apply_reports_status(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setenv("EVALUATOR_HARNESS_LIVE", "0")
     project = _project_with_binding(tmp_path)
     binding_path = tmp_path / "bindings.yaml"
 
@@ -61,7 +67,10 @@ def test_sync_judge_evaluators_apply_reports_status(tmp_path: Path) -> None:
     assert binding_path.exists()
 
 
-def test_sync_judge_evaluators_audit_reports_non_mutating_audit(tmp_path: Path) -> None:
+def test_sync_judge_evaluators_audit_reports_non_mutating_audit(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setenv("EVALUATOR_HARNESS_LIVE", "0")
     project = _project_with_binding(tmp_path)
     result = CliRunner().invoke(
         app,
@@ -78,7 +87,9 @@ def test_sync_judge_evaluators_audit_reports_non_mutating_audit(tmp_path: Path) 
     assert "binding-file:" in result.output
 
 
-def test_sync_judge_evaluators_returns_validation_failure_exit_code() -> None:
+def test_sync_judge_evaluators_returns_validation_failure_exit_code(monkeypatch) -> None:
+    monkeypatch.setenv("EVALUATOR_HARNESS_LIVE", "0")
+
     result = CliRunner().invoke(
         app,
         [

@@ -25,6 +25,21 @@ def test_sync_dataset_creates_or_updates_dataset_with_items() -> None:
     assert client.datasets["rewrite/v1"][0]["input"] == "Rewrite"
 
 
+def test_sync_dataset_dry_run_reports_plan_without_creating_items() -> None:
+    client = LangfuseClient()
+    items = [DatasetItem(item_id="1", input="Rewrite", ground_truth="Expected")]
+
+    result = client.sync_dataset(
+        DatasetSource(kind=DatasetKind.LOCAL_CSV, langfuse_dataset_name="rewrite/v1"),
+        items,
+        dry_run=True,
+    )
+
+    assert result.status == "planned"
+    assert result.item_count == 1
+    assert "rewrite/v1" not in client.datasets
+
+
 def test_sync_dataset_resolves_langfuse_dataset_without_local_items() -> None:
     client = LangfuseClient()
 

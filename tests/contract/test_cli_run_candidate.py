@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from types import SimpleNamespace
 
 from typer.testing import CliRunner
 
@@ -17,6 +18,7 @@ class FakeRunResult:
     completed_count: int = 2
     failed_count: int = 0
     baseline_reference: object | None = object()
+    review_selection: object | None = None
 
 
 def test_run_candidate_cli_success_output(monkeypatch) -> None:
@@ -28,6 +30,7 @@ def test_run_candidate_cli_success_output(monkeypatch) -> None:
             assert mode == "candidate"
             assert kwargs["candidate"] == "llama3-local"
             assert kwargs["baseline"] == "latest-compatible"
+            assert kwargs["select_human_review"] is True
             return FakeRunResult()
 
     monkeypatch.setattr(cli, "ExperimentRunner", FakeRunner)
@@ -50,6 +53,70 @@ def test_run_candidate_cli_success_output(monkeypatch) -> None:
     assert result.exit_code == 0
     assert "run: candidate-123" in result.stdout
     assert "candidate: 2 completed, 0 failed" in result.stdout
+
+
+def test_run_candidate_cli_prints_automatic_human_review_summary(monkeypatch) -> None:
+    class FakeRunner:
+        def mixed_variant_axes(self, *_args, **_kwargs):
+            return []
+
+        def run(self, *_args, **_kwargs):
+            return FakeRunResult(
+                review_selection=SimpleNamespace(
+                    selected_count=2,
+                    queued_count=1,
+                    skipped_duplicate_count=1,
+                )
+            )
+
+    monkeypatch.setattr(cli, "ExperimentRunner", FakeRunner)
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "run",
+            "--project",
+            "configs/projects/rewrite_quality.yaml",
+            "--mode",
+            "candidate",
+            "--candidate",
+            "llama3-local",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "review-selected: 2" in result.stdout
+    assert "review-queued: 1" in result.stdout
+    assert "review-duplicates-skipped: 1" in result.stdout
+
+
+def test_run_candidate_cli_can_skip_automatic_human_review(monkeypatch) -> None:
+    class FakeRunner:
+        def mixed_variant_axes(self, *_args, **_kwargs):
+            return []
+
+        def run(self, project, mode, **kwargs):
+            assert kwargs["select_human_review"] is False
+            return FakeRunResult()
+
+    monkeypatch.setattr(cli, "ExperimentRunner", FakeRunner)
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "run",
+            "--project",
+            "configs/projects/rewrite_quality.yaml",
+            "--mode",
+            "candidate",
+            "--candidate",
+            "llama3-local",
+            "--skip-human-review",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "review: skipped" in result.stdout
 
 
 def test_run_candidate_cli_failure_exit(monkeypatch) -> None:

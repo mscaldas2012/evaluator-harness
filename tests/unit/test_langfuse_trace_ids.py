@@ -8,6 +8,23 @@ from evaluator_harness.runner import ExperimentRunner
 from tests.fixtures.fake_provider import FakeModelProvider
 
 
+class FakeScoreConfigsApi:
+    def __init__(self) -> None:
+        self.created: list[object] = []
+
+    def get(self, *, limit):
+        return type("Page", (), {"data": []})()
+
+    def create(self, **kwargs):
+        created = type(
+            "Created",
+            (),
+            {"id": f"score-config-{len(self.created) + 1}"},
+        )()
+        self.created.append(created)
+        return created
+
+
 def test_runner_uses_langfuse_valid_trace_ids_for_outputs() -> None:
     langfuse = LangfuseClient()
     runner = ExperimentRunner(
@@ -99,6 +116,11 @@ def test_runner_nests_openai_generation_under_parent_trace_span() -> None:
             self.started: list[dict] = []
             self.create_event_called = False
             self.flush_count = 0
+            self.api = type(
+                "Api",
+                (),
+                {"score_configs": FakeScoreConfigsApi()},
+            )()
 
         def start_as_current_observation(self, **kwargs):
             self.started.append(kwargs)
@@ -132,7 +154,11 @@ def test_runner_nests_openai_generation_under_parent_trace_span() -> None:
         provider_factory=provider_factory,
     )
 
-    runner.run("configs/projects/rewrite_quality.yaml", "baseline")
+    runner.run(
+        "configs/projects/rewrite_quality.yaml",
+        "baseline",
+        select_human_review=False,
+    )
 
     assert captured_requests
     assert all(
@@ -184,6 +210,11 @@ def test_runner_does_not_create_openai_generation_for_non_openai_provider() -> N
     class FakeLiveClient:
         def __init__(self) -> None:
             self.started: list[dict] = []
+            self.api = type(
+                "Api",
+                (),
+                {"score_configs": FakeScoreConfigsApi()},
+            )()
 
         def start_as_current_observation(self, **kwargs):
             self.started.append(kwargs)
@@ -201,7 +232,11 @@ def test_runner_does_not_create_openai_generation_for_non_openai_provider() -> N
         ),
     )
 
-    runner.run("configs/projects/rewrite_quality.yaml", "baseline")
+    runner.run(
+        "configs/projects/rewrite_quality.yaml",
+        "baseline",
+        select_human_review=False,
+    )
 
     assert live_client.started
     assert {started["as_type"] for started in live_client.started} == {"span"}

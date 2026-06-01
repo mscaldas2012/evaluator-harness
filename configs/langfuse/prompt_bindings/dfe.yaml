@@ -8,7 +8,7 @@ bindings:
   content_identity: sha256:edc1da160e134646e4a00f5e97c0722c4bf8ab3b77e8c213cf34ecd0ccb9cbaf
   prompt_shape: chat
   active: true
-  last_synced_at: '2026-06-01T14:53:49.245323+00:00'
+  last_synced_at: '2026-06-01T19:25:53.240157+00:00'
   langfuse_prompt_version: 1
   langfuse_labels:
   - dfe
@@ -28,7 +28,7 @@ bindings:
   content_identity: sha256:68cdba96d2c5cd129c88121c9ecace47c3b208da8ef4da5accaa2ef4b8624378
   prompt_shape: text
   active: true
-  last_synced_at: '2026-06-01T14:53:49.245395+00:00'
+  last_synced_at: '2026-06-01T19:25:53.240321+00:00'
   langfuse_prompt_version: 1
   langfuse_labels:
   - dfe
@@ -45,7 +45,7 @@ bindings:
   content_identity: sha256:61ecf74cfc0f1476200a14a921a8a5b6092b4d1411a94bc21798d10c060ed331
   prompt_shape: text
   active: true
-  last_synced_at: '2026-06-01T14:53:49.245417+00:00'
+  last_synced_at: '2026-06-01T19:25:53.240378+00:00'
   langfuse_prompt_version: 1
   langfuse_labels:
   - dfe
@@ -62,7 +62,7 @@ bindings:
   content_identity: sha256:6ed37ad0fa7a34654977d26f57b8fd3339c460c9c2deeff50b7f45db2dc16b1f
   prompt_shape: text
   active: true
-  last_synced_at: '2026-06-01T14:53:49.245431+00:00'
+  last_synced_at: '2026-06-01T19:25:53.240419+00:00'
   langfuse_prompt_version: 1
   langfuse_labels:
   - dfe
@@ -79,7 +79,7 @@ bindings:
   content_identity: sha256:e49b6c6ae27e0f326518ee297f9e702fe5aaca46287c3f7de8eb43e6ef7ae9e9
   prompt_shape: text
   active: true
-  last_synced_at: '2026-06-01T14:53:49.245447+00:00'
+  last_synced_at: '2026-06-01T19:25:53.240455+00:00'
   langfuse_prompt_version: 1
   langfuse_labels:
   - dfe
@@ -96,7 +96,7 @@ bindings:
   content_identity: sha256:7ac51156ceedee68aca42ddcd3933e03e4149b62f54f171d97626edae62fde20
   prompt_shape: text
   active: true
-  last_synced_at: '2026-06-01T14:53:49.245466+00:00'
+  last_synced_at: '2026-06-01T19:25:53.240491+00:00'
   langfuse_prompt_version: 1
   langfuse_labels:
   - dfe
@@ -113,7 +113,7 @@ bindings:
   content_identity: sha256:0b20de8447086c67329fbcbd9c36f8bc7751d843e680f09f031b3e47696056ed
   prompt_shape: text
   active: true
-  last_synced_at: '2026-06-01T14:53:49.245483+00:00'
+  last_synced_at: '2026-06-01T19:25:53.240526+00:00'
   langfuse_prompt_version: 1
   langfuse_labels:
   - dfe
@@ -130,7 +130,7 @@ bindings:
   content_identity: sha256:a1c42235415a55b523cb239dbbea3b27be6ff63a0c95ae4706c4661a6a3f86a3
   prompt_shape: text
   active: true
-  last_synced_at: '2026-06-01T14:53:49.245498+00:00'
+  last_synced_at: '2026-06-01T19:25:53.240563+00:00'
   langfuse_prompt_version: 1
   langfuse_labels:
   - dfe
@@ -147,7 +147,7 @@ bindings:
   content_identity: sha256:2d990f590c7fdcf7be5a792ed375d7cec2fffc68043283ea57d50c38ee911047
   prompt_shape: text
   active: true
-  last_synced_at: '2026-06-01T14:53:49.245514+00:00'
+  last_synced_at: '2026-06-01T19:25:53.240598+00:00'
   langfuse_prompt_version: 1
   langfuse_labels:
   - dfe
@@ -164,7 +164,7 @@ bindings:
   content_identity: sha256:09459c2fef08ab611c942a0317cec3465f1019cc3a86a931e6611c4a01a35dfd
   prompt_shape: text
   active: true
-  last_synced_at: '2026-06-01T14:53:49.245530+00:00'
+  last_synced_at: '2026-06-01T19:25:53.240632+00:00'
   langfuse_prompt_version: 1
   langfuse_labels:
   - dfe
@@ -181,7 +181,7 @@ bindings:
   content_identity: sha256:1eb5f0464f1e1b6c1102acb48f01e28fd2397d53ae351d29c39fbe3fc98bfe13
   prompt_shape: text
   active: true
-  last_synced_at: '2026-06-01T14:53:49.245548+00:00'
+  last_synced_at: '2026-06-01T19:25:53.240666+00:00'
   langfuse_prompt_version: 1
   langfuse_labels:
   - dfe

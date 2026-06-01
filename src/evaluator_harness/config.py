@@ -343,6 +343,8 @@ class HumanReviewPolicy(BaseModel):
     queue_ownership: Literal["managed_by_harness", "user_owned"] = "managed_by_harness"
     queue_name: str | None = None
     minimum_sample_percent: int = 5
+    minimum_sample_count: int = Field(default=1, ge=0)
+    sample_strategy: Literal["stable", "random"] = "stable"
     prioritize: list[str] = Field(
         default_factory=lambda: ["failures", "low_confidence", "disputed"]
     )

@@ -8,7 +8,6 @@ from rich.progress import (
     BarColumn,
     MofNCompleteColumn,
     Progress,
-    SpinnerColumn,
     TextColumn,
     TimeElapsedColumn,
     TimeRemainingColumn,
@@ -52,11 +51,18 @@ class RichProgressReporter:
     def __init__(self, console: Console) -> None:
         self.console = console
 
+    def _complete_prefix(self) -> str:
+        encoding = self.console.encoding or "utf-8"
+        try:
+            "✓".encode(encoding)
+        except UnicodeEncodeError:
+            return "[green]OK[/green]"
+        return "[green]✓[/green]"
+
     @contextmanager
     def task(self, description: str, *, total: int | None = None):
         columns = (
             (
-                SpinnerColumn(),
                 TextColumn("[progress.description]{task.description}"),
                 TimeElapsedColumn(),
             )
@@ -72,7 +78,10 @@ class RichProgressReporter:
         with Progress(
             *columns,
             console=self.console,
-            transient=True,
+            transient=False,
         ) as progress:
             task_id = progress.add_task(description, total=total)
-            yield RichProgressTask(progress, task_id)
+            try:
+                yield RichProgressTask(progress, task_id)
+            finally:
+                progress.update(task_id, description=f"{self._complete_prefix()} {description}")

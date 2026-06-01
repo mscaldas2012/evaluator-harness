@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from evaluator_harness.config import load_project_config
-from evaluator_harness.errors import ConfigError
+from evaluator_harness.errors import ConfigError, LangfuseError
 from evaluator_harness.langfuse_client import LangfuseClient
 
 
@@ -16,6 +16,18 @@ def test_score_config_sync_creates_missing_managed_config() -> None:
     assert results[0].name == "eh_rewrite_quality_clarity"
     assert results[0].status == "created"
     assert "eh_rewrite_quality_clarity" in client.score_configs
+
+
+def test_score_config_sync_dry_run_reports_missing_managed_config_without_creating() -> None:
+    config = load_project_config("configs/projects/rewrite_quality.yaml")
+    client = LangfuseClient()
+
+    results = client.sync_score_configs(config, dry_run=True)
+
+    assert results[0].name == "eh_rewrite_quality_clarity"
+    assert results[0].status == "planned_create"
+    assert results[0].score_config_id == ""
+    assert "eh_rewrite_quality_clarity" not in client.score_configs
 
 
 def test_score_config_sync_reuses_compatible_config() -> None:
@@ -92,6 +104,42 @@ def test_score_config_sync_normalizes_live_camel_case_schema() -> None:
     results = client.sync_score_configs(config)
 
     assert results[0].status == "reused"
+
+
+def test_live_score_config_creation_requires_real_id() -> None:
+    class FakeScoreConfigsApi:
+        def get(self, *, limit):
+            return type("Page", (), {"data": []})()
+
+        def create(self, **kwargs):
+            return type("Created", (), {})()
+
+    client = LangfuseClient(
+        client=type("FakeClient", (), {"api": type("Api", (), {"score_configs": FakeScoreConfigsApi()})()})()
+    )
+    config = load_project_config("configs/projects/rewrite_quality.yaml")
+
+    with pytest.raises(LangfuseError, match="missing id"):
+        client.sync_score_configs(config)
+
+
+def test_live_score_config_creation_returns_real_id() -> None:
+    class FakeScoreConfigsApi:
+        def get(self, *, limit):
+            return type("Page", (), {"data": []})()
+
+        def create(self, **kwargs):
+            return type("Created", (), {"id": "live-score-config-created"})()
+
+    client = LangfuseClient(
+        client=type("FakeClient", (), {"api": type("Api", (), {"score_configs": FakeScoreConfigsApi()})()})()
+    )
+    config = load_project_config("configs/projects/rewrite_quality.yaml")
+
+    results = client.sync_score_configs(config)
+
+    assert results[0].status == "created"
+    assert results[0].score_config_id == "live-score-config-created"
 
 
 def test_score_config_sync_validates_user_owned_reference() -> None:
