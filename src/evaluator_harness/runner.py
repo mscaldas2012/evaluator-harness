@@ -68,6 +68,11 @@ from evaluator_harness.prompts import (
     prompt_identity as prompt_file_identity,
     render_prompt,
 )
+from evaluator_harness.prompt_sync import (
+    PromptSyncReport,
+    prompt_provenance_metadata,
+    sync_project_prompts,
+)
 from evaluator_harness.review_selection import ReviewCandidate, select_review_items
 
 
@@ -173,6 +178,21 @@ class ExperimentRunner:
         config = load_project_config(project_path)
         validate_project_config(config)
         return self.langfuse_client.sync_score_configs(config, progress=self.progress)
+
+    def sync_prompts(
+        self,
+        project_path: Path,
+        *,
+        dry_run: bool = False,
+    ) -> PromptSyncReport:
+        config = load_project_config(project_path)
+        validate_project_config(config)
+        return sync_project_prompts(
+            config,
+            self.langfuse_client,
+            dry_run=dry_run,
+            progress=self.progress,
+        )
 
     def render_judge_prompts(self, project_path: Path) -> list[Any]:
         config = load_project_config(project_path)
@@ -849,6 +869,7 @@ class ExperimentRunner:
     ) -> dict[str, Any]:
         active_model = model_config or config.baseline
         active_prompt_identity = prompt_identity_for_model(config, active_model)
+        prompt_ref = active_model.task_prompt or config.task_prompt
         baseline_prompt_identity = prompt_identity_for_model(config, config.baseline)
         candidate_prompt_identity = (
             active_prompt_identity if baseline_reference is not None else None
@@ -894,6 +915,12 @@ class ExperimentRunner:
                 "prompt_version": active_prompt_identity["version"],
                 "prompt_shape": active_prompt_identity.get("shape"),
                 "prompt_roles": active_prompt_identity.get("roles", []),
+                **prompt_provenance_metadata(
+                    config,
+                    artifact_type="task",
+                    artifact_name="task_prompt",
+                    prompt_ref=prompt_ref,
+                ),
                 "prompt_identity": active_prompt_identity,
                 "baseline_prompt_version": baseline_prompt_identity["version"],
                 "baseline_prompt_identity": baseline_prompt_identity,
@@ -953,6 +980,7 @@ class ExperimentRunner:
         rendered_prompt: RenderedPrompt | None = None,
     ) -> dict[str, Any]:
         active_prompt_identity = prompt_identity_for_model(config, model_config)
+        prompt_ref = model_config.task_prompt or config.task_prompt
         baseline_prompt_identity = prompt_identity_for_model(config, config.baseline)
         candidate_prompt_identity = (
             active_prompt_identity if run_type == "candidate" else None
@@ -975,6 +1003,12 @@ class ExperimentRunner:
             "prompt_version": active_prompt_identity["version"],
             "prompt_shape": active_prompt_identity.get("shape"),
             "prompt_roles": active_prompt_identity.get("roles", []),
+            **prompt_provenance_metadata(
+                config,
+                artifact_type="task",
+                artifact_name="task_prompt",
+                prompt_ref=prompt_ref,
+            ),
             "prompt_identity": active_prompt_identity,
             "baseline_prompt_version": baseline_prompt_identity["version"],
             "baseline_prompt_identity": baseline_prompt_identity,

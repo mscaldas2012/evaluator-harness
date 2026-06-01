@@ -78,6 +78,48 @@ def sync_score_configs(project: Annotated[Path, typer.Option("--project")]) -> N
             console.print(f"id: {result.score_config_id}")
 
 
+@app.command("sync-prompts")
+def sync_prompts(
+    project: Annotated[Path, typer.Option("--project")],
+    dry_run: Annotated[
+        bool,
+        typer.Option(
+            "--dry-run",
+            "--audit",
+            help="Preview prompt sync actions without creating Langfuse prompts or writing bindings.",
+        ),
+    ] = False,
+) -> None:
+    result = _handle_command(lambda: _runner().sync_prompts(project, dry_run=dry_run))
+    if result is not None:
+        console.print(f"project: {result.project}/{result.project_version}")
+        console.print(f"mode: {result.mode}")
+        console.print(f"binding-file: {result.binding_path}")
+        console.print(f"prompts: {result.total_count}")
+        console.print(f"created: {result.created_count}")
+        console.print(f"reused: {result.reused_count}")
+        console.print(f"conflicts: {result.conflict_count}")
+        console.print(f"failed: {result.failed_count}")
+        for item in result.items:
+            console.print("")
+            console.print(
+                "prompt: "
+                f"{item.artifact.artifact_type}/"
+                f"{item.artifact.artifact_name}/"
+                f"{item.artifact.artifact_version}"
+            )
+            console.print(f"managed-name: {item.managed_name}")
+            console.print(f"shape: {item.artifact.prompt_shape}")
+            console.print(f"status: {item.status}")
+            console.print(f"langfuse-version: {item.langfuse_prompt_version or 'none'}")
+            if item.message:
+                console.print(f"message: {item.message}")
+            if item.remediation:
+                console.print(f"remediation: {item.remediation}")
+        if result.conflict_count or result.failed_count:
+            raise typer.Exit(code=1)
+
+
 @app.command("sync-annotation-queue")
 def sync_annotation_queue(project: Annotated[Path, typer.Option("--project")]) -> None:
     result = _handle_command(lambda: _runner().sync_annotation_queue(project))
