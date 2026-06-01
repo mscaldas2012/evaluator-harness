@@ -12,6 +12,7 @@ class FakeLangfuseClient:
     traces: list[dict[str, Any]] = field(default_factory=list)
     score_configs: dict[str, Any] = field(default_factory=dict)
     scores: list[dict[str, Any]] = field(default_factory=list)
+    prompts: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
     annotation_queue_items: list[dict[str, Any]] = field(default_factory=list)
     calls: list[tuple[str, dict[str, Any]]] = field(default_factory=list)
 
@@ -50,6 +51,19 @@ class FakeLangfuseClient:
         self.calls.append(("create_score", score))
         self.scores.append(score)
         return score
+
+    def list_prompts(self, name: str | None = None) -> list[dict[str, Any]]:
+        self.calls.append(("list_prompts", {"name": name}))
+        if name is not None:
+            return list(self.prompts.get(name, []))
+        return [prompt for versions in self.prompts.values() for prompt in versions]
+
+    def create_prompt(self, prompt: dict[str, Any]) -> dict[str, Any]:
+        self.calls.append(("create_prompt", prompt))
+        versions = self.prompts.setdefault(str(prompt["name"]), [])
+        created = {"version": len(versions) + 1, **prompt}
+        versions.append(created)
+        return created
 
     def add_annotation_queue_item(self, item: dict[str, Any]) -> dict[str, Any]:
         self.calls.append(("add_annotation_queue_item", item))

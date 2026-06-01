@@ -37,6 +37,8 @@ def test_planner_creates_missing_managed_evaluator() -> None:
     assert result.evaluators[0].output_definition["score"]["minValue"] == 0
     assert result.evaluators[0].output_definition["score"]["maxValue"] == 1
     assert "0.0 to 1.0" in result.evaluators[0].output_definition["score"]["description"]
+    assert result.evaluators[0].prompt_provenance["prompt_artifact_type"] == "evaluator"
+    assert result.evaluators[0].prompt_provenance["prompt_content_identity"].startswith("sha256:")
 
 
 def test_safe_update_changes_only_operational_fields() -> None:

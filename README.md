@@ -37,6 +37,30 @@ $env:EVALUATOR_HARNESS_LIVE="1"
 
 `LANGFUSE_BASE_URL` is still accepted as a compatibility alias.
 
+## Prompt Sync
+
+Repository prompt files remain the source of truth for task and LLM judge
+execution. `sync-prompts` optionally publishes the project task prompt and local
+LLM judge prompt files to Langfuse for review, dry-run checks, and prompt version
+visibility.
+
+Run dry-run mode first to preview changes:
+
+```powershell
+uv run python run_experiment.py sync-prompts --project configs/projects/rewrite_quality.yaml --dry-run
+```
+
+Apply mode creates or reuses harness-managed Langfuse prompt versions and writes
+local prompt binding references under `configs/langfuse/prompt_bindings/`:
+
+```powershell
+uv run python run_experiment.py sync-prompts --project configs/projects/rewrite_quality.yaml
+```
+
+`prompt_version` is a strict release label. If prompt content changes after it
+has been synced, bump the relevant `prompt_version` before publishing the new
+content. Sync refuses to overwrite changed content under the same prompt version.
+
 Required for the Azure OpenAI baseline adapter:
 
 ```powershell
@@ -63,6 +87,8 @@ $env:REWRITE_QUALITY_MISTRAL_LARGE_3_API_VERSION="2024-12-01-preview"
 uv run python run_experiment.py validate --project configs/projects/rewrite_quality.yaml
 uv run python run_experiment.py sync-dataset --project configs/projects/rewrite_quality.yaml
 uv run python run_experiment.py sync-score-configs --project configs/projects/rewrite_quality.yaml
+uv run python run_experiment.py sync-prompts --project configs/projects/rewrite_quality.yaml --dry-run
+uv run python run_experiment.py sync-prompts --project configs/projects/rewrite_quality.yaml
 uv run python run_experiment.py sync-annotation-queue --project configs/projects/rewrite_quality.yaml
 
 uv run python run_experiment.py run `

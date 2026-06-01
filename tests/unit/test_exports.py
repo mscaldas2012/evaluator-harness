@@ -25,6 +25,14 @@ def test_export_summary_writes_trace_rows_with_score_columns(tmp_path: Path) -> 
                 "prompt_version": "v1",
                 "prompt_shape": "messages",
                 "prompt_roles": ["system", "user"],
+                "prompt_artifact_type": "task",
+                "prompt_artifact_name": "task_prompt",
+                "prompt_local_path": "prompts/task.md",
+                "prompt_content_identity": "sha256:abc",
+                "prompt_managed_name": "EH_project_v1_prompt_task_task_prompt_v1",
+                "langfuse_prompt_name": "EH_project_v1_prompt_task_task_prompt_v1",
+                "langfuse_prompt_version": 1,
+                "langfuse_prompt_labels": ["project", "v1"],
                 "evaluator_set_id": "clarity:v1",
                 "provider": "ollama",
                 "model": "llama3",
@@ -69,6 +77,9 @@ def test_export_summary_writes_trace_rows_with_score_columns(tmp_path: Path) -> 
     assert "trace-1,candidate-1,1,rewrite-quality" in csv_text
     assert "generation_parameter_hash" in csv_text
     assert "prompt_shape" in csv_text
+    assert "prompt_content_identity" in csv_text
+    assert "sha256:abc" in csv_text
+    assert "EH_project_v1_prompt_task_task_prompt_v1" in csv_text
     assert "messages" in csv_text
     assert '[""system"", ""user""]' in csv_text
     assert "params-hash" in csv_text

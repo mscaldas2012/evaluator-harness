@@ -76,6 +76,7 @@ class LangfuseClient:
     candidate_evaluator_payloads: list[dict[str, Any]] = field(default_factory=list)
     baseline_references: dict[str, Any] = field(default_factory=dict)
     scores: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
+    prompt_versions: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
     annotation_queues: dict[str, dict[str, Any]] = field(default_factory=dict)
     annotation_queue_items: list[dict[str, Any]] = field(default_factory=list)
     evaluators: dict[str, dict[str, Any]] = field(default_factory=dict)
@@ -932,6 +933,47 @@ class LangfuseClient:
             if str(score.get("trace_id")) in trace_id_set
         ]
 
+    def list_prompt_versions(self, name: str | None = None) -> list[dict[str, Any]]:
+        self.check_reachable(operation="list-prompts")
+        self.calls.append(("list_prompt_versions", {"name": name}))
+        if self.client is not None:
+            return self._live_list_prompt_versions(name=name)
+        if name is not None:
+            return list(self.prompt_versions.get(name, []))
+        return [
+            prompt
+            for versions in self.prompt_versions.values()
+            for prompt in versions
+        ]
+
+    def find_prompt_version(
+        self,
+        name: str,
+        *,
+        label: str,
+    ) -> dict[str, Any] | None:
+        for prompt in self.list_prompt_versions(name):
+            labels = prompt.get("labels") or []
+            if label in labels:
+                return prompt
+            config = prompt.get("config") or {}
+            if isinstance(config, dict) and config.get("artifact_version") == label:
+                return prompt
+        return None
+
+    def create_prompt_version(self, payload: dict[str, Any]) -> dict[str, Any]:
+        self.check_reachable(operation="create-prompt")
+        self.calls.append(("create_prompt_version", payload))
+        if self.client is not None:
+            return self._live_create_prompt_version(payload)
+        versions = self.prompt_versions.setdefault(str(payload["name"]), [])
+        created = {
+            "version": len(versions) + 1,
+            **payload,
+        }
+        versions.append(created)
+        return created
+
     def traces_for_run(
         self,
         run_id: str,
@@ -944,6 +986,96 @@ class LangfuseClient:
         live_traces = self._live_traces_for_run(run_id, dataset_names=dataset_names)
         self.traces.extend(live_traces)
         return live_traces
+
+    def _live_list_prompt_versions(self, *, name: str | None = None) -> list[dict[str, Any]]:
+        prompts_client = getattr(getattr(self.client, "api", None), "prompts", None)
+        list_prompts = getattr(prompts_client, "list", None)
+        get_prompt = getattr(prompts_client, "get", None)
+        if not callable(list_prompts):
+            return []
+        versions: list[dict[str, Any]] = []
+        page_number = 1
+        while True:
+            try:
+                page = list_prompts(name=name, page=page_number, limit=100)
+            except Exception as exc:
+                raise LangfuseError(f"Unable to list Langfuse prompts: {exc}") from exc
+            for item in getattr(page, "data", None) or []:
+                meta = _object_to_prompt_dict(item)
+                prompt_name = str(meta.get("name") or name or "")
+                prompt_versions = meta.get("versions") or []
+                if callable(get_prompt) and prompt_versions:
+                    for version in prompt_versions:
+                        version_number = (
+                            version.get("version") if isinstance(version, dict) else version
+                        )
+                        try:
+                            versions.append(
+                                _object_to_prompt_dict(
+                                    get_prompt(prompt_name, version=int(version_number), resolve=False)
+                                )
+                            )
+                        except Exception:
+                            continue
+                else:
+                    versions.append(meta)
+            meta = getattr(page, "meta", None)
+            total_pages = int(getattr(meta, "total_pages", page_number) or page_number)
+            if page_number >= total_pages:
+                break
+            page_number += 1
+        return versions
+
+    def _live_create_prompt_version(self, payload: dict[str, Any]) -> dict[str, Any]:
+        prompts_client = getattr(getattr(self.client, "api", None), "prompts", None)
+        create = getattr(prompts_client, "create", None)
+        if not callable(create):
+            raise LangfuseError("Installed Langfuse SDK does not expose prompt creation")
+        try:
+            if payload.get("type") == "chat":
+                from langfuse.api.prompts.types.chat_message import ChatMessage
+                from langfuse.api.prompts.types.create_chat_prompt_request import (
+                    CreateChatPromptRequest,
+                )
+                from langfuse.api.prompts.types.create_chat_prompt_type import (
+                    CreateChatPromptType,
+                )
+
+                request = CreateChatPromptRequest(
+                    name=payload["name"],
+                    type=CreateChatPromptType.CHAT,
+                    prompt=[
+                        ChatMessage(
+                            role=message["role"],
+                            content=message["content"],
+                        )
+                        for message in payload["prompt"]
+                    ],
+                    labels=payload.get("labels"),
+                    tags=payload.get("tags"),
+                    config=payload.get("config"),
+                    commit_message=payload.get("commit_message"),
+                )
+            else:
+                from langfuse.api.prompts.types.create_text_prompt_request import (
+                    CreateTextPromptRequest,
+                )
+                from langfuse.api.prompts.types.create_text_prompt_type import (
+                    CreateTextPromptType,
+                )
+
+                request = CreateTextPromptRequest(
+                    name=payload["name"],
+                    type=CreateTextPromptType.TEXT,
+                    prompt=str(payload["prompt"]),
+                    labels=payload.get("labels"),
+                    tags=payload.get("tags"),
+                    config=payload.get("config"),
+                    commit_message=payload.get("commit_message"),
+                )
+            return _object_to_prompt_dict(create(request=request))
+        except Exception as exc:
+            raise LangfuseError(f"Unable to create Langfuse prompt {payload.get('name')}: {exc}") from exc
 
     def _live_scores_for_traces(
         self,
@@ -1582,6 +1714,41 @@ def _object_to_score_dict(value: Any) -> dict[str, Any]:
         raw["observation_id"] = str(raw["observation_id"])
     if raw.get("dataset_run_id") is not None:
         raw["dataset_run_id"] = str(raw["dataset_run_id"])
+    return raw
+
+
+def _object_to_prompt_dict(value: Any) -> dict[str, Any]:
+    if isinstance(value, dict):
+        raw = dict(value)
+    elif hasattr(value, "model_dump"):
+        raw = value.model_dump(mode="json")
+    elif hasattr(value, "dict"):
+        raw = value.dict()
+    else:
+        raw = {
+            key: getattr(value, key)
+            for key in (
+                "name",
+                "version",
+                "prompt",
+                "type",
+                "config",
+                "labels",
+                "tags",
+                "commit_message",
+                "commitMessage",
+                "versions",
+            )
+            if hasattr(value, key)
+        }
+    if "commitMessage" in raw and "commit_message" not in raw:
+        raw["commit_message"] = raw["commitMessage"]
+    if raw.get("version") is not None:
+        raw["version"] = int(raw["version"])
+    if raw.get("labels") is None:
+        raw["labels"] = []
+    if raw.get("tags") is None:
+        raw["tags"] = []
     return raw
 
 

@@ -27,6 +27,7 @@ from evaluator_harness.evaluator_bindings import (
 from evaluator_harness.evaluators import build_filter_profile, load_judge_prompt
 from evaluator_harness.evaluators import prompt_placeholders
 from evaluator_harness.langfuse_client import LangfuseClient, ScoreConfigSyncResult
+from evaluator_harness.prompt_sync import prompt_provenance_metadata
 from evaluator_harness.progress import NullProgressReporter, ProgressReporter
 
 
@@ -85,6 +86,7 @@ class EvaluatorSetupPlan:
     catalog_ref: str | None = None
     prompt: str | None = None
     prompt_version: str | None = None
+    prompt_provenance: dict[str, Any] | None = None
     output_definition: dict[str, Any] | None = None
     judge_model: str | None = None
     llm_connection: str | None = None
@@ -451,6 +453,11 @@ def _plan_one(
         catalog_ref=evaluator.catalog_ref,
         prompt=_prompt_text(evaluator),
         prompt_version=evaluator.prompt_version,
+        prompt_provenance=prompt_provenance_metadata(
+            config,
+            artifact_type="evaluator",
+            artifact_name=evaluator.name,
+        ),
         output_definition=_output_definition(evaluator),
         judge_model=judge_value if judge_kind == "judge_model" else None,
         llm_connection=judge_value if judge_kind == "llm_connection" else None,
@@ -547,6 +554,7 @@ def _payload_from_plan(plan: EvaluatorSetupPlan) -> dict[str, Any]:
         "catalog_ref": plan.catalog_ref,
         "prompt": plan.prompt,
         "prompt_version": plan.prompt_version,
+        "prompt_provenance": plan.prompt_provenance,
         "output_definition": plan.output_definition,
         "score_config_id": plan.score_target.score_config_id,
         "score_config_name": plan.score_target.name,
