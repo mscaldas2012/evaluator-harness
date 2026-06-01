@@ -73,7 +73,11 @@ from evaluator_harness.prompt_sync import (
     prompt_provenance_metadata,
     sync_project_prompts,
 )
-from evaluator_harness.review_selection import ReviewCandidate, select_review_items
+from evaluator_harness.review_selection import (
+    ReviewCandidate,
+    SampleStrategy,
+    select_review_items,
+)
 
 
 @dataclass(frozen=True)
@@ -99,6 +103,7 @@ class RunResult:
     completed_count: int
     failed_count: int
     baseline_reference: BaselineReference | None = None
+    review_selection: ReviewSelectionResult | None = None
 
 
 @dataclass(frozen=True)
@@ -109,6 +114,15 @@ class ReviewSelectionResult:
     queue_id: str | None
     reasons: dict[str, int]
     queue_ownership: str = "none"
+
+
+@dataclass(frozen=True)
+class SyncAllResult:
+    dataset: DatasetSyncResult
+    prompts: PromptSyncReport
+    score_configs: list[ScoreConfigSyncResult]
+    judge_evaluators: EvaluatorSetupResult
+    annotation_queue: AnnotationQueueSyncResult
 
 
 class ExperimentRunner:
@@ -164,20 +178,30 @@ class ExperimentRunner:
             ),
         )
 
-    def sync_dataset(self, project_path: Path) -> DatasetSyncResult:
+    def sync_dataset(self, project_path: Path, *, dry_run: bool = False) -> DatasetSyncResult:
         config = load_project_config(project_path)
         validate_project_config(config)
         items = self._validate_dataset(config)
         return self.langfuse_client.sync_dataset(
             config.dataset,
             items,
+            dry_run=dry_run,
             progress=self.progress,
         )
 
-    def sync_score_configs(self, project_path: Path) -> list[ScoreConfigSyncResult]:
+    def sync_score_configs(
+        self,
+        project_path: Path,
+        *,
+        dry_run: bool = False,
+    ) -> list[ScoreConfigSyncResult]:
         config = load_project_config(project_path)
         validate_project_config(config)
-        return self.langfuse_client.sync_score_configs(config, progress=self.progress)
+        return self.langfuse_client.sync_score_configs(
+            config,
+            progress=self.progress,
+            dry_run=dry_run,
+        )
 
     def sync_prompts(
         self,
@@ -192,6 +216,32 @@ class ExperimentRunner:
             self.langfuse_client,
             dry_run=dry_run,
             progress=self.progress,
+        )
+
+    def sync_all(self, project_path: Path, *, dry_run: bool = False) -> SyncAllResult:
+        dataset_description = "Checking dataset" if dry_run else "Syncing dataset"
+        with self.progress.task(dataset_description, total=None):
+            dataset = self.sync_dataset(project_path, dry_run=dry_run)
+        prompts = self.sync_prompts(project_path, dry_run=dry_run)
+        score_configs = self.sync_score_configs(project_path, dry_run=dry_run)
+        judge_evaluators = self.sync_judge_evaluators(
+            project_path,
+            dry_run=dry_run,
+            score_results=score_configs,
+        )
+        queue_description = "Checking annotation queue" if dry_run else "Syncing annotation queue"
+        with self.progress.task(queue_description, total=None):
+            annotation_queue = self.sync_annotation_queue(
+                project_path,
+                dry_run=dry_run,
+                score_results=score_configs,
+            )
+        return SyncAllResult(
+            dataset=dataset,
+            prompts=prompts,
+            score_configs=score_configs,
+            judge_evaluators=judge_evaluators,
+            annotation_queue=annotation_queue,
         )
 
     def render_judge_prompts(self, project_path: Path) -> list[Any]:
@@ -211,12 +261,18 @@ class ExperimentRunner:
         *,
         dry_run: bool = False,
         audit: bool = False,
+        score_results: list[ScoreConfigSyncResult] | None = None,
     ) -> EvaluatorSetupResult:
         config = load_project_config(project_path)
         validate_project_config(config)
-        score_results = self.langfuse_client.sync_score_configs(
-            config,
-            progress=self.progress,
+        effective_score_results = (
+            score_results
+            if score_results is not None
+            else self.langfuse_client.sync_score_configs(
+                config,
+                progress=self.progress,
+                dry_run=dry_run,
+            )
         )
         binding_path = config.judge_setup.binding_path or (
             Path("configs/langfuse/evaluator_bindings") / f"{config.project.name}.yaml"
@@ -226,7 +282,7 @@ class ExperimentRunner:
             return audit_judge_evaluator_setup(
                 config,
                 self.langfuse_client,
-                score_results,
+                effective_score_results,
                 bindings=bindings,
                 progress=self.progress,
             )
@@ -234,30 +290,43 @@ class ExperimentRunner:
             return plan_judge_evaluator_setup(
                 config,
                 self.langfuse_client,
-                score_results,
+                effective_score_results,
                 bindings=bindings,
                 progress=self.progress,
             )
         return apply_judge_evaluator_setup(
             config,
             self.langfuse_client,
-            score_results,
+            effective_score_results,
             progress=self.progress,
         )
 
-    def sync_annotation_queue(self, project_path: Path) -> AnnotationQueueSyncResult:
+    def sync_annotation_queue(
+        self,
+        project_path: Path,
+        *,
+        dry_run: bool = False,
+        score_results: list[ScoreConfigSyncResult] | None = None,
+    ) -> AnnotationQueueSyncResult:
         config = load_project_config(project_path)
         validate_project_config(config)
-        score_results = (
-            self.langfuse_client.sync_score_configs(config, progress=self.progress)
+        effective_score_results = (
+            score_results
+            if score_results is not None
+            else self.langfuse_client.sync_score_configs(
+                config,
+                progress=self.progress,
+                dry_run=dry_run,
+            )
             if config.human_review.enabled and config.human_review.queue_ownership == "managed_by_harness"
             else []
         )
         return sync_annotation_queue(
             config,
             self.langfuse_client,
-            score_results,
+            effective_score_results,
             store=self.annotation_queue_store,
+            dry_run=dry_run,
         )
 
     def run(self, project_path: Path, mode: str, **kwargs: object) -> RunResult:
@@ -276,14 +345,30 @@ class ExperimentRunner:
         )
         self.langfuse_client.sync_score_configs(config, progress=self.progress)
         if mode == "baseline":
-            return self._run_baseline(config, items, dataset_sync)
-        return self._run_candidate(
-            config,
-            items,
-            dataset_sync,
-            candidate_name=_required_str(kwargs.get("candidate"), "--candidate"),
-            baseline_selector=str(kwargs.get("baseline") or "latest-compatible"),
-        )
+            result = self._run_baseline(config, items, dataset_sync)
+        else:
+            result = self._run_candidate(
+                config,
+                items,
+                dataset_sync,
+                candidate_name=_required_str(kwargs.get("candidate"), "--candidate"),
+                baseline_selector=str(kwargs.get("baseline") or "latest-compatible"),
+            )
+        if (
+            kwargs.get("select_human_review", True)
+            and config.human_review.enabled
+            and result.completed_count > 0
+        ):
+            review = self.select_review(project_path, result.run_id)
+            return RunResult(
+                run_id=result.run_id,
+                run_type=result.run_type,
+                completed_count=result.completed_count,
+                failed_count=result.failed_count,
+                baseline_reference=result.baseline_reference,
+                review_selection=review,
+            )
+        return result
 
     def mixed_variant_axes(
         self,
@@ -305,7 +390,15 @@ class ExperimentRunner:
             axes.append("params")
         return axes
 
-    def select_review(self, project_path: Path, run_id: str) -> ReviewSelectionResult:
+    def select_review(
+        self,
+        project_path: Path,
+        run_id: str,
+        *,
+        sample_strategy: SampleStrategy | None = None,
+    ) -> ReviewSelectionResult:
+        if sample_strategy is not None and sample_strategy not in {"stable", "random"}:
+            raise ConfigError("sample_strategy must be stable or random")
         config = load_project_config(project_path)
         validate_project_config(config)
         if not config.human_review.enabled:
@@ -322,16 +415,29 @@ class ExperimentRunner:
             if config.human_review.queue_ownership == "managed_by_harness"
             else []
         )
-        queue = resolve_annotation_queue(
-            config,
-            self.langfuse_client,
-            score_results,
-            store=self.annotation_queue_store,
-        )
+        with self.progress.task("Resolving annotation queue", total=None):
+            queue = resolve_annotation_queue(
+                config,
+                self.langfuse_client,
+                score_results,
+                store=self.annotation_queue_store,
+            )
         if not queue.queue_id:
             raise ConfigError("annotation queue could not be resolved")
 
-        traces = self.langfuse_client.traces_for_run(run_id)
+        dataset_names = [
+            name
+            for name in [
+                config.dataset.langfuse_dataset_name,
+                config.dataset.langfuse_dataset_id,
+            ]
+            if name
+        ]
+        with self.progress.task("Fetching review traces", total=None):
+            traces = self.langfuse_client.traces_for_run(
+                run_id,
+                dataset_names=dataset_names or None,
+            )
         trace_ids = [
             str(trace["trace_id"])
             for trace in traces
@@ -345,6 +451,15 @@ class ExperimentRunner:
         candidates = [
             ReviewCandidate.from_trace(trace, scores=scores)
             for trace in traces
+        ]
+        with self.progress.task("Checking existing review items", total=None):
+            existing_review_trace_ids = self.langfuse_client.annotation_queue_object_ids(
+                queue.queue_id
+            )
+        unqueued_candidates = [
+            candidate
+            for candidate in candidates
+            if candidate.trace_id not in existing_review_trace_ids
         ]
         dataset_name = (
             str(traces[0].get("metadata", {}).get("dataset_name"))
@@ -360,20 +475,25 @@ class ExperimentRunner:
             else config.dataset.langfuse_dataset_version or "unknown"
         )
         selections = select_review_items(
-            candidates,
+            unqueued_candidates,
             config.human_review,
             project_name=config.project.name,
             dataset_name=dataset_name,
             dataset_version=dataset_version,
+            sample_strategy=sample_strategy,
         )
-        payloads = [
-            self.langfuse_client.build_annotation_queue_payload(config, selection)
-            for selection in selections
-        ]
-        routing: AnnotationRoutingResult = self.langfuse_client.route_annotation_items(
-            queue.queue_id,
-            payloads,
-        )
+        payloads = []
+        with self.progress.task("Building review payloads", total=len(selections)) as task:
+            for selection in selections:
+                payloads.append(
+                    self.langfuse_client.build_annotation_queue_payload(config, selection)
+                )
+                task.advance()
+        with self.progress.task("Routing review items", total=None):
+            routing: AnnotationRoutingResult = self.langfuse_client.route_annotation_items(
+                queue.queue_id,
+                payloads,
+            )
         reasons: dict[str, int] = {}
         for selection in selections:
             reasons[selection.selection_reason] = (

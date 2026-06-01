@@ -35,6 +35,74 @@ def test_select_review_items_enforces_minimum_one_item() -> None:
     assert selected[0].selection_bucket == "stable_calibration"
 
 
+def test_select_review_items_uses_minimum_sample_count_floor() -> None:
+    candidates = [
+        ReviewCandidate(item_id=str(index), run_id="run", trace_id=f"trace-{index}")
+        for index in range(1, 13)
+    ]
+    policy = HumanReviewPolicy(
+        enabled=True,
+        minimum_sample_percent=5,
+        minimum_sample_count=3,
+    )
+
+    selected = select_review_items(candidates, policy)
+
+    assert len([item for item in selected if item.selection_reason == "sample"]) == 3
+
+
+def test_select_review_items_random_strategy_uses_random_sample(monkeypatch) -> None:
+    candidates = [
+        ReviewCandidate(item_id=str(index), run_id="run", trace_id=f"trace-{index}")
+        for index in range(1, 6)
+    ]
+    policy = HumanReviewPolicy(
+        enabled=True,
+        minimum_sample_percent=20,
+        minimum_sample_count=2,
+        sample_strategy="random",
+    )
+
+    def fake_sample(items, *, k):
+        assert items == ["1", "2", "3", "4", "5"]
+        assert k == 2
+        return ["5", "2"]
+
+    monkeypatch.setattr("evaluator_harness.review_selection.random.sample", fake_sample)
+
+    selected = select_review_items(candidates, policy)
+
+    assert [item.item_id for item in selected if item.selection_reason == "sample"] == [
+        "5",
+        "2",
+    ]
+
+
+def test_select_review_items_cli_strategy_override_wins(monkeypatch) -> None:
+    candidates = [
+        ReviewCandidate(item_id=str(index), run_id="run", trace_id=f"trace-{index}")
+        for index in range(1, 6)
+    ]
+    policy = HumanReviewPolicy(
+        enabled=True,
+        minimum_sample_percent=20,
+        minimum_sample_count=2,
+        sample_strategy="stable",
+    )
+
+    monkeypatch.setattr(
+        "evaluator_harness.review_selection.random.sample",
+        lambda _items, *, k: ["4", "3"][:k],
+    )
+
+    selected = select_review_items(candidates, policy, sample_strategy="random")
+
+    assert [item.item_id for item in selected if item.selection_reason == "sample"] == [
+        "4",
+        "3",
+    ]
+
+
 def test_select_review_items_returns_empty_when_disabled() -> None:
     candidates = [ReviewCandidate(item_id="1", run_id="run", trace_id="trace-1", failed=True)]
     policy = HumanReviewPolicy(enabled=False)

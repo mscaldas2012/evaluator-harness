@@ -74,6 +74,45 @@ def test_dataset_sync_reports_progress_for_local_items() -> None:
     assert ("end", "Syncing dataset items", 2) in progress.events
 
 
+def test_select_review_reports_progress_for_live_steps() -> None:
+    progress = RecordingProgress()
+    client = LangfuseClient()
+    client.traces.extend(
+        [
+            {
+                "trace_id": "trace-1",
+                "run_id": "candidate-1",
+                "input": "Source 1",
+                "output": "Candidate 1",
+                "metadata": {
+                    "run_id": "candidate-1",
+                    "dataset_item_id": "1",
+                    "dataset_name": "rewrite-quality/v1",
+                    "dataset_compatibility_version": "sha256:test",
+                    "baseline_reference": {"baseline_run_id": "baseline-1"},
+                },
+            },
+            {
+                "trace_id": "trace-baseline-1",
+                "run_id": "baseline-1",
+                "output": "Baseline 1",
+                "metadata": {"dataset_item_id": "1"},
+            },
+        ]
+    )
+    runner = ExperimentRunner(langfuse_client=client, progress=progress)
+
+    runner.select_review(Path("configs/projects/rewrite_quality.yaml"), "candidate-1")
+
+    assert ("start", "Syncing score configs", 1) in progress.events
+    assert ("start", "Resolving annotation queue", None) in progress.events
+    assert ("start", "Fetching review traces", None) in progress.events
+    assert ("start", "Checking existing review items", None) in progress.events
+    assert ("start", "Building review payloads", 1) in progress.events
+    assert ("advance", "Building review payloads", 1) in progress.events
+    assert ("start", "Routing review items", None) in progress.events
+
+
 def test_judge_evaluator_apply_reports_progress_for_plans(tmp_path: Path) -> None:
     progress = RecordingProgress()
     client = LangfuseClient()

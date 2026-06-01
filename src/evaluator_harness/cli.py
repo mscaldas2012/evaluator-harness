@@ -56,8 +56,11 @@ def validate(project: Annotated[Path, typer.Option("--project")]) -> None:
 
 
 @app.command("sync-dataset")
-def sync_dataset(project: Annotated[Path, typer.Option("--project")]) -> None:
-    result = _handle_command(lambda: _runner().sync_dataset(project))
+def sync_dataset(
+    project: Annotated[Path, typer.Option("--project")],
+    dry_run: Annotated[bool, typer.Option("--dry-run")] = False,
+) -> None:
+    result = _handle_command(lambda: _runner().sync_dataset(project, dry_run=dry_run))
     if result is not None:
         console.print(f"dataset: {result.name}")
         console.print(f"version: {result.version}")
@@ -68,8 +71,13 @@ def sync_dataset(project: Annotated[Path, typer.Option("--project")]) -> None:
 
 
 @app.command("sync-score-configs")
-def sync_score_configs(project: Annotated[Path, typer.Option("--project")]) -> None:
-    results = _handle_command(lambda: _runner().sync_score_configs(project))
+def sync_score_configs(
+    project: Annotated[Path, typer.Option("--project")],
+    dry_run: Annotated[bool, typer.Option("--dry-run")] = False,
+) -> None:
+    results = _handle_command(
+        lambda: _runner().sync_score_configs(project, dry_run=dry_run)
+    )
     if results is not None:
         for result in results:
             console.print(f"score-config: {result.name}")
@@ -120,9 +128,56 @@ def sync_prompts(
             raise typer.Exit(code=1)
 
 
+@app.command("sync-all")
+def sync_all(
+    project: Annotated[Path, typer.Option("--project")],
+    dry_run: Annotated[bool, typer.Option("--dry-run")] = False,
+) -> None:
+    result = _handle_command(lambda: _runner().sync_all(project, dry_run=dry_run))
+    if result is not None:
+        console.print("Report")
+        console.print(
+            f"  dataset: {result.dataset.name} ({result.dataset.status}, "
+            f"{result.dataset.item_count} items)"
+        )
+        console.print(
+            f"  prompts: {result.prompts.mode}, "
+            f"created={result.prompts.created_count}, "
+            f"reused={result.prompts.reused_count}, "
+            f"conflicts={result.prompts.conflict_count}, "
+            f"failed={result.prompts.failed_count}"
+        )
+        score_summary = ", ".join(
+            f"{score.name}={score.status}" for score in result.score_configs
+        )
+        console.print(f"  score-configs: {score_summary or 'none'}")
+        console.print(
+            f"  judge-evaluators: {result.judge_evaluators.mode}, "
+            f"{result.judge_evaluators.overall_status}"
+        )
+        console.print(
+            f"  annotation-queue: {result.annotation_queue.status} "
+            f"({result.annotation_queue.queue_id or 'none'})"
+        )
+        if result.annotation_queue.message:
+            console.print(f"  annotation-message: {result.annotation_queue.message}")
+        if (
+            result.prompts.conflict_count
+            or result.prompts.failed_count
+            or result.annotation_queue.status == "conflict"
+            or result.judge_evaluators.overall_status not in {"success", "warning"}
+        ):
+            raise typer.Exit(code=1)
+
+
 @app.command("sync-annotation-queue")
-def sync_annotation_queue(project: Annotated[Path, typer.Option("--project")]) -> None:
-    result = _handle_command(lambda: _runner().sync_annotation_queue(project))
+def sync_annotation_queue(
+    project: Annotated[Path, typer.Option("--project")],
+    dry_run: Annotated[bool, typer.Option("--dry-run")] = False,
+) -> None:
+    result = _handle_command(
+        lambda: _runner().sync_annotation_queue(project, dry_run=dry_run)
+    )
     if result is not None:
         console.print(f"queue: {result.queue_id or 'none'}")
         if result.queue_name:
@@ -135,6 +190,10 @@ def sync_annotation_queue(project: Annotated[Path, typer.Option("--project")]) -
             console.print(f"reference: {result.reference_path}")
         if result.manual_fallback_reason:
             console.print(f"manual-fallback: {result.manual_fallback_reason}")
+        if result.message:
+            console.print(f"message: {result.message}")
+        if result.status == "conflict":
+            raise typer.Exit(code=1)
 
 
 @app.command("render-judge-prompts")
@@ -197,6 +256,13 @@ def run(
     mode: Annotated[str, typer.Option("--mode")],
     candidate: Annotated[str | None, typer.Option("--candidate")] = None,
     baseline: Annotated[str | None, typer.Option("--baseline")] = None,
+    skip_human_review: Annotated[
+        bool,
+        typer.Option(
+            "--skip-human-review",
+            help="Do not automatically select completed run outputs for human review.",
+        ),
+    ] = False,
     confirm_mixed_variant: Annotated[
         bool,
         typer.Option(
@@ -224,6 +290,7 @@ def run(
             mode,
             candidate=candidate,
             baseline=baseline,
+            select_human_review=not skip_human_review,
         )
 
     result = _handle_command(
@@ -239,25 +306,46 @@ def run(
                 str(result.baseline_reference),
             )
             console.print(f"baseline-reference: {reference_id}")
+        review = getattr(result, "review_selection", None)
+        if review is not None:
+            console.print(f"review-selected: {review.selected_count}")
+            console.print(f"review-queued: {review.queued_count}")
+            console.print(f"review-duplicates-skipped: {review.skipped_duplicate_count}")
+        elif skip_human_review:
+            console.print("review: skipped")
 
 
 @app.command("select-review")
 def select_review(
     project: Annotated[Path, typer.Option("--project")],
     run_id: Annotated[str, typer.Option("--run")],
+    sample_strategy: Annotated[
+        str | None,
+        typer.Option(
+            "--sample-strategy",
+            help="Override human_review.sample_strategy for this run: stable or random.",
+        ),
+    ] = None,
 ) -> None:
-    result = _handle_command(lambda: ExperimentRunner().select_review(project, run_id))
+    result = _handle_command(
+        lambda: _runner().select_review(
+            project,
+            run_id,
+            sample_strategy=sample_strategy,
+        )
+    )
     if result is not None:
-        console.print(f"selected: {result.selected_count}")
-        console.print(f"queued: {result.queued_count}")
-        console.print(f"queue: {result.queue_id or 'none'}")
-        console.print(f"queue-ownership: {getattr(result, 'queue_ownership', 'unknown')}")
-        console.print(f"duplicates-skipped: {result.skipped_duplicate_count}")
+        console.print("Report")
+        console.print(f"  selected: {result.selected_count}")
+        console.print(f"  queued: {result.queued_count}")
+        console.print(f"  queue: {result.queue_id or 'none'}")
+        console.print(f"  queue-ownership: {getattr(result, 'queue_ownership', 'unknown')}")
+        console.print(f"  duplicates-skipped: {result.skipped_duplicate_count}")
         if result.reasons:
             reason_text = ", ".join(
                 f"{reason}={count}" for reason, count in sorted(result.reasons.items())
             )
-            console.print(f"reasons: {reason_text}")
+            console.print(f"  reasons: {reason_text}")
 
 
 @app.command()

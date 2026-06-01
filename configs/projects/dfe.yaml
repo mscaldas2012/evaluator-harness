@@ -133,7 +133,7 @@ evaluators:
     prompt_path: prompts/dfe/evaluators/formatting_essence_maintained.md
     prompt_version: v1
     score:
-      name: formatting_essence_maintained
+      name: formatting_essence
       managed_by_harness: true
       data_type: NUMERIC
       min_value: 0
@@ -290,7 +290,7 @@ evaluators:
     prompt_path: prompts/dfe/evaluators/necessary_facts_no_added_assumptions.md
     prompt_version: v1
     score:
-      name: necessary_facts_no_added_assumptions
+      name: facts_no_assumptions
       managed_by_harness: true
       data_type: NUMERIC
       min_value: 0

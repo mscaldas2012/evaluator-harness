@@ -135,13 +135,28 @@ class LangfuseClient:
         items: list[DatasetItem],
         *,
         progress: ProgressReporter | None = None,
+        dry_run: bool = False,
     ) -> DatasetSyncResult:
-        self.check_reachable(operation="sync-dataset")
+        if not dry_run:
+            self.check_reachable(operation="sync-dataset")
         name = source.langfuse_dataset_name or source.langfuse_dataset_id
         if not name:
             raise ConfigError("Dataset sync requires a Langfuse dataset name or ID")
         compatibility_version = source.langfuse_dataset_version or dataset_compatibility_version(items)
-        self.calls.append(("sync_dataset", {"name": name, "item_count": len(items)}))
+        self.calls.append(
+            (
+                "sync_dataset",
+                {"name": name, "item_count": len(items), "dry_run": dry_run},
+            )
+        )
+        if dry_run:
+            return DatasetSyncResult(
+                name=name,
+                version=source.langfuse_dataset_version or "latest",
+                compatibility_version=compatibility_version,
+                item_count=len(items),
+                status="planned",
+            )
         if source.kind != DatasetKind.LANGFUSE:
             create_dataset_item = None
             if self.client is not None:
@@ -270,21 +285,28 @@ class LangfuseClient:
         config: ProjectConfig,
         *,
         progress: ProgressReporter | None = None,
+        dry_run: bool = False,
     ) -> list[ScoreConfigSyncResult]:
-        self.check_reachable(operation="sync-score-configs")
+        if not dry_run:
+            self.check_reachable(operation="sync-score-configs")
         results: list[ScoreConfigSyncResult] = []
         reporter = progress or NullProgressReporter()
-        with reporter.task("Syncing score configs", total=len(config.evaluators)) as task:
+        description = "Checking score configs" if dry_run else "Syncing score configs"
+        with reporter.task(description, total=len(config.evaluators)) as task:
             for evaluator in config.evaluators:
-                results.append(self._sync_one_score_config(config, evaluator))
+                results.append(
+                    self._sync_one_score_config(config, evaluator, dry_run=dry_run)
+                )
                 task.advance()
-        self.calls.append(("sync_score_configs", {"count": len(results)}))
+        self.calls.append(("sync_score_configs", {"count": len(results), "dry_run": dry_run}))
         return results
 
     def _sync_one_score_config(
         self,
         config: ProjectConfig,
         evaluator: Any,
+        *,
+        dry_run: bool = False,
     ) -> ScoreConfigSyncResult:
         score = evaluator.score
         if not score.managed_by_harness:
@@ -303,12 +325,24 @@ class LangfuseClient:
 
         managed_name = f"{config.project.score_config_prefix}{score.name}"
         payload = self._score_payload(managed_name, score)
+        if len(managed_name) > 35:
+            raise ConfigError(
+                f"Score config {managed_name} exceeds Langfuse name limit of 35 characters"
+            )
         self._load_live_score_configs_by_name(managed_name, payload)
         existing = self.score_configs.get(managed_name)
         if existing is None:
+            if dry_run:
+                return ScoreConfigSyncResult(
+                    evaluator_name=evaluator.name,
+                    name=managed_name,
+                    score_config_id="",
+                    status="planned_create",
+                    ownership="managed_by_harness",
+                )
             score_config_id = f"score-config-{len(self.score_configs) + 1}"
             if self.client is not None:
-                score_config_id = self._create_live_score_config(payload) or score_config_id
+                score_config_id = self._create_live_score_config(payload)
             self.score_configs[managed_name] = {
                 "id": score_config_id,
                 **payload,
@@ -580,7 +614,7 @@ class LangfuseClient:
         score_configs = getattr(api, "score_configs", None)
         create = getattr(score_configs, "create", None)
         if not callable(create):
-            return None
+            raise LangfuseError("Installed Langfuse SDK does not expose score config creation")
         try:
             from langfuse.api.commons.types.config_category import ConfigCategory
             from langfuse.api.commons.types.score_config_data_type import ScoreConfigDataType
@@ -601,9 +635,18 @@ class LangfuseClient:
                 max_value=payload.get("max_value"),
                 description=payload.get("description"),
             )
-        except Exception:
-            return None
-        return str(getattr(created, "id", None) or getattr(created, "score_config_id", "") or "") or None
+        except Exception as exc:
+            raise LangfuseError(
+                f"Unable to create Langfuse score config {payload['name']}: {exc}"
+            ) from exc
+        score_config_id = str(
+            getattr(created, "id", None) or getattr(created, "score_config_id", "") or ""
+        )
+        if not score_config_id:
+            raise LangfuseError(
+                f"Unable to create Langfuse score config {payload['name']}: missing id in response"
+            )
+        return score_config_id
 
     def align_score_config_to_existing_id(
         self,
@@ -1307,7 +1350,16 @@ class LangfuseClient:
         self.check_reachable(operation="route-annotation-items")
         queued_count = 0
         skipped_duplicate_count = 0
+        existing_live_object_ids = (
+            self._live_annotation_queue_object_ids(queue_id)
+            if self.client is not None
+            else set()
+        )
         for item in items:
+            object_id = str(item.get("trace_id"))
+            if object_id in existing_live_object_ids:
+                skipped_duplicate_count += 1
+                continue
             queue_item_id = str(
                 item.get("queue_item_id")
                 or f"{item.get('run_id')}:{item.get('trace_id')}"
@@ -1327,10 +1379,14 @@ class LangfuseClient:
             if self.client is not None:
                 live_item = self._create_live_annotation_queue_item(
                     queue_id,
-                    object_id=str(item.get("trace_id")),
+                    object_id=object_id,
                 )
+                if live_item is not None and live_item.get("_duplicate"):
+                    skipped_duplicate_count += 1
+                    continue
                 if live_item is not None:
                     routed_item["langfuse_queue_item_id"] = live_item.get("id")
+                    existing_live_object_ids.add(object_id)
             self.annotation_queue_items.append(routed_item)
             queued_count += 1
         self.calls.append(
@@ -1348,6 +1404,16 @@ class LangfuseClient:
             queued_count=queued_count,
             skipped_duplicate_count=skipped_duplicate_count,
         )
+
+    def annotation_queue_object_ids(self, queue_id: str) -> set[str]:
+        self.check_reachable(operation="list-annotation-queue-items")
+        if self.client is not None:
+            return self._live_annotation_queue_object_ids(queue_id)
+        return {
+            str(item.get("object_id"))
+            for item in self.annotation_queue_items
+            if item.get("queue_id") == queue_id and item.get("object_id") is not None
+        }
 
     def create_annotation_queue(
         self,
@@ -1479,11 +1545,37 @@ class LangfuseClient:
         except Exception as exc:
             message = str(exc).lower()
             if "duplicate" in message or "already" in message:
-                return None
+                return {"_duplicate": True}
             raise LangfuseError(
                 f"Unable to create annotation queue item for trace {object_id}: {exc}"
             ) from exc
         return _object_to_queue_dict(item)
+
+    def _live_annotation_queue_object_ids(self, queue_id: str) -> set[str]:
+        annotation_queues = getattr(getattr(self.client, "api", None), "annotation_queues", None)
+        list_queue_items = getattr(annotation_queues, "list_queue_items", None)
+        if not callable(list_queue_items):
+            return set()
+        object_ids: set[str] = set()
+        page_number = 1
+        while True:
+            try:
+                page = list_queue_items(queue_id, page=page_number, limit=100)
+            except Exception as exc:
+                raise LangfuseError(
+                    f"Unable to list annotation queue items for {queue_id}: {exc}"
+                ) from exc
+            for item in getattr(page, "data", None) or []:
+                queue_item = _object_to_queue_dict(item)
+                object_id = queue_item.get("object_id") or queue_item.get("objectId")
+                if object_id is not None:
+                    object_ids.add(str(object_id))
+            meta = getattr(page, "meta", None)
+            total_pages = int(getattr(meta, "total_pages", page_number) or page_number)
+            if page_number >= total_pages:
+                break
+            page_number += 1
+        return object_ids
 
     def _score_payload(self, managed_name: str, score: ScoreConfigRef) -> dict[str, Any]:
         return {
@@ -1621,11 +1713,26 @@ def _object_to_queue_dict(value: Any) -> dict[str, Any]:
     else:
         raw = {
             key: getattr(value, key)
-            for key in ("id", "name", "description", "score_config_ids", "scoreConfigIds")
+            for key in (
+                "id",
+                "name",
+                "description",
+                "score_config_ids",
+                "scoreConfigIds",
+                "object_id",
+                "objectId",
+                "object_type",
+                "objectType",
+                "status",
+            )
             if hasattr(value, key)
         }
     if "scoreConfigIds" in raw and "score_config_ids" not in raw:
         raw["score_config_ids"] = raw["scoreConfigIds"]
+    if "objectId" in raw and "object_id" not in raw:
+        raw["object_id"] = raw["objectId"]
+    if "objectType" in raw and "object_type" not in raw:
+        raw["object_type"] = raw["objectType"]
     return dict(raw)
 
 

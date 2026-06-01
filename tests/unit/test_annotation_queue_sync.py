@@ -54,6 +54,71 @@ def test_sync_annotation_queue_creates_and_persists_managed_reference() -> None:
     assert Path(result.reference_path or "").exists()
 
 
+def test_sync_annotation_queue_dry_run_plans_create_without_reference_write() -> None:
+    config = load_project_config("tests/fixtures/projects/managed_annotation_queue.yaml")
+    client = LangfuseClient()
+    store = _store()
+
+    result = sync_annotation_queue(
+        config,
+        client,
+        _score_results(),
+        store=store,
+        dry_run=True,
+    )
+
+    assert result.status == "planned"
+    assert result.message == "annotation queue would be created"
+    assert result.score_config_ids == ["score-config-1"]
+    assert result.reference_path is None
+    assert not store.path_for("rewrite-quality", "v1", "default").exists()
+
+
+def test_sync_annotation_queue_dry_run_reuses_matching_existing_queue() -> None:
+    config = load_project_config("tests/fixtures/projects/managed_annotation_queue.yaml")
+    client = LangfuseClient()
+    client.annotation_queues["annotation-queue-1"] = {
+        "id": "annotation-queue-1",
+        "name": "EH_rewrite-quality_v1_review_default",
+        "score_config_ids": ["score-config-1"],
+    }
+
+    result = sync_annotation_queue(
+        config,
+        client,
+        _score_results(),
+        store=_store(),
+        dry_run=True,
+    )
+
+    assert result.status == "reused"
+    assert result.queue_id == "annotation-queue-1"
+    assert result.message == "matching Langfuse annotation queue already exists"
+
+
+def test_sync_annotation_queue_dry_run_conflicts_with_single_incompatible_queue() -> None:
+    config = load_project_config("tests/fixtures/projects/managed_annotation_queue.yaml")
+    client = LangfuseClient()
+    client.annotation_queues["other-queue"] = {
+        "id": "other-queue",
+        "name": "EH_other_v1_review_default",
+        "score_config_ids": ["other-score-config"],
+    }
+
+    result = sync_annotation_queue(
+        config,
+        client,
+        _score_results(),
+        store=_store(),
+        dry_run=True,
+    )
+
+    assert result.status == "conflict"
+    assert result.queue_id == "other-queue"
+    assert result.score_config_ids == ["other-score-config"]
+    assert "Delete the queue" in (result.message or "")
+
+
 def test_sync_annotation_queue_reuses_local_managed_reference() -> None:
     config = load_project_config("tests/fixtures/projects/managed_annotation_queue.yaml")
     client = LangfuseClient()

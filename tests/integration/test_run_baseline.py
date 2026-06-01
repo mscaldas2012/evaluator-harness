@@ -32,10 +32,32 @@ def test_run_baseline_records_traces_and_reference() -> None:
     assert result.run_type == "baseline"
     assert result.baseline_reference is not None
     assert result.completed_count == 2
+    assert result.review_selection is not None
+    assert result.review_selection.queued_count >= 1
     assert langfuse.traces[0]["metadata"]["project"] == "rewrite-quality"
     assert langfuse.traces[0]["metadata"]["prompt_version"] == "v1"
     assert langfuse.traces[0]["metadata"]["ground_truth"]
     assert langfuse.baseline_evaluator_payloads[0]["output"] == "baseline output"
+    assert langfuse.annotation_queue_items
+
+
+def test_run_baseline_can_skip_automatic_review_selection() -> None:
+    langfuse = LangfuseClient()
+    provider = FakeModelProvider(response=ModelResponse(output="baseline output"))
+    runner = ExperimentRunner(
+        langfuse_client=langfuse,
+        provider_factory=lambda _config: provider,
+    )
+
+    result = runner.run(
+        Path("configs/projects/rewrite_quality.yaml"),
+        "baseline",
+        select_human_review=False,
+    )
+
+    assert result.completed_count == 2
+    assert result.review_selection is None
+    assert langfuse.annotation_queue_items == []
 
 
 def test_role_based_baseline_passes_ordered_messages_to_provider() -> None:

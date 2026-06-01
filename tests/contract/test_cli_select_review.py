@@ -20,9 +20,15 @@ class FakeReviewResult:
 
 
 def test_select_review_cli_success_output(monkeypatch) -> None:
+    captured_progress = []
+
     class FakeRunner:
-        def select_review(self, project, run_id):
+        def __init__(self, *, progress=None):
+            captured_progress.append(progress)
+
+        def select_review(self, project, run_id, *, sample_strategy=None):
             assert run_id == "candidate-1"
+            assert sample_strategy is None
             return FakeReviewResult(reasons={"failure": 1, "sample": 1})
 
     monkeypatch.setattr(cli, "ExperimentRunner", FakeRunner)
@@ -39,14 +45,47 @@ def test_select_review_cli_success_output(monkeypatch) -> None:
     )
 
     assert result.exit_code == 0
-    assert "selected: 2" in result.stdout
-    assert "queued: 2" in result.stdout
-    assert "queue: queue-1" in result.stdout
+    assert captured_progress
+    assert captured_progress[0] is not None
+    assert "Report" in result.stdout
+    assert "  selected: 2" in result.stdout
+    assert "  queued: 2" in result.stdout
+    assert "  queue: queue-1" in result.stdout
+
+
+def test_select_review_cli_passes_sample_strategy_override(monkeypatch) -> None:
+    captured_strategy = []
+
+    class FakeRunner:
+        def __init__(self, *, progress=None):
+            pass
+
+        def select_review(self, project, run_id, *, sample_strategy=None):
+            captured_strategy.append(sample_strategy)
+            return FakeReviewResult()
+
+    monkeypatch.setattr(cli, "ExperimentRunner", FakeRunner)
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "select-review",
+            "--project",
+            "configs/projects/rewrite_quality.yaml",
+            "--run",
+            "candidate-1",
+            "--sample-strategy",
+            "random",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert captured_strategy == ["random"]
 
 
 def test_select_review_cli_missing_queue_failure(monkeypatch) -> None:
     class FakeRunner:
-        def select_review(self, *_args):
+        def select_review(self, *_args, **_kwargs):
             raise ConfigError("annotation_queue_id is required")
 
     monkeypatch.setattr(cli, "ExperimentRunner", FakeRunner)
@@ -68,7 +107,7 @@ def test_select_review_cli_missing_queue_failure(monkeypatch) -> None:
 
 def test_select_review_cli_langfuse_failure(monkeypatch) -> None:
     class FakeRunner:
-        def select_review(self, *_args):
+        def select_review(self, *_args, **_kwargs):
             raise LangfuseError("Langfuse is unreachable during select-review")
 
     monkeypatch.setattr(cli, "ExperimentRunner", FakeRunner)

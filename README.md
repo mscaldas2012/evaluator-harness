@@ -85,11 +85,8 @@ $env:REWRITE_QUALITY_MISTRAL_LARGE_3_API_VERSION="2024-12-01-preview"
 
 ```powershell
 uv run python run_experiment.py validate --project configs/projects/rewrite_quality.yaml
-uv run python run_experiment.py sync-dataset --project configs/projects/rewrite_quality.yaml
-uv run python run_experiment.py sync-score-configs --project configs/projects/rewrite_quality.yaml
-uv run python run_experiment.py sync-prompts --project configs/projects/rewrite_quality.yaml --dry-run
-uv run python run_experiment.py sync-prompts --project configs/projects/rewrite_quality.yaml
-uv run python run_experiment.py sync-annotation-queue --project configs/projects/rewrite_quality.yaml
+uv run python run_experiment.py sync-all --project configs/projects/rewrite_quality.yaml --dry-run
+uv run python run_experiment.py sync-all --project configs/projects/rewrite_quality.yaml
 
 uv run python run_experiment.py run `
   --project configs/projects/rewrite_quality.yaml `
@@ -119,14 +116,16 @@ uv run python run_experiment.py run `
   --candidate azure-mistral-large-3 `
   --baseline latest-compatible `
   --confirm-mixed-variant
-
-uv run python run_experiment.py select-review `
-  --project configs/projects/rewrite_quality.yaml `
-  --run <candidate-run-id>
 ```
 
 Use Langfuse to run evaluators, inspect scores, compare baseline and candidate
 runs, and review selected items in Human Annotation Queues.
+
+When `human_review.enabled: true`, baseline and candidate runs automatically
+select completed outputs for human review after the model run finishes. Pass
+`--skip-human-review` on `run` when you need generation only. The
+`select-review` command remains available for manual reruns, backfills, or
+one-off sampling overrides.
 
 Candidates can vary by model, task prompt, generation parameters, or a mix of
 those axes. Add `task_prompt` under a candidate to test prompt-v2 against an
@@ -235,6 +234,14 @@ Managed annotation queues use the name
 non-secret local reference under `.evaluator-harness/queue-references/`.
 `LANGFUSE_ANNOTATION_QUEUE_ID` is only needed for an explicit user-owned queue
 or temporary override.
+
+`sync-all` is the preferred setup command for a project. It synchronizes the
+Langfuse dataset, prompt versions, score configs, LLM judge evaluators, and
+annotation queue in one run. Use `--dry-run` first to preview the planned
+dataset, prompt, score config, judge, and queue changes without mutating
+Langfuse. The individual commands remain available for targeted repair or
+debugging: `sync-dataset`, `sync-prompts`, `sync-score-configs`,
+`sync-judge-evaluators`, and `sync-annotation-queue`.
 
 ### Langfuse Hobby Annotation Queue Limit
 
