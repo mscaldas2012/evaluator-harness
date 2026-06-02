@@ -1,0 +1,4 @@
+interface:
+  display_name: "Evaluator Harness Project YAML"
+  short_description: "Create harness project YAML from artifacts"
+  default_prompt: "Use $evaluator-harness-project-yaml to create a project YAML from my dataset and prompts."

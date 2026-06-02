@@ -37,6 +37,30 @@ $env:EVALUATOR_HARNESS_LIVE="1"
 
 `LANGFUSE_BASE_URL` is still accepted as a compatibility alias.
 
+## Codex Skills
+
+This repository includes project-local Codex skills under `.agents/skills/`.
+Use `$evaluator-harness-project-yaml` when creating a new harness project from a
+dataset and prompt files. The skill guides Codex to inspect local artifacts, ask
+for missing baseline/candidate/evaluator/review-policy choices, create
+`configs/projects/<project>.yaml`, and run local validation.
+
+Invoke it from this repository with:
+
+```text
+Use $evaluator-harness-project-yaml to create a project YAML from my dataset and prompts.
+```
+
+To make the skill available globally outside this repository, copy it into your
+Codex skills folder:
+
+```powershell
+New-Item -ItemType Directory -Force "$env:USERPROFILE\.codex\skills" | Out-Null
+Copy-Item -Recurse -Force `
+  .\.agents\skills\evaluator-harness-project-yaml `
+  "$env:USERPROFILE\.codex\skills\"
+```
+
 ## Prompt Sync
 
 Repository prompt files remain the source of truth for task and LLM judge
