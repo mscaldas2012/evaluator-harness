@@ -145,6 +145,39 @@ uv run python run_experiment.py run `
 Use Langfuse to run evaluators, inspect scores, compare baseline and candidate
 runs, and review selected items in Human Annotation Queues.
 
+### Shared Evaluation Configs And Scenarios
+
+When one use case has multiple scenario-specific project configs, keep the
+dataset, task prompt, baseline, candidates, and project identity in each project
+YAML, and share only the evaluation setup:
+
+```yaml
+config_refs:
+  evaluation: configs/shared/dfe_readability.yaml
+
+scenario:
+  group: dfe
+  name: general_public
+  display_name: General public
+```
+
+The referenced shared file may define `evaluators`, `judge_setup`, and
+`human_review`. Scenario-owned sections such as `project`, `dataset`,
+`task_prompt`, `baseline`, and `candidates` stay local to each project config.
+If `scenario` is present, traces, exports, run metadata, and annotation queue
+payloads include `scenario_group`, `scenario_name`, and
+`scenario_display_name` for filtering and review context. Projects that do not
+use scenarios do not need those fields.
+
+DFE readability is split into three scenario project configs that reuse the
+same shared evaluation setup:
+
+```powershell
+uv run python run_experiment.py validate --project configs/projects/dfe-general-public.yaml
+uv run python run_experiment.py validate --project configs/projects/dfe-healthcare-provider.yaml
+uv run python run_experiment.py validate --project configs/projects/dfe-public-health-sme.yaml
+```
+
 When `human_review.enabled: true`, baseline and candidate runs automatically
 select completed outputs for human review after the model run finishes. Pass
 `--skip-human-review` on `run` when you need generation only. The

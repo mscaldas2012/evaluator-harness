@@ -309,6 +309,42 @@ human_review:
   sample_strategy: stable
 ```
 
+### Shared Evaluation Configs
+
+Use `config_refs.evaluation` when several scenario-specific project configs
+should share the same evaluators, judge setup, and human review policy:
+
+```yaml
+config_refs:
+  evaluation: configs/shared/dfe_readability.yaml
+```
+
+The shared evaluation file may contain only these sections:
+
+- `evaluators`
+- `judge_setup`
+- `human_review`
+
+Keep project-owned sections in each scenario project YAML: `project`,
+`dataset`, `task_prompt`, `baseline`, `candidates`, and optional `scenario`.
+If a local project config and its shared evaluation config both define
+`evaluators`, `judge_setup`, or `human_review`, validation fails instead of
+choosing one silently.
+
+Scenario metadata is optional. When present, all three fields are required:
+
+```yaml
+scenario:
+  group: dfe
+  name: general_public
+  display_name: General public
+```
+
+Scenario fields are copied to Langfuse run metadata, trace metadata, CSV
+exports, and Human Annotation Queue payload context as `scenario_group`,
+`scenario_name`, and `scenario_display_name`. Use them for filtering scenario
+runs and comparing scores across scenarios.
+
 ### Score Configs
 
 Score config definitions live under each evaluator:
@@ -367,6 +403,33 @@ uv run python run_experiment.py sync-all --project configs/projects/rewrite_qual
 - `sync-annotation-queue`
 
 It is the preferred setup command for normal use.
+
+### DFE Scenario Projects
+
+The DFE readability use case has three project configs with distinct datasets
+and task prompts, all sharing `configs/shared/dfe_readability.yaml`:
+
+```powershell
+uv run python run_experiment.py validate --project configs/projects/dfe-general-public.yaml
+uv run python run_experiment.py validate --project configs/projects/dfe-healthcare-provider.yaml
+uv run python run_experiment.py validate --project configs/projects/dfe-public-health-sme.yaml
+```
+
+Preview setup for each scenario before mutating Langfuse:
+
+```powershell
+uv run python run_experiment.py sync-all --project configs/projects/dfe-general-public.yaml --dry-run
+uv run python run_experiment.py sync-all --project configs/projects/dfe-healthcare-provider.yaml --dry-run
+uv run python run_experiment.py sync-all --project configs/projects/dfe-public-health-sme.yaml --dry-run
+```
+
+Run baselines independently by scenario:
+
+```powershell
+uv run python run_experiment.py run --project configs/projects/dfe-general-public.yaml --mode baseline
+uv run python run_experiment.py run --project configs/projects/dfe-healthcare-provider.yaml --mode baseline
+uv run python run_experiment.py run --project configs/projects/dfe-public-health-sme.yaml --mode baseline
+```
 
 ### Run Sync Phases Independently
 

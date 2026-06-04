@@ -30,6 +30,7 @@ from evaluator_harness.config import (
     ModelConfig,
     ProjectConfig,
     load_project_config,
+    scenario_metadata,
     validate_project_config,
 )
 from evaluator_harness.dataset_loader import load_dataset
@@ -617,6 +618,7 @@ class ExperimentRunner:
             project=config.project.name,
             metadata={
                 **fingerprint_metadata(fingerprint),
+                **scenario_metadata(config),
                 "baseline_run_id": run_id,
                 "created_at": now,
             },
@@ -811,6 +813,7 @@ class ExperimentRunner:
             baseline_run_id=baseline_run_id,
             metadata={
                 **fingerprint_metadata(fingerprint),
+                **scenario_metadata(config),
                 "candidate": candidate.name,
                 "parameter_hash": parameter_hash,
                 "parameter_identity": candidate_parameter_identity,
@@ -1008,6 +1011,7 @@ class ExperimentRunner:
                 **(fingerprint_metadata(fingerprint) if fingerprint else {}),
                 "project": config.project.name,
                 "project_version": config.project.version,
+                **scenario_metadata(config),
                 "run_type": "candidate" if baseline_reference is not None else "baseline",
                 "test_trace": _is_test_run(),
                 "environment": config.project.metadata.get("environment"),
@@ -1110,6 +1114,7 @@ class ExperimentRunner:
         return {
             "project": config.project.name,
             "project_version": config.project.version,
+            **scenario_metadata(config),
             "run_id": run_id,
             "run_type": run_type,
             "item_id": item.item_id,

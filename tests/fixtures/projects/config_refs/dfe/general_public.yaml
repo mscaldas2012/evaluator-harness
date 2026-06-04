@@ -1,0 +1,21 @@
+project:
+  name: dfe-general-public
+  version: v1
+  score_config_prefix: eh_dfe_
+
+scenario:
+  group: dfe
+  name: general_public
+  display_name: General public
+
+config_refs:
+  evaluation: ../../../configs/shared/dfe_readability.yaml
+
+dataset:
+  kind: local_csv
+  path: datasets/DFE.csv
+  langfuse_dataset_name: dfe/general-public/v1
+
+task_prompt:
+  path: prompts/dfe/task_prompt_generic.md
+  version: v1

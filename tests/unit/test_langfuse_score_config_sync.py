@@ -142,6 +142,60 @@ def test_live_score_config_creation_returns_real_id() -> None:
     assert results[0].score_config_id == "live-score-config-created"
 
 
+def test_live_score_config_list_retries_rate_limits() -> None:
+    class FakeScoreConfigsApi:
+        def __init__(self) -> None:
+            self.get_calls = 0
+
+        def get(self, *, limit):
+            self.get_calls += 1
+            if self.get_calls == 1:
+                raise RuntimeError("HTTP 429 rate limit")
+            return type("Page", (), {"data": []})()
+
+        def create(self, **kwargs):
+            return type("Created", (), {"id": "live-score-config-created"})()
+
+    api = FakeScoreConfigsApi()
+    client = LangfuseClient(
+        client=type("FakeClient", (), {"api": type("Api", (), {"score_configs": api})()})()
+    )
+    client.retry_sleep = lambda _delay: None
+    config = load_project_config("configs/projects/rewrite_quality.yaml")
+
+    results = client.sync_score_configs(config)
+
+    assert results[0].status == "created"
+    assert api.get_calls == 2
+
+
+def test_live_score_config_create_retries_rate_limits() -> None:
+    class FakeScoreConfigsApi:
+        def __init__(self) -> None:
+            self.create_calls = 0
+
+        def get(self, *, limit):
+            return type("Page", (), {"data": []})()
+
+        def create(self, **kwargs):
+            self.create_calls += 1
+            if self.create_calls == 1:
+                raise RuntimeError("HTTP 429 rate limit")
+            return type("Created", (), {"id": "live-score-config-created"})()
+
+    api = FakeScoreConfigsApi()
+    client = LangfuseClient(
+        client=type("FakeClient", (), {"api": type("Api", (), {"score_configs": api})()})()
+    )
+    client.retry_sleep = lambda _delay: None
+    config = load_project_config("configs/projects/rewrite_quality.yaml")
+
+    results = client.sync_score_configs(config)
+
+    assert results[0].status == "created"
+    assert api.create_calls == 2
+
+
 def test_score_config_sync_validates_user_owned_reference() -> None:
     config = load_project_config("configs/projects/rewrite_quality.yaml")
     config.evaluators[0].score.managed_by_harness = False
