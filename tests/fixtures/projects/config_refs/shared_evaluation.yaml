@@ -1,0 +1,54 @@
+judge_setup:
+  default_judge_model: gpt-4.1
+  default_sampling_percent: 100
+  historical_backfill: disabled
+
+evaluators:
+  - name: clarity
+    type: llm_as_judge
+    version: v1
+    source_type: custom
+    target: observation
+    target_observation_role: model_output
+    run_types:
+      - baseline
+      - candidate
+    mode: single_output
+    blind: true
+    prompt_path: tests/fixtures/prompts/prompt_sync_judge.md
+    prompt_version: v1
+    score:
+      name: clarity
+      managed_by_harness: true
+      data_type: NUMERIC
+      min_value: 0
+      max_value: 1
+      allowed_score_sources:
+        - llm_judge
+        - human_annotation
+    required_inputs:
+      - input
+      - output
+    variables:
+      - input
+      - output
+    output_schema:
+      reasoning: string
+      score:
+        type: number
+        minimum: 0
+        maximum: 1
+      confidence:
+        type: number
+        minimum: 0
+        maximum: 1
+
+human_review:
+  enabled: true
+  queue_ownership: managed_by_harness
+  review_policy_version: default
+  minimum_sample_percent: 5
+  prioritize:
+    - failures
+    - low_confidence
+    - disputed

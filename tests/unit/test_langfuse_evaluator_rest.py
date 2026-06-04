@@ -118,6 +118,26 @@ def test_evaluator_list_falls_back_to_unstable_rest_api_when_sdk_resource_missin
     ]
 
 
+def test_rest_evaluator_requests_retry_rate_limits() -> None:
+    attempts = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal attempts
+        attempts += 1
+        _assert_basic_auth(request)
+        if attempts == 1:
+            return httpx.Response(429, headers={"Retry-After": "0"}, json={"message": "rate limited"})
+        assert request.method == "GET"
+        assert request.url.path == "/api/public/unstable/evaluation-rules"
+        return httpx.Response(200, json={"data": []})
+
+    client = _client_without_sdk_evaluators(httpx.MockTransport(handler))
+    client.retry_sleep = lambda _delay: None
+
+    assert client.list_evaluators() == []
+    assert attempts == 2
+
+
 def test_custom_evaluator_create_posts_template_then_rule_with_required_shape() -> None:
     seen: list[tuple[str, str, dict[str, Any]]] = []
 
@@ -133,6 +153,10 @@ def test_custom_evaluator_create_posts_template_then_rule_with_required_shape() 
                     "dataType": "NUMERIC",
                     "reasoning": {"description": "Explain the score."},
                     "score": {"description": "Clarity score from 0.0 to 1.0."},
+                },
+                "modelConfig": {
+                    "provider": "Azure (Peraton)",
+                    "model": "gpt-5.4-mini",
                 },
             }
             return httpx.Response(
@@ -193,6 +217,8 @@ def test_custom_evaluator_create_posts_template_then_rule_with_required_shape() 
                 "output": "observation.output",
             },
             "sampling_percent": 100,
+            "judge_model": "gpt-5.4-mini",
+            "llm_connection": "Azure (Peraton)",
         }
     )
 

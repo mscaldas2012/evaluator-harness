@@ -1,0 +1,32 @@
+project:
+  name: disallowed-config-ref-project
+  version: v1
+  score_config_prefix: eh_disallowed_config_ref_
+
+config_refs:
+  evaluation: shared_with_dataset.yaml
+
+dataset:
+  kind: local_csv
+  path: tests/fixtures/datasets/prompt_variables.csv
+  langfuse_dataset_name: disallowed-config-ref/v1
+
+task_prompt:
+  path: tests/fixtures/prompts/prompt_sync_task.md
+  version: v1
+
+baseline:
+  name: dry-run-baseline
+  provider: dry_run
+  auth_mode: none
+  model: dry-run
+  parameters:
+    temperature: 0.0
+
+candidates:
+  - name: dry-run-candidate
+    provider: dry_run
+    auth_mode: none
+    model: dry-run
+    parameters:
+      temperature: 0.0

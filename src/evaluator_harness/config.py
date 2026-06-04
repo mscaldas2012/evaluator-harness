@@ -16,6 +16,10 @@ from evaluator_harness.errors import ConfigError
 
 ENV_NAME_PATTERN = re.compile(r"^[A-Z_][A-Z0-9_]*$")
 SCORE_PREFIX_PATTERN = re.compile(r"^[A-Za-z0-9_-]+[_-]$")
+SHARED_EVALUATION_ALLOWED_SECTIONS = frozenset(
+    {"evaluators", "judge_setup", "human_review"}
+)
+SHARED_EVALUATION_CONFLICT_SECTIONS = SHARED_EVALUATION_ALLOWED_SECTIONS
 
 
 class DatasetKind(str, Enum):
@@ -385,8 +389,27 @@ class EvaluationProject(BaseModel):
         return value
 
 
+class ConfigRefs(BaseModel):
+    evaluation: Path | None = None
+
+
+class ScenarioIdentity(BaseModel):
+    group: str
+    name: str
+    display_name: str
+
+    @field_validator("*")
+    @classmethod
+    def values_must_not_be_blank(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("scenario fields must not be blank")
+        return value
+
+
 class ProjectConfig(BaseModel):
     project: EvaluationProject
+    config_refs: ConfigRefs | None = None
+    scenario: ScenarioIdentity | None = None
     dataset: DatasetSource
     task_prompt: PromptRef
     baseline: ModelConfig
@@ -405,6 +428,16 @@ class ProjectConfig(BaseModel):
         if not self.evaluators:
             raise ValueError("at least one evaluator is required")
         return self
+
+
+def scenario_metadata(config: ProjectConfig) -> dict[str, str]:
+    if config.scenario is None:
+        return {}
+    return {
+        "scenario_group": config.scenario.group,
+        "scenario_name": config.scenario.name,
+        "scenario_display_name": config.scenario.display_name,
+    }
 
 
 class DatasetItem(BaseModel):
@@ -519,16 +552,112 @@ def _normalize_langfuse_host_alias() -> None:
 def load_project_config(path: Path | str) -> ProjectConfig:
     project_path = Path(path)
     try:
-        raw = yaml.safe_load(project_path.read_text(encoding="utf-8"))
-        if not isinstance(raw, dict):
-            raise ConfigError("Project config must be a YAML mapping")
+        raw = _read_yaml_mapping(project_path, label="Project config")
+        raw = _resolve_config_refs(raw, project_path=project_path)
         return ProjectConfig.model_validate(raw)
-    except FileNotFoundError as exc:
-        raise ConfigError(f"Project config not found: {project_path}") from exc
     except ValidationError as exc:
         raise ConfigError(str(exc)) from exc
+
+
+def _read_yaml_mapping(path: Path, *, label: str) -> dict[str, Any]:
+    try:
+        raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except FileNotFoundError as exc:
+        raise ConfigError(f"{label} not found: {path}") from exc
+    except OSError as exc:
+        raise ConfigError(f"{label} could not be read: {path}") from exc
     except yaml.YAMLError as exc:
-        raise ConfigError(f"Invalid YAML in project config: {exc}") from exc
+        raise ConfigError(f"Invalid YAML in {label}: {exc}") from exc
+    if raw is None:
+        return {}
+    if not isinstance(raw, dict):
+        raise ConfigError(f"{label} must be a YAML mapping")
+    return raw
+
+
+def _resolve_config_refs(
+    raw: dict[str, Any],
+    *,
+    project_path: Path,
+) -> dict[str, Any]:
+    config_refs = raw.get("config_refs")
+    if config_refs is None:
+        return raw
+    if not isinstance(config_refs, dict):
+        raise ConfigError("config_refs must be a YAML mapping")
+
+    unknown_refs = sorted(set(config_refs) - {"evaluation"})
+    if unknown_refs:
+        raise ConfigError(
+            "config_refs supports only evaluation; unsupported keys: "
+            + ", ".join(unknown_refs)
+        )
+
+    evaluation_ref = config_refs.get("evaluation")
+    if evaluation_ref in (None, ""):
+        return raw
+    if not isinstance(evaluation_ref, str | Path):
+        raise ConfigError("config_refs.evaluation must be a path string")
+
+    shared_path = _resolve_shared_config_path(Path(evaluation_ref), project_path=project_path)
+    shared = _read_yaml_mapping(shared_path, label="config_refs.evaluation")
+    _validate_shared_evaluation_sections(shared, shared_path=shared_path)
+    _validate_shared_evaluation_conflicts(raw, shared)
+
+    merged = dict(raw)
+    for section in SHARED_EVALUATION_ALLOWED_SECTIONS:
+        if section in shared:
+            merged[section] = shared[section]
+    return merged
+
+
+def _resolve_shared_config_path(ref: Path, *, project_path: Path) -> Path:
+    if ref.is_absolute():
+        if ref.exists():
+            return ref
+        raise ConfigError(f"config_refs.evaluation not found: {ref}")
+
+    project_relative = (project_path.parent / ref).resolve()
+    if project_relative.exists():
+        return project_relative
+
+    repo_relative = (Path.cwd() / ref).resolve()
+    if repo_relative.exists():
+        return repo_relative
+
+    raise ConfigError(
+        "config_refs.evaluation not found: "
+        f"{ref} (checked {project_relative} and {repo_relative})"
+    )
+
+
+def _validate_shared_evaluation_sections(
+    shared: dict[str, Any],
+    *,
+    shared_path: Path,
+) -> None:
+    disallowed = sorted(set(shared) - SHARED_EVALUATION_ALLOWED_SECTIONS)
+    if disallowed:
+        raise ConfigError(
+            "config_refs.evaluation contains disallowed sections in "
+            f"{shared_path}: {', '.join(disallowed)}"
+        )
+
+
+def _validate_shared_evaluation_conflicts(
+    raw: dict[str, Any],
+    shared: dict[str, Any],
+) -> None:
+    conflicts = sorted(
+        section
+        for section in SHARED_EVALUATION_CONFLICT_SECTIONS
+        if section in raw and section in shared
+    )
+    if conflicts:
+        raise ConfigError(
+            "config_refs.evaluation conflict with local project sections: "
+            + ", ".join(conflicts)
+        )
 
 
 def validate_project_config(config: ProjectConfig, *, base_dir: Path | None = None) -> None:

@@ -1,0 +1,92 @@
+project:
+  name: config-ref-project
+  description: Config ref fixture project.
+  version: v1
+  score_config_prefix: eh_config_ref_
+
+dataset:
+  kind: local_csv
+  path: tests/fixtures/datasets/prompt_variables.csv
+  langfuse_dataset_name: config-ref/v1
+  item_id_strategy: explicit_or_hash
+
+task_prompt:
+  path: tests/fixtures/prompts/prompt_sync_task.md
+  version: v1
+  template_variables:
+    - dataset.input
+
+baseline:
+  name: dry-run-baseline
+  provider: dry_run
+  auth_mode: none
+  model: dry-run
+  parameters:
+    temperature: 0.0
+    top_p: 1.0
+    max_tokens: 256
+
+candidates:
+  - name: dry-run-candidate
+    provider: dry_run
+    auth_mode: none
+    model: dry-run
+    parameters:
+      temperature: 0.0
+      top_p: 1.0
+      max_tokens: 256
+
+judge_setup:
+  default_judge_model: gpt-4.1
+  default_sampling_percent: 100
+  historical_backfill: disabled
+
+evaluators:
+  - name: clarity
+    type: llm_as_judge
+    version: v1
+    source_type: custom
+    target: observation
+    target_observation_role: model_output
+    run_types:
+      - baseline
+      - candidate
+    mode: single_output
+    blind: true
+    prompt_path: tests/fixtures/prompts/prompt_sync_judge.md
+    prompt_version: v1
+    score:
+      name: clarity
+      managed_by_harness: true
+      data_type: NUMERIC
+      min_value: 0
+      max_value: 1
+      allowed_score_sources:
+        - llm_judge
+        - human_annotation
+    required_inputs:
+      - input
+      - output
+    variables:
+      - input
+      - output
+    output_schema:
+      reasoning: string
+      score:
+        type: number
+        minimum: 0
+        maximum: 1
+      confidence:
+        type: number
+        minimum: 0
+        maximum: 1
+
+human_review:
+  enabled: true
+  queue_ownership: managed_by_harness
+  review_policy_version: default
+  minimum_sample_percent: 5
+  prioritize:
+    - failures
+    - low_confidence
+    - disputed

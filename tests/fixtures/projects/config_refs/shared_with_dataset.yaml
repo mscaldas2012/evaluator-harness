@@ -1,0 +1,5 @@
+dataset:
+  kind: local_csv
+  path: tests/fixtures/datasets/prompt_variables.csv
+
+evaluators: []

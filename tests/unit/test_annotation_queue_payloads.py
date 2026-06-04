@@ -13,9 +13,12 @@ def test_builds_candidate_annotation_payload_without_provider_identity_for_blind
         "run_id": "candidate-1",
         "input": "Source",
         "output": "Candidate",
-        "metadata": {
-            "dataset_item_id": "1",
-            "provider": "ollama",
+            "metadata": {
+                "dataset_item_id": "1",
+                "scenario_group": "dfe",
+                "scenario_name": "general_public",
+                "scenario_display_name": "General public",
+                "provider": "ollama",
             "model": "llama3",
             "model_name": "llama3-local",
             "ground_truth": "Expected",
@@ -50,6 +53,9 @@ def test_builds_candidate_annotation_payload_without_provider_identity_for_blind
     assert payload["ground_truth"] == "Expected"
     assert payload["trace_context"]["prompt_shape"] == "messages"
     assert payload["trace_context"]["prompt_roles"] == ["system", "user"]
+    assert payload["trace_context"]["scenario_group"] == "dfe"
+    assert payload["trace_context"]["scenario_name"] == "general_public"
+    assert payload["trace_context"]["scenario_display_name"] == "General public"
     evaluator_payload = payload["evaluators"][0]
     assert evaluator_payload["name"] == "clarity"
     assert "provider" not in evaluator_payload
