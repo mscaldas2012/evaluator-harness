@@ -42,6 +42,29 @@ def test_planner_creates_missing_managed_evaluator() -> None:
     assert result.evaluators[0].prompt_provenance["prompt_content_identity"].startswith("sha256:")
 
 
+def test_planner_blocks_create_when_score_config_id_is_missing() -> None:
+    config = load_project_config("tests/fixtures/projects/valid_rewrite_quality.yaml")
+
+    result = plan_judge_evaluator_setup(
+        config,
+        LangfuseClient(),
+        [
+            ScoreConfigSyncResult(
+                evaluator_name="clarity",
+                name="eh_rewrite_quality_clarity",
+                score_config_id="",
+                status="missing",
+                ownership="managed_by_harness",
+            )
+        ],
+        bindings=EvaluatorBindingStore(),
+    )
+
+    assert result.evaluators[0].operation == EvaluatorOperation.BLOCK
+    assert "score config" in str(result.evaluators[0].remediation).lower()
+    assert "sync-score-configs" in str(result.evaluators[0].remediation)
+
+
 def test_safe_update_changes_only_operational_fields() -> None:
     changes = safe_update_changes(
         expected={
@@ -59,6 +82,35 @@ def test_safe_update_changes_only_operational_fields() -> None:
     )
 
     assert changes == {"sampling_percent": 100}
+
+
+def test_safe_update_changes_includes_score_config_target_mismatch() -> None:
+    changes = safe_update_changes(
+        expected={
+            "score_config_id": "score-config-expected",
+            "filters": {"project": "rewrite-quality"},
+        },
+        remote={
+            "score_config_id": "score-config-remote",
+            "filters": {"project": "rewrite-quality"},
+        },
+    )
+
+    assert changes == {"score_config_id": "score-config-expected"}
+
+
+def test_safe_update_changes_ignores_catalog_ref_not_round_tripped_by_rest() -> None:
+    changes = safe_update_changes(
+        expected={
+            "catalog_ref": "langfuse/helpfulness",
+            "filters": {"project": "rewrite-quality"},
+        },
+        remote={
+            "filters": {"project": "rewrite-quality"},
+        },
+    )
+
+    assert changes == {}
 
 
 def test_catalog_variable_aliases_satisfy_required_observation_inputs() -> None:
