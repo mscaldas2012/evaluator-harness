@@ -7,7 +7,7 @@ judge_setup:
 evaluators:
   - name: lists_preserved
     type: llm_as_judge
-    version: v1
+    version: v3
     dimension: lists_preserved
     source_type: custom
     target: observation
@@ -48,7 +48,7 @@ evaluators:
 
   - name: formatting_essence_maintained
     type: llm_as_judge
-    version: v1
+    version: v3
     dimension: formatting_essence_maintained
     source_type: custom
     target: observation
@@ -72,7 +72,7 @@ evaluators:
 
   - name: relevance
     type: llm_as_judge
-    version: v1
+    version: v3
     dimension: relevance
     source_type: catalog
     catalog_ref: Relevance
@@ -97,7 +97,7 @@ evaluators:
 
   - name: bold_limit
     type: llm_as_judge
-    version: v1
+    version: v3
     dimension: bold_limit
     source_type: custom
     target: observation
@@ -121,7 +121,7 @@ evaluators:
 
   - name: list_item_length
     type: llm_as_judge
-    version: v1
+    version: v3
     dimension: list_item_length
     source_type: custom
     target: observation
@@ -145,7 +145,7 @@ evaluators:
 
   - name: sentence_length
     type: llm_as_judge
-    version: v1
+    version: v3
     dimension: sentence_length
     source_type: custom
     target: observation
@@ -169,7 +169,7 @@ evaluators:
 
   - name: paragraph_length
     type: llm_as_judge
-    version: v1
+    version: v3
     dimension: paragraph_length
     source_type: custom
     target: observation
@@ -193,7 +193,7 @@ evaluators:
 
   - name: necessary_facts_no_added_assumptions
     type: llm_as_judge
-    version: v1
+    version: v3
     dimension: necessary_facts_no_added_assumptions
     source_type: custom
     target: observation
@@ -217,7 +217,7 @@ evaluators:
 
   - name: semi_casual_supportive_tone
     type: llm_as_judge
-    version: v1
+    version: v3
     dimension: tone
     source_type: custom
     target: observation
@@ -241,7 +241,7 @@ evaluators:
 
   - name: active_voice
     type: llm_as_judge
-    version: v1
+    version: v3
     dimension: active_voice
     source_type: custom
     target: observation
@@ -265,7 +265,7 @@ evaluators:
 
   - name: jargon_minimized
     type: llm_as_judge
-    version: v1
+    version: v3
     dimension: jargon_minimized
     source_type: custom
     target: observation

@@ -33,6 +33,24 @@ def test_sync_judge_evaluators_apply_creates_active_fake_evaluator(tmp_path: Pat
     assert load_evaluator_bindings(path).bindings[0].langfuse_evaluator_id == "eval-1"
 
 
+def test_sync_judge_evaluators_apply_uses_resolved_score_config_id(tmp_path: Path) -> None:
+    client = LangfuseClient()
+    runner = ExperimentRunner(langfuse_client=client)
+    project = _project_with_binding(tmp_path)
+    path = tmp_path / "bindings.yaml"
+
+    result = runner.sync_judge_evaluators(project)
+
+    created = next(iter(client.evaluators.values()))
+    binding = load_evaluator_bindings(path).bindings[0]
+    assert result.evaluators[0].score_target.score_config_id == "score-config-1"
+    assert result.evaluators[0].managed_display_name == "eh_rewrite_quality_clarity"
+    assert created["display_name"] == "eh_rewrite_quality_clarity"
+    assert created["score_config_id"] == "score-config-1"
+    assert binding.score_config_id == "score-config-1"
+    assert binding.langfuse_display_name == "eh_rewrite_quality_clarity"
+
+
 def test_sync_judge_evaluators_dry_run_does_not_mutate_fake_state(tmp_path: Path) -> None:
     client = LangfuseClient()
     runner = ExperimentRunner(langfuse_client=client)
@@ -45,6 +63,22 @@ def test_sync_judge_evaluators_dry_run_does_not_mutate_fake_state(tmp_path: Path
 
     assert result.mode == "preview"
     assert client.evaluators == {}
+
+
+def test_sync_judge_evaluators_apply_updates_mismatched_score_config_id(tmp_path: Path) -> None:
+    client = LangfuseClient()
+    runner = ExperimentRunner(langfuse_client=client)
+    project = _project_with_binding(tmp_path)
+
+    first = runner.sync_judge_evaluators(project)
+    evaluator_id = str(first.evaluators[0].remote_evaluator_id)
+    client.evaluators[evaluator_id]["score_config_id"] = "stale-score-config"
+
+    second = runner.sync_judge_evaluators(project)
+
+    assert second.evaluators[0].operation.value == "update"
+    assert second.evaluators[0].changes == {"score_config_id": "score-config-1"}
+    assert client.evaluators[evaluator_id]["score_config_id"] == "score-config-1"
 
 
 def test_sync_judge_evaluators_partial_success_preserves_created_evaluator(tmp_path: Path) -> None:

@@ -45,7 +45,7 @@ SAFE_UPDATE_FIELDS = {
     "filters",
     "sampling_percent",
     "variables",
-    "catalog_ref",
+    "score_config_id",
     "active",
 }
 
@@ -369,7 +369,8 @@ def _plan_one(
 ) -> EvaluatorSetupPlan:
     target = (evaluator.target or EvaluatorTarget.OBSERVATION).value
     source_type = evaluator.source_type.value
-    display_name = evaluator.managed_display_name or build_managed_evaluator_name(
+    score_target = resolve_score_target(evaluator, score_results)
+    harness_name = evaluator.managed_display_name or build_managed_evaluator_name(
         project_slug=config.project.name,
         project_version=config.project.version,
         dimension=evaluator.dimension or evaluator.name,
@@ -377,7 +378,21 @@ def _plan_one(
         source_type=source_type,
         target_type=target,
     )
-    score_target = resolve_score_target(evaluator, score_results)
+    display_name = (
+        harness_name
+        if evaluator.source_type == EvaluatorSourceType.USER_OWNED
+        else score_target.name
+    )
+    if evaluator.source_type != EvaluatorSourceType.USER_OWNED and not score_target.score_config_id:
+        return _blocked_plan(
+            config,
+            evaluator,
+            display_name,
+            source_type,
+            target,
+            score_target,
+            "Apply score configs before syncing judge evaluators; run sync-score-configs to resolve the target score config ID.",
+        )
     try:
         filters = build_filter_profile(config, evaluator).model_dump(
             mode="json",
@@ -494,6 +509,12 @@ def _plan_one(
             "harness-managed version."
         )
         return base
+    if (
+        not remote.get("score_config_id")
+        and binding.score_config_id
+        and binding.score_config_id == score_target.score_config_id
+    ):
+        remote = {**remote, "score_config_id": binding.score_config_id}
     expected = _payload_from_plan(base)
     changes = safe_update_changes(expected=expected, remote=remote)
     if changes:
@@ -501,6 +522,12 @@ def _plan_one(
         base.reason = "Harness-managed evaluator has update-safe differences."
         base.changes = changes
         base.binding_status = "present"
+        if "score_config_id" in changes:
+            base.remediation = (
+                "Remote evaluator score config target differs from project config; "
+                f"expected {score_target.score_config_id}, remote "
+                f"{remote.get('score_config_id') or '<missing>'}."
+            )
     else:
         base.operation = EvaluatorOperation.REUSE
         base.reason = "Compatible harness-managed evaluator already exists."

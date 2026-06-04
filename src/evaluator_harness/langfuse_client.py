@@ -516,10 +516,17 @@ class LangfuseClient:
         evaluator_id: str,
         changes: dict[str, Any],
     ) -> dict[str, Any]:
+        json_payload = _rest_evaluation_rule_update_payload(changes)
+        if not json_payload:
+            fields = ", ".join(sorted(changes)) or "<none>"
+            raise ConfigError(
+                "No Langfuse evaluator update fields can be sent via the "
+                f"evaluation-rules REST API. Requested fields: {fields}."
+            )
         response = self._rest_evaluator_request(
             "PATCH",
             f"{UNSTABLE_EVALUATION_RULES_PATH}/{evaluator_id}",
-            json_payload=_rest_evaluation_rule_update_payload(changes),
+            json_payload=json_payload,
             operation=f"update Langfuse evaluator {evaluator_id}",
         )
         return _object_to_evaluator_dict(response)
@@ -2047,7 +2054,7 @@ def _rest_evaluation_rule_payload(
     *,
     evaluator_ref: dict[str, str],
 ) -> dict[str, Any]:
-    return {
+    result = {
         "name": str(payload.get("name") or payload.get("display_name")),
         "evaluator": evaluator_ref,
         "target": str(payload.get("target") or "observation"),
@@ -2056,6 +2063,9 @@ def _rest_evaluation_rule_payload(
         "filter": _rest_evaluation_rule_filters(payload.get("filters") or {}),
         "mapping": _rest_evaluation_rule_mapping(payload.get("variables") or {}),
     }
+    if payload.get("score_config_id"):
+        result["scoreConfigId"] = str(payload["score_config_id"])
+    return result
 
 
 def _rest_evaluation_rule_update_payload(changes: dict[str, Any]) -> dict[str, Any]:
@@ -2066,6 +2076,8 @@ def _rest_evaluation_rule_update_payload(changes: dict[str, Any]) -> dict[str, A
         payload["enabled"] = bool(changes.get("enabled", changes.get("active")))
     if "sampling_percent" in changes:
         payload["sampling"] = _sampling_fraction(changes.get("sampling_percent"))
+    if "score_config_id" in changes:
+        payload["scoreConfigId"] = str(changes["score_config_id"])
     if "target" in changes:
         payload["target"] = str(changes["target"])
     if "filters" in changes:
