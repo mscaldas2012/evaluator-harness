@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 from typer.testing import CliRunner
 
@@ -37,11 +38,85 @@ def test_sync_judge_evaluators_dry_run_reports_preview_plan(
 
     assert result.exit_code == 0
     assert "mode: preview" in result.output
-    assert "operation: create" in result.output
+    assert "operation: block" in result.output
     assert "source: custom" in result.output
     assert "sampling: 100" in result.output
     assert "historical-backfill: disabled" in result.output
-    assert "activation: active-on-apply" in result.output
+    assert "sync-score-configs" in result.output
+    assert "score-config:" in result.output
+
+
+def test_sync_judge_evaluators_dry_run_reports_score_config_name_and_id(
+    monkeypatch,
+) -> None:
+    class FakeRunner:
+        def sync_judge_evaluators(self, *args, **kwargs):
+            return SimpleNamespace(
+                project="rewrite-quality",
+                project_version="v1",
+                mode="preview",
+                overall_status="success",
+                binding_path=Path("bindings.yaml"),
+                evaluators=[
+                    SimpleNamespace(
+                        evaluator_name="clarity",
+                        evaluator_version="v1",
+                        source_type="custom",
+                        target="observation",
+                        operation=SimpleNamespace(value="create"),
+                        managed_display_name="EH_rewrite-quality_v1_judge_clarity_v1_custom_observation",
+                        score_target=SimpleNamespace(
+                            name="eh_rewrite_quality_clarity",
+                            score_config_id="score-config-1",
+                        ),
+                        judge_model="gpt-4.1",
+                        llm_connection="lf-connection-default",
+                        activation_state="active-on-apply",
+                        sampling_percent=100,
+                        backfill_status=SimpleNamespace(value="disabled"),
+                        binding_status="will-create",
+                        filters={},
+                        variables={},
+                        remediation=None,
+                    )
+                ],
+            )
+
+    monkeypatch.setattr(cli_module, "ExperimentRunner", FakeRunner)
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "sync-judge-evaluators",
+            "--project",
+            "tests/fixtures/projects/valid_rewrite_quality.yaml",
+            "--dry-run",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "score-config: eh_rewrite_quality_clarity (score-config-1)" in result.output
+
+
+def test_sync_judge_evaluators_dry_run_reports_missing_score_config_id(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setenv("EVALUATOR_HARNESS_LIVE", "0")
+    project = _project_with_binding(tmp_path)
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "sync-judge-evaluators",
+            "--project",
+            str(project),
+            "--dry-run",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "operation: block" in result.output
+    assert "sync-score-configs" in result.output
 
 
 def test_sync_judge_evaluators_apply_reports_status(

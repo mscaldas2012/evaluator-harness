@@ -5,8 +5,10 @@ import json
 from typing import Any
 
 import httpx
+import pytest
 
 from evaluator_harness.config import LiveSettings
+from evaluator_harness.errors import ConfigError
 from evaluator_harness.langfuse_client import LangfuseClient
 
 
@@ -138,6 +140,37 @@ def test_rest_evaluator_requests_retry_rate_limits() -> None:
     assert attempts == 2
 
 
+def test_evaluator_list_normalizes_score_config_id_field_names() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.method == "GET"
+        assert request.url.path == "/api/public/unstable/evaluation-rules"
+        _assert_basic_auth(request)
+        return httpx.Response(
+            200,
+            json={
+                "data": [
+                    {
+                        "evaluationRuleId": "rule-camel",
+                        "name": "camel",
+                        "scoreConfigId": "score-camel",
+                    },
+                    {
+                        "id": "rule-snake",
+                        "name": "snake",
+                        "score_config_id": "score-snake",
+                    },
+                ]
+            },
+        )
+
+    client = _client_without_sdk_evaluators(httpx.MockTransport(handler))
+
+    evaluators = client.list_evaluators()
+
+    assert evaluators[0]["score_config_id"] == "score-camel"
+    assert evaluators[1]["score_config_id"] == "score-snake"
+
+
 def test_custom_evaluator_create_posts_template_then_rule_with_required_shape() -> None:
     seen: list[tuple[str, str, dict[str, Any]]] = []
 
@@ -178,6 +211,7 @@ def test_custom_evaluator_create_posts_template_then_rule_with_required_shape() 
                 "target": "observation",
                 "enabled": True,
                 "sampling": 1.0,
+                "scoreConfigId": "score-config-1",
                 "filter": [],
                 "mapping": [
                     {"variable": "input", "source": "input"},
@@ -217,6 +251,7 @@ def test_custom_evaluator_create_posts_template_then_rule_with_required_shape() 
                 "output": "observation.output",
             },
             "sampling_percent": 100,
+            "score_config_id": "score-config-1",
             "judge_model": "gpt-5.4-mini",
             "llm_connection": "Azure (Peraton)",
         }
@@ -228,6 +263,48 @@ def test_custom_evaluator_create_posts_template_then_rule_with_required_shape() 
         ("POST", "/api/public/unstable/evaluators"),
         ("POST", "/api/public/unstable/evaluation-rules"),
     ]
+
+
+def test_catalog_evaluator_create_posts_rule_with_score_config_target() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        _assert_basic_auth(request)
+        assert request.method == "POST"
+        assert request.url.path == "/api/public/unstable/evaluation-rules"
+        body = _json(request)
+        assert body == {
+            "name": "EH_rewrite_quality_v1_judge_relevance_v1_catalog_observation",
+            "evaluator": {"name": "Relevance", "scope": "managed"},
+            "target": "observation",
+            "enabled": True,
+            "sampling": 1.0,
+            "scoreConfigId": "score-config-2",
+            "filter": [],
+            "mapping": [
+                {"variable": "query", "source": "input"},
+                {"variable": "generation", "source": "output"},
+            ],
+        }
+        return httpx.Response(200, json={"id": "rule-2", **body})
+
+    client = _client_without_sdk_evaluators(httpx.MockTransport(handler))
+
+    created = client.create_evaluator(
+        {
+            "display_name": "EH_rewrite_quality_v1_judge_relevance_v1_catalog_observation",
+            "source_type": "catalog",
+            "catalog_ref": "Relevance",
+            "target": "observation",
+            "active": True,
+            "variables": {
+                "query": "observation.input",
+                "generation": "observation.output",
+            },
+            "sampling_percent": 100,
+            "score_config_id": "score-config-2",
+        }
+    )
+
+    assert created["id"] == "rule-2"
 
 
 def test_evaluator_create_does_not_emit_provider_specific_top_level_filters() -> None:
@@ -350,6 +427,35 @@ def test_evaluator_filter_update_includes_target_for_langfuse_validation() -> No
             }
         },
     )
+
+
+def test_evaluator_update_includes_score_config_target() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.method == "PATCH"
+        assert request.url.path == "/api/public/unstable/evaluation-rules/rule-1"
+        _assert_basic_auth(request)
+        body = _json(request)
+        assert body == {"scoreConfigId": "score-config-2"}
+        return httpx.Response(
+            200,
+            json={"id": "rule-1", "scoreConfigId": "score-config-2"},
+        )
+
+    client = _client_without_sdk_evaluators(httpx.MockTransport(handler))
+
+    updated = client.update_evaluator("rule-1", {"score_config_id": "score-config-2"})
+
+    assert updated["score_config_id"] == "score-config-2"
+
+
+def test_evaluator_update_rejects_empty_rest_patch_payload() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise AssertionError("empty evaluator update payload should not be sent")
+
+    client = _client_without_sdk_evaluators(httpx.MockTransport(handler))
+
+    with pytest.raises(ConfigError, match="catalog_ref"):
+        client.update_evaluator("rule-1", {"catalog_ref": "langfuse/helpfulness"})
 
 
 def test_sdk_evaluator_resource_is_preferred_over_rest_fallback() -> None:

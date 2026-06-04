@@ -495,6 +495,19 @@ configs/langfuse/evaluator_bindings/
 The binding file records which Langfuse evaluator and score config were created
 or reused for each project evaluator key.
 
+Judge evaluator rules target the resolved Langfuse score config ID for their
+score dimension. Keep project YAML focused on score intent, such as
+`score.name` and `managed_by_harness`; harness-managed remote score config IDs
+are resolved during score config sync and recorded in evaluator bindings. This
+lets LLM-as-Judge scores and Human Annotation Queue scores share the same score
+config for comparison and calibration.
+
+Harness-managed evaluator rule names use the canonical score config name, such
+as `eh_gp_jargon_minimized`. Langfuse uses the evaluator rule name as the
+automated evaluation score name, so matching the rule name to the score config
+name lets automated `eval` scores and human `annotation` scores appear under the
+same metric name.
+
 ### Annotation Queue Sync
 
 Managed queues use this naming convention:

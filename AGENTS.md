@@ -1,7 +1,7 @@
 <!-- SPECKIT START -->
 For additional context about technologies to be used, project structure,
 shell commands, and other important information, read
-specs/013-dfe-config-refs/plan.md
+specs/014-evaluator-score-target/plan.md
 <!-- SPECKIT END -->
 
 ## Python Environment
