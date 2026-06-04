@@ -6,6 +6,7 @@ from evaluator_harness.langfuse_client import LangfuseClient, ScoreConfigSyncRes
 from evaluator_harness.langfuse_evaluator_setup import (
     BackfillStatus,
     EvaluatorOperation,
+    build_variable_mapping,
     safe_update_changes,
     plan_judge_evaluator_setup,
 )
@@ -58,6 +59,18 @@ def test_safe_update_changes_only_operational_fields() -> None:
     )
 
     assert changes == {"sampling_percent": 100}
+
+
+def test_catalog_variable_aliases_satisfy_required_observation_inputs() -> None:
+    config = load_project_config("tests/fixtures/projects/valid_catalog_judge_setup.yaml")
+    evaluator = config.evaluators[0]
+    evaluator.required_inputs = ["input", "output"]
+    evaluator.variables = ["query", "generation"]
+
+    assert build_variable_mapping(evaluator) == {
+        "query": "observation.input",
+        "generation": "observation.output",
+    }
 
 
 def test_safe_update_filters_ignore_non_rest_round_trip_fields() -> None:

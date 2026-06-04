@@ -20,6 +20,9 @@ def test_export_summary_writes_trace_rows_with_score_columns(tmp_path: Path) -> 
                 "dataset_item_id": "1",
                 "project": "rewrite-quality",
                 "project_version": "v1",
+                "scenario_group": "dfe",
+                "scenario_name": "general_public",
+                "scenario_display_name": "General public",
                 "dataset_name": "rewrite-quality/v1",
                 "dataset_version": "latest",
                 "prompt_version": "v1",
@@ -75,6 +78,9 @@ def test_export_summary_writes_trace_rows_with_score_columns(tmp_path: Path) -> 
     assert result.output_path == output_path
     assert "trace_id,run_id,item_id,project" in csv_text
     assert "trace-1,candidate-1,1,rewrite-quality" in csv_text
+    assert "scenario_group" in csv_text
+    assert "general_public" in csv_text
+    assert "General public" in csv_text
     assert "generation_parameter_hash" in csv_text
     assert "prompt_shape" in csv_text
     assert "prompt_content_identity" in csv_text

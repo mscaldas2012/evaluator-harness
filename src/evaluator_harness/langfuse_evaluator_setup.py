@@ -35,7 +35,9 @@ MANAGED_NAME_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
 SCORE_SOURCE_TERMS = ("_eval", "_annotation", "_human", "_llm_judge")
 VARIABLE_PATHS = {
     "input": "observation.input",
+    "query": "observation.input",
     "output": "observation.output",
+    "generation": "observation.output",
     "baseline_output": "trace.metadata.baseline_output",
     "ground_truth": "trace.metadata.ground_truth",
 }
@@ -160,7 +162,12 @@ def effective_judge_model_or_connection(
 
 def build_variable_mapping(evaluator: EvaluatorDefinition) -> dict[str, str]:
     declared = set(evaluator.variables)
-    missing = [name for name in evaluator.required_inputs if name not in declared]
+    declared_paths = {VARIABLE_PATHS[name] for name in declared if name in VARIABLE_PATHS}
+    missing = [
+        name
+        for name in evaluator.required_inputs
+        if VARIABLE_PATHS.get(name) not in declared_paths
+    ]
     if missing:
         raise ConfigError(
             f"Evaluator {evaluator.name} missing variable mappings: "
@@ -403,8 +410,11 @@ def _plan_one(
             score_target,
             "Evaluator filter is too broad; add project, project_version, and evaluator_set_id filters.",
         )
-    judge_kind, judge_value = effective_judge_model_or_connection(config, evaluator)
-    if judge_kind is None:
+    judge_model = evaluator.judge_model or config.judge_setup.default_judge_model
+    llm_connection = (
+        evaluator.llm_connection or config.judge_setup.default_llm_connection
+    )
+    if not (judge_model or llm_connection):
         return _blocked_plan(
             config,
             evaluator,
@@ -459,8 +469,8 @@ def _plan_one(
             artifact_name=evaluator.name,
         ),
         output_definition=_output_definition(evaluator),
-        judge_model=judge_value if judge_kind == "judge_model" else None,
-        llm_connection=judge_value if judge_kind == "llm_connection" else None,
+        judge_model=judge_model,
+        llm_connection=llm_connection,
         sampling_percent=effective_sampling_percent(config, evaluator),
         backfill_status=backfill,
         binding_status="will-create",

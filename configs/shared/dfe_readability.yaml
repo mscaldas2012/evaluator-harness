@@ -1,0 +1,298 @@
+judge_setup:
+  default_judge_model: gpt-5.4-mini
+  default_llm_connection: Azure (Peraton)
+  default_sampling_percent: 100
+  historical_backfill: disabled
+
+evaluators:
+  - name: lists_preserved
+    type: llm_as_judge
+    version: v1
+    dimension: lists_preserved
+    source_type: custom
+    target: observation
+    target_observation_role: model_output
+    run_types: &baseline_and_candidate
+      - baseline
+      - candidate
+    mode: single_output
+    blind: true
+    prompt_path: prompts/dfe/evaluators/lists_preserved.md
+    prompt_version: v1
+    score:
+      name: lists_preserved
+      managed_by_harness: true
+      data_type: NUMERIC
+      min_value: 0
+      max_value: 1
+      description: Bulleted and numbered lists are retained.
+      allowed_score_sources: &llm_and_human_sources
+        - llm_judge
+        - human_annotation
+    required_inputs: &single_output_inputs
+      - input
+      - output
+    variables: &judge_variables
+      - input
+      - output
+    output_schema: &numeric_judge_schema
+      reasoning: string
+      score:
+        type: number
+        minimum: 0
+        maximum: 1
+      confidence:
+        type: number
+        minimum: 0
+        maximum: 1
+
+  - name: formatting_essence_maintained
+    type: llm_as_judge
+    version: v1
+    dimension: formatting_essence_maintained
+    source_type: custom
+    target: observation
+    target_observation_role: model_output
+    run_types: *baseline_and_candidate
+    mode: single_output
+    blind: true
+    prompt_path: prompts/dfe/evaluators/formatting_essence_maintained.md
+    prompt_version: v1
+    score:
+      name: formatting_essence
+      managed_by_harness: true
+      data_type: NUMERIC
+      min_value: 0
+      max_value: 1
+      description: Formatting essence is maintained.
+      allowed_score_sources: *llm_and_human_sources
+    required_inputs: *single_output_inputs
+    variables: *judge_variables
+    output_schema: *numeric_judge_schema
+
+  - name: relevance
+    type: llm_as_judge
+    version: v1
+    dimension: relevance
+    source_type: catalog
+    catalog_ref: Relevance
+    target: observation
+    target_observation_role: model_output
+    run_types: *baseline_and_candidate
+    mode: single_output
+    blind: true
+    score:
+      name: relevance
+      managed_by_harness: true
+      data_type: NUMERIC
+      min_value: 0
+      max_value: 1
+      description: Output is relevant to the source input and requested audience.
+      allowed_score_sources: *llm_and_human_sources
+    required_inputs: *single_output_inputs
+    variables:
+      - query
+      - generation
+    output_schema: *numeric_judge_schema
+
+  - name: bold_limit
+    type: llm_as_judge
+    version: v1
+    dimension: bold_limit
+    source_type: custom
+    target: observation
+    target_observation_role: model_output
+    run_types: *baseline_and_candidate
+    mode: single_output
+    blind: true
+    prompt_path: prompts/dfe/evaluators/bold_limit.md
+    prompt_version: v1
+    score:
+      name: bold_limit
+      managed_by_harness: true
+      data_type: NUMERIC
+      min_value: 0
+      max_value: 1
+      description: No more than five consecutive words are bolded.
+      allowed_score_sources: *llm_and_human_sources
+    required_inputs: *single_output_inputs
+    variables: *judge_variables
+    output_schema: *numeric_judge_schema
+
+  - name: list_item_length
+    type: llm_as_judge
+    version: v1
+    dimension: list_item_length
+    source_type: custom
+    target: observation
+    target_observation_role: model_output
+    run_types: *baseline_and_candidate
+    mode: single_output
+    blind: true
+    prompt_path: prompts/dfe/evaluators/list_item_length.md
+    prompt_version: v1
+    score:
+      name: list_item_length
+      managed_by_harness: true
+      data_type: NUMERIC
+      min_value: 0
+      max_value: 1
+      description: List items are concise without losing meaning.
+      allowed_score_sources: *llm_and_human_sources
+    required_inputs: *single_output_inputs
+    variables: *judge_variables
+    output_schema: *numeric_judge_schema
+
+  - name: sentence_length
+    type: llm_as_judge
+    version: v1
+    dimension: sentence_length
+    source_type: custom
+    target: observation
+    target_observation_role: model_output
+    run_types: *baseline_and_candidate
+    mode: single_output
+    blind: true
+    prompt_path: prompts/dfe/evaluators/sentence_length.md
+    prompt_version: v1
+    score:
+      name: sentence_length
+      managed_by_harness: true
+      data_type: NUMERIC
+      min_value: 0
+      max_value: 1
+      description: Sentences are 14 words or less.
+      allowed_score_sources: *llm_and_human_sources
+    required_inputs: *single_output_inputs
+    variables: *judge_variables
+    output_schema: *numeric_judge_schema
+
+  - name: paragraph_length
+    type: llm_as_judge
+    version: v1
+    dimension: paragraph_length
+    source_type: custom
+    target: observation
+    target_observation_role: model_output
+    run_types: *baseline_and_candidate
+    mode: single_output
+    blind: true
+    prompt_path: prompts/dfe/evaluators/paragraph_length.md
+    prompt_version: v1
+    score:
+      name: paragraph_length
+      managed_by_harness: true
+      data_type: NUMERIC
+      min_value: 0
+      max_value: 1
+      description: Paragraphs have no more than three sentences.
+      allowed_score_sources: *llm_and_human_sources
+    required_inputs: *single_output_inputs
+    variables: *judge_variables
+    output_schema: *numeric_judge_schema
+
+  - name: necessary_facts_no_added_assumptions
+    type: llm_as_judge
+    version: v1
+    dimension: necessary_facts_no_added_assumptions
+    source_type: custom
+    target: observation
+    target_observation_role: model_output
+    run_types: *baseline_and_candidate
+    mode: single_output
+    blind: true
+    prompt_path: prompts/dfe/evaluators/necessary_facts_no_added_assumptions.md
+    prompt_version: v1
+    score:
+      name: facts_no_assumptions
+      managed_by_harness: true
+      data_type: NUMERIC
+      min_value: 0
+      max_value: 1
+      description: Necessary facts are retained and unsupported assumptions are avoided.
+      allowed_score_sources: *llm_and_human_sources
+    required_inputs: *single_output_inputs
+    variables: *judge_variables
+    output_schema: *numeric_judge_schema
+
+  - name: semi_casual_supportive_tone
+    type: llm_as_judge
+    version: v1
+    dimension: tone
+    source_type: custom
+    target: observation
+    target_observation_role: model_output
+    run_types: *baseline_and_candidate
+    mode: single_output
+    blind: true
+    prompt_path: prompts/dfe/evaluators/semi_casual_supportive_tone.md
+    prompt_version: v1
+    score:
+      name: semi_casual_supportive_tone
+      managed_by_harness: true
+      data_type: NUMERIC
+      min_value: 0
+      max_value: 1
+      description: Tone is semi-casual, supportive, and aligned to CDC health communicator style.
+      allowed_score_sources: *llm_and_human_sources
+    required_inputs: *single_output_inputs
+    variables: *judge_variables
+    output_schema: *numeric_judge_schema
+
+  - name: active_voice
+    type: llm_as_judge
+    version: v1
+    dimension: active_voice
+    source_type: custom
+    target: observation
+    target_observation_role: model_output
+    run_types: *baseline_and_candidate
+    mode: single_output
+    blind: true
+    prompt_path: prompts/dfe/evaluators/active_voice.md
+    prompt_version: v1
+    score:
+      name: active_voice
+      managed_by_harness: true
+      data_type: NUMERIC
+      min_value: 0
+      max_value: 1
+      description: Output primarily uses active voice.
+      allowed_score_sources: *llm_and_human_sources
+    required_inputs: *single_output_inputs
+    variables: *judge_variables
+    output_schema: *numeric_judge_schema
+
+  - name: jargon_minimized
+    type: llm_as_judge
+    version: v1
+    dimension: jargon_minimized
+    source_type: custom
+    target: observation
+    target_observation_role: model_output
+    run_types: *baseline_and_candidate
+    mode: single_output
+    blind: true
+    prompt_path: prompts/dfe/evaluators/jargon_minimized.md
+    prompt_version: v1
+    score:
+      name: jargon_minimized
+      managed_by_harness: true
+      data_type: NUMERIC
+      min_value: 0
+      max_value: 1
+      description: Jargon is minimized and defined when needed.
+      allowed_score_sources: *llm_and_human_sources
+    required_inputs: *single_output_inputs
+    variables: *judge_variables
+    output_schema: *numeric_judge_schema
+
+human_review:
+  enabled: true
+  queue_ownership: managed_by_harness
+  review_policy_version: default
+  minimum_sample_percent: 5
+  prioritize:
+    - failures
+    - low_confidence
+    - disputed

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import hashlib
+import os
+import time
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Any
@@ -33,6 +35,7 @@ _FINGERPRINT_FIELDS = [
 
 UNSTABLE_EVALUATION_RULES_PATH = "/api/public/unstable/evaluation-rules"
 UNSTABLE_EVALUATORS_PATH = "/api/public/unstable/evaluators"
+RETRYABLE_LANGFUSE_STATUS_CODES = {408, 409, 425, 429, 500, 502, 503, 504}
 
 
 @dataclass(frozen=True)
@@ -81,6 +84,7 @@ class LangfuseClient:
     annotation_queue_items: list[dict[str, Any]] = field(default_factory=list)
     evaluators: dict[str, dict[str, Any]] = field(default_factory=dict)
     evaluator_backfill_targets: set[str] = field(default_factory=set)
+    retry_sleep: Any = field(default=time.sleep, repr=False)
     _annotation_queue_keys: set[tuple[str, str]] = field(default_factory=set)
 
     @classmethod
@@ -564,11 +568,17 @@ class LangfuseClient:
                 timeout=30.0,
                 transport=self.http_transport,
             ) as http_client:
-                response = http_client.request(method, path, json=json_payload)
-                response.raise_for_status()
-                if not response.content:
-                    return {}
-                return response.json()
+                def request_once() -> Any:
+                    response = http_client.request(method, path, json=json_payload)
+                    response.raise_for_status()
+                    if not response.content:
+                        return {}
+                    return response.json()
+
+                return self._with_langfuse_retries(
+                    operation=operation,
+                    callback=request_once,
+                )
         except httpx.HTTPStatusError as exc:
             body = exc.response.text[:500]
             raise LangfuseError(
@@ -580,6 +590,38 @@ class LangfuseClient:
                 f"Unable to {operation} via unstable evaluation-rules REST API: {exc}"
             ) from exc
 
+    def _with_langfuse_retries(self, *, operation: str, callback: Any) -> Any:
+        attempts = _langfuse_retry_attempts()
+        initial_delay = _langfuse_retry_initial_delay()
+        max_delay = _langfuse_retry_max_delay()
+        last_exc: Exception | None = None
+        for attempt in range(1, attempts + 1):
+            try:
+                return callback()
+            except Exception as exc:
+                last_exc = exc
+                if attempt >= attempts or not _is_retryable_langfuse_error(exc):
+                    raise
+                delay = _retry_after_seconds(exc)
+                if delay is None:
+                    delay = min(max_delay, initial_delay * (2 ** (attempt - 1)))
+                self.calls.append(
+                    (
+                        "langfuse_retry",
+                        {
+                            "operation": operation,
+                            "attempt": attempt,
+                            "next_attempt": attempt + 1,
+                            "delay_seconds": delay,
+                            "error": str(exc),
+                        },
+                    )
+                )
+                self.retry_sleep(delay)
+        if last_exc is not None:
+            raise last_exc
+        raise LangfuseError(f"Unable to execute Langfuse operation: {operation}")
+
     def _load_live_score_configs_by_name(self, name: str, expected: dict[str, Any]) -> None:
         if self.client is None:
             return
@@ -589,7 +631,10 @@ class LangfuseClient:
         if not callable(get):
             return
         try:
-            page = get(limit=100)
+            page = self._with_langfuse_retries(
+                operation="list score configs",
+                callback=lambda: get(limit=100),
+            )
         except Exception as exc:
             raise LangfuseError(f"Unable to list score configs: {exc}") from exc
 
@@ -627,13 +672,16 @@ class LangfuseClient:
                 if payload.get("categories")
                 else None
             )
-            created = create(
-                name=payload["name"],
-                data_type=ScoreConfigDataType(payload["data_type"]),
-                categories=categories,
-                min_value=payload.get("min_value"),
-                max_value=payload.get("max_value"),
-                description=payload.get("description"),
+            created = self._with_langfuse_retries(
+                operation=f"create score config {payload['name']}",
+                callback=lambda: create(
+                    name=payload["name"],
+                    data_type=ScoreConfigDataType(payload["data_type"]),
+                    categories=categories,
+                    min_value=payload.get("min_value"),
+                    max_value=payload.get("max_value"),
+                    description=payload.get("description"),
+                ),
             )
         except Exception as exc:
             raise LangfuseError(
@@ -1301,6 +1349,26 @@ class LangfuseClient:
             else trace.get("output")
         )
         candidate_output = trace.get("output") if baseline_run_id else None
+        trace_context = {
+            "trace_id": selection.trace_id,
+            "run_id": selection.run_id,
+            "prompt_shape": metadata.get("prompt_shape"),
+            "prompt_roles": metadata.get("prompt_roles"),
+            "prompt_identity": metadata.get("prompt_identity"),
+            "baseline_prompt_identity": metadata.get("baseline_prompt_identity"),
+            "candidate_prompt_identity": metadata.get("candidate_prompt_identity"),
+            "parameter_identity": metadata.get("parameter_identity"),
+            "generation_parameter_hash": metadata.get("generation_parameter_hash"),
+            "variant_identity": metadata.get("variant_identity"),
+        }
+        if metadata.get("scenario_name") is not None:
+            trace_context.update(
+                {
+                    "scenario_group": metadata.get("scenario_group"),
+                    "scenario_name": metadata.get("scenario_name"),
+                    "scenario_display_name": metadata.get("scenario_display_name"),
+                }
+            )
         return {
             "queue_item_id": f"{selection.run_id}:{selection.trace_id}",
             "run_id": selection.run_id,
@@ -1312,18 +1380,7 @@ class LangfuseClient:
             "baseline_output": baseline_output,
             "candidate_output": candidate_output,
             "ground_truth": metadata.get("ground_truth"),
-            "trace_context": {
-                "trace_id": selection.trace_id,
-                "run_id": selection.run_id,
-                "prompt_shape": metadata.get("prompt_shape"),
-                "prompt_roles": metadata.get("prompt_roles"),
-                "prompt_identity": metadata.get("prompt_identity"),
-                "baseline_prompt_identity": metadata.get("baseline_prompt_identity"),
-                "candidate_prompt_identity": metadata.get("candidate_prompt_identity"),
-                "parameter_identity": metadata.get("parameter_identity"),
-                "generation_parameter_hash": metadata.get("generation_parameter_hash"),
-                "variant_identity": metadata.get("variant_identity"),
-            },
+            "trace_context": trace_context,
             "evaluators": [
                 {
                     "name": evaluator.name,
@@ -1626,6 +1683,83 @@ def _reference_matches(reference: Any, fingerprint: Any) -> bool:
     return all(ref_data.get(field) == fp_data.get(field) for field in _FINGERPRINT_FIELDS)
 
 
+def _langfuse_retry_attempts() -> int:
+    return _positive_int_env("EVALUATOR_HARNESS_LANGFUSE_RETRY_ATTEMPTS", default=5)
+
+
+def _langfuse_retry_initial_delay() -> float:
+    return _positive_float_env(
+        "EVALUATOR_HARNESS_LANGFUSE_RETRY_INITIAL_DELAY",
+        default=1.0,
+    )
+
+
+def _langfuse_retry_max_delay() -> float:
+    return _positive_float_env(
+        "EVALUATOR_HARNESS_LANGFUSE_RETRY_MAX_DELAY",
+        default=15.0,
+    )
+
+
+def _positive_int_env(name: str, *, default: int) -> int:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        return default
+    return value if value > 0 else default
+
+
+def _positive_float_env(name: str, *, default: float) -> float:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    try:
+        value = float(raw)
+    except ValueError:
+        return default
+    return value if value >= 0 else default
+
+
+def _is_retryable_langfuse_error(exc: Exception) -> bool:
+    if isinstance(exc, httpx.HTTPStatusError):
+        return exc.response.status_code in RETRYABLE_LANGFUSE_STATUS_CODES
+    if isinstance(exc, httpx.TransportError):
+        return True
+    text = str(exc).lower()
+    retry_markers = [
+        "429",
+        "408",
+        "409",
+        "425",
+        "500",
+        "502",
+        "503",
+        "504",
+        "rate limit",
+        "too many requests",
+        "temporarily unavailable",
+        "timeout",
+        "timed out",
+    ]
+    return any(marker in text for marker in retry_markers)
+
+
+def _retry_after_seconds(exc: Exception) -> float | None:
+    if not isinstance(exc, httpx.HTTPStatusError):
+        return None
+    retry_after = exc.response.headers.get("Retry-After")
+    if not retry_after:
+        return None
+    try:
+        delay = float(retry_after)
+    except ValueError:
+        return None
+    return delay if delay >= 0 else None
+
+
 def _metadata_matches(metadata: dict[str, Any], fingerprint: Any) -> bool:
     fp_data = (
         fingerprint.model_dump(mode="json")
@@ -1887,10 +2021,25 @@ def _rest_custom_evaluator_payload(payload: dict[str, Any]) -> dict[str, Any]:
         "prompt": str(payload.get("prompt") or ""),
         "outputDefinition": output_definition,
     }
-    model_config = payload.get("modelConfig") or payload.get("model_config")
+    model_config = (
+        payload.get("modelConfig")
+        or payload.get("model_config")
+        or _rest_model_config(payload)
+    )
     if model_config:
         result["modelConfig"] = model_config
     return result
+
+
+def _rest_model_config(payload: dict[str, Any]) -> dict[str, str]:
+    model_config: dict[str, str] = {}
+    if payload.get("llm_connection"):
+        model_config["provider"] = str(payload["llm_connection"])
+    if payload.get("judge_model"):
+        model_config["model"] = str(payload["judge_model"])
+    if {"provider", "model"} <= set(model_config):
+        return model_config
+    return {}
 
 
 def _rest_evaluation_rule_payload(

@@ -1,0 +1,35 @@
+project:
+  name: conflicting-config-ref-project
+  version: v1
+  score_config_prefix: eh_conflicting_config_ref_
+
+config_refs:
+  evaluation: shared_evaluation.yaml
+
+dataset:
+  kind: local_csv
+  path: tests/fixtures/datasets/prompt_variables.csv
+  langfuse_dataset_name: conflicting-config-ref/v1
+
+task_prompt:
+  path: tests/fixtures/prompts/prompt_sync_task.md
+  version: v1
+
+baseline:
+  name: dry-run-baseline
+  provider: dry_run
+  auth_mode: none
+  model: dry-run
+  parameters:
+    temperature: 0.0
+
+candidates:
+  - name: dry-run-candidate
+    provider: dry_run
+    auth_mode: none
+    model: dry-run
+    parameters:
+      temperature: 0.0
+
+human_review:
+  enabled: false
