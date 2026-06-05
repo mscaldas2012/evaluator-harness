@@ -28,6 +28,16 @@ def test_loads_valid_project_config_from_yaml() -> None:
     assert config.evaluators[0].score.managed_by_harness is True
 
 
+def test_standard_model_output_judge_does_not_require_observation_name() -> None:
+    config = load_project_config(Path("configs/projects/rewrite_quality.yaml"))
+
+    evaluator = config.evaluators[0]
+
+    assert evaluator.target_observation_role == "model_output"
+    assert evaluator.target_observation_name is None
+    validate_project_config(config)
+
+
 def test_loads_valid_azure_api_key_candidate_config() -> None:
     config = load_project_config(
         Path("tests/fixtures/projects/valid_azure_api_key_candidate.yaml")

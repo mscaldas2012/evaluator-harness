@@ -306,6 +306,11 @@ def run(
                 str(result.baseline_reference),
             )
             console.print(f"baseline-reference: {reference_id}")
+        targeting_status = getattr(result, "model_output_targeting_status", None)
+        targeting_message = getattr(result, "model_output_targeting_message", None)
+        if targeting_status and targeting_message:
+            console.print(f"model-output-targeting: {targeting_status}")
+            console.print(f"model-output-targeting-detail: {targeting_message}")
         review = getattr(result, "review_selection", None)
         if review is not None:
             console.print(f"review-selected: {review.selected_count}")

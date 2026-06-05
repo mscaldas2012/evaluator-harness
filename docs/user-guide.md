@@ -57,6 +57,30 @@ run baseline / run candidate
   `-- automatic review selection when human_review.enabled is true
 ```
 
+### Model Output Targeting
+
+Standard LLM-as-Judge evaluators should target the final model output by role,
+not by provider-specific observation name:
+
+```yaml
+target: observation
+target_observation_role: model_output
+```
+
+For providers that create an inner Langfuse generation observation, the harness
+marks the parent/container span as `run_item` and marks only the inner final
+generation as `model_output`. For dry-run, Ollama, and other non-generation
+paths, the parent span becomes the single `model_output` observation after a
+successful response. This keeps evaluator rules portable across OpenAI-compatible,
+Ollama, dry-run, and future providers without depending on names such as
+`OpenAI-generation`.
+
+If a provider uses native Langfuse tracing and cannot propagate the standard
+role to exactly one final output observation, configure the evaluator with an
+explicit `target_observation_name` for that special case. Duplicate
+`model_output` markers cause evaluators to run more than once per dataset item;
+missing markers prevent standard judges from scoring the run.
+
 Boxed view:
 
 ```text
