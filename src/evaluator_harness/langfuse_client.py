@@ -812,6 +812,13 @@ class LangfuseClient:
         if callable(flush):
             flush()
 
+    def supports_observation_spans(self) -> bool:
+        return callable(
+            getattr(self.client, "start_as_current_observation", None)
+            if self.client is not None
+            else None
+        )
+
     @contextmanager
     def generation_span(
         self,
