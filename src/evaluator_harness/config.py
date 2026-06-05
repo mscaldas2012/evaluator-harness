@@ -284,7 +284,13 @@ class EvaluatorDefinition(BaseModel):
     remote_evaluator_id: str | None = None
     target: EvaluatorTarget | None = None
     target_observation_role: str = "model_output"
-    target_observation_name: str | None = None
+    target_observation_name: str | None = Field(
+        default=None,
+        description=(
+            "Optional explicit Langfuse observation name for providers that cannot "
+            "mark exactly one final output with target_observation_role."
+        ),
+    )
     run_types: list[EvaluatorRunType] | None = None
     mode: EvaluatorMode | None = None
     prompt_path: Path | None = None

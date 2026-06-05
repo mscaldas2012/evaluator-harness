@@ -55,6 +55,14 @@ from evaluator_harness.langfuse_client import (
     LangfuseClient,
     ScoreConfigSyncResult,
 )
+from evaluator_harness.model_output_targeting import (
+    MODEL_OUTPUT_ROLE,
+    RUN_ITEM_ROLE,
+    diagnose_model_output_targeting,
+    final_output_metadata,
+    parent_observation_metadata,
+    metadata_with_observation_role,
+)
 from evaluator_harness.providers import create_provider
 from evaluator_harness.providers import provider_tracing_metadata
 from evaluator_harness.providers.base import (
@@ -105,6 +113,8 @@ class RunResult:
     failed_count: int
     baseline_reference: BaselineReference | None = None
     review_selection: ReviewSelectionResult | None = None
+    model_output_targeting_status: str | None = None
+    model_output_targeting_message: str | None = None
 
 
 @dataclass(frozen=True)
@@ -368,6 +378,8 @@ class ExperimentRunner:
                 failed_count=result.failed_count,
                 baseline_reference=result.baseline_reference,
                 review_selection=review,
+                model_output_targeting_status=result.model_output_targeting_status,
+                model_output_targeting_message=result.model_output_targeting_message,
             )
         return result
 
@@ -573,12 +585,12 @@ class ExperimentRunner:
         model_config: ModelConfig,
         prompt: str,
     ) -> Any:
-        if not getattr(provider, "uses_manual_langfuse_generation", False):
+        if not self._uses_manual_generation_observation(provider):
             return provider.generate(request)
         with self.langfuse_client.generation_span(
             name="OpenAI-generation",
             input=prompt,
-            metadata=request.metadata,
+            metadata=final_output_metadata(request.metadata),
             model=model_config.model,
             model_parameters=request.params,
         ) as generation_observation:
@@ -588,6 +600,12 @@ class ExperimentRunner:
                 response,
             )
             return response
+
+    def _uses_manual_generation_observation(self, provider: ModelProvider) -> bool:
+        return bool(
+            getattr(provider, "uses_manual_langfuse_generation", False)
+            and self.langfuse_client.supports_observation_spans()
+        )
 
     def _run_baseline(
         self,
@@ -649,17 +667,20 @@ class ExperimentRunner:
                 ),
                 rendered_prompt=rendered_prompt,
             )
+            parent_metadata = parent_observation_metadata(request.metadata)
             with self.langfuse_client.trace_span(
                 trace_id=trace_id,
                 name=trace_name,
                 input=item.input,
-                metadata=request.metadata,
+                metadata=parent_metadata,
             ) as parent_observation:
                 parent_observation_id = self.langfuse_client.observation_id(
                     parent_observation
                 )
                 if parent_observation_id:
                     request.metadata["parent_observation_id"] = parent_observation_id
+                    parent_metadata["parent_observation_id"] = parent_observation_id
+                uses_manual_generation = self._uses_manual_generation_observation(provider)
                 try:
                     self._validate_provider_prompt_roles(config.baseline, rendered_prompt)
                     response = self._generate_with_optional_langfuse_generation(
@@ -683,6 +704,9 @@ class ExperimentRunner:
                         dataset_sync=dataset_sync,
                         fingerprint=fingerprint,
                         rendered_prompt=rendered_prompt,
+                        observation_role=(
+                            RUN_ITEM_ROLE if uses_manual_generation else MODEL_OUTPUT_ROLE
+                        ),
                     )
                     if self.langfuse_client.update_trace_span(parent_observation, trace):
                         trace["_live_observation_logged"] = True
@@ -732,6 +756,7 @@ class ExperimentRunner:
                         dataset_sync=dataset_sync,
                         fingerprint=fingerprint,
                         rendered_prompt=rendered_prompt,
+                        observation_role=RUN_ITEM_ROLE,
                     )
                     if self.langfuse_client.update_trace_span(parent_observation, trace):
                         trace["_live_observation_logged"] = True
@@ -747,12 +772,18 @@ class ExperimentRunner:
 
         self.baseline_registry.record(run_id, fingerprint, reference)
         self.langfuse_client.record_baseline_reference(run_id, reference)
+        targeting = self._diagnose_run_model_output_targeting(
+            run_id=run_id,
+            completed_count=completed,
+        )
         return RunResult(
             run_id=run_id,
             run_type="baseline",
             completed_count=completed,
             failed_count=failed,
             baseline_reference=reference,
+            model_output_targeting_status=targeting.status,
+            model_output_targeting_message=targeting.message,
         )
 
     def _run_candidate(
@@ -858,17 +889,20 @@ class ExperimentRunner:
                 },
                 rendered_prompt=rendered_prompt,
             )
+            parent_metadata = parent_observation_metadata(request.metadata)
             with self.langfuse_client.trace_span(
                 trace_id=trace_id,
                 name=trace_name,
                 input=item.input,
-                metadata=request.metadata,
+                metadata=parent_metadata,
             ) as parent_observation:
                 parent_observation_id = self.langfuse_client.observation_id(
                     parent_observation
                 )
                 if parent_observation_id:
                     request.metadata["parent_observation_id"] = parent_observation_id
+                    parent_metadata["parent_observation_id"] = parent_observation_id
+                uses_manual_generation = self._uses_manual_generation_observation(provider)
                 try:
                     self._validate_provider_prompt_roles(candidate, rendered_prompt)
                     response = self._generate_with_optional_langfuse_generation(
@@ -895,6 +929,9 @@ class ExperimentRunner:
                         baseline_reference=baseline_reference,
                         parameter_hash=parameter_hash,
                         rendered_prompt=rendered_prompt,
+                        observation_role=(
+                            RUN_ITEM_ROLE if uses_manual_generation else MODEL_OUTPUT_ROLE
+                        ),
                     )
                     if self.langfuse_client.update_trace_span(parent_observation, trace):
                         trace["_live_observation_logged"] = True
@@ -950,6 +987,7 @@ class ExperimentRunner:
                         baseline_reference=baseline_reference,
                         parameter_hash=parameter_hash,
                         rendered_prompt=rendered_prompt,
+                        observation_role=RUN_ITEM_ROLE,
                     )
                     if self.langfuse_client.update_trace_span(parent_observation, trace):
                         trace["_live_observation_logged"] = True
@@ -963,12 +1001,18 @@ class ExperimentRunner:
                         metadata=trace["metadata"],
                     )
 
+        targeting = self._diagnose_run_model_output_targeting(
+            run_id=run_id,
+            completed_count=completed,
+        )
         return RunResult(
             run_id=run_id,
             run_type="candidate",
             completed_count=completed,
             failed_count=failed,
             baseline_reference=baseline_reference,
+            model_output_targeting_status=targeting.status,
+            model_output_targeting_message=targeting.message,
         )
 
     def _trace_payload(
@@ -989,6 +1033,7 @@ class ExperimentRunner:
         baseline_reference: BaselineReference | None = None,
         parameter_hash: str | None = None,
         rendered_prompt: RenderedPrompt | None = None,
+        observation_role: str = MODEL_OUTPUT_ROLE,
     ) -> dict[str, Any]:
         active_model = model_config or config.baseline
         active_prompt_identity = prompt_identity_for_model(config, active_model)
@@ -1029,7 +1074,7 @@ class ExperimentRunner:
                 "dataset_item_id": item.item_id,
                 "trace_id": trace_id,
                 "trace_name": trace_name,
-                "observation_role": "model_output",
+                "observation_role": observation_role,
                 "langfuse_dataset_item_id": (
                     f"{dataset_sync.name}:{item.item_id}" if dataset_sync else None
                 ),
@@ -1146,11 +1191,48 @@ class ExperimentRunner:
             "parameter_identity": active_parameter_identity,
             "generation_parameter_hash": active_generation_parameter_hash,
             "variant_identity": variant_identity(config, model_config),
-            "observation_role": "model_output",
+            "observation_role": MODEL_OUTPUT_ROLE,
             "rendered_prompt": (
                 rendered_prompt.model_dump(mode="json") if rendered_prompt else None
             ),
         }
+
+    def _diagnose_run_model_output_targeting(
+        self,
+        *,
+        run_id: str,
+        completed_count: int,
+    ):
+        if self.langfuse_client.supports_observation_spans():
+            from evaluator_harness.model_output_targeting import (
+                ModelOutputTargetingDiagnostic,
+            )
+
+            return ModelOutputTargetingDiagnostic(
+                status="unknown",
+                model_output_count=0,
+                expected_completed_count=completed_count,
+                message=(
+                    "Live Langfuse observation spans were emitted. Verify evaluator "
+                    "counts in Langfuse; local trace payloads do not include nested "
+                    "generation observations."
+                ),
+            )
+        observations = [
+            {
+                "trace_id": trace.get("trace_id"),
+                "name": trace.get("name"),
+                "metadata": metadata_with_observation_role(
+                    trace.get("metadata") or {},
+                    str((trace.get("metadata") or {}).get("observation_role") or RUN_ITEM_ROLE),
+                ),
+            }
+            for trace in self.langfuse_client.traces_for_run(run_id)
+        ]
+        return diagnose_model_output_targeting(
+            observations,
+            expected_completed_count=completed_count,
+        )
 
     def _render_prompt(self, path: Path, variables: dict[str, str]) -> str:
         prompt_path = path if path.is_absolute() else Path.cwd() / path

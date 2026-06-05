@@ -43,6 +43,7 @@ def test_run_baseline_cli_success_with_fake_provider(monkeypatch) -> None:
     assert result.exit_code == 0
     assert "run:" in result.stdout
     assert "baseline:" in result.stdout
+    assert "model-output-targeting: aligned" in result.stdout
 
 
 def test_run_baseline_cli_can_skip_automatic_human_review(monkeypatch) -> None:
