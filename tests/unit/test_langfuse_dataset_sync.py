@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import threading
+import time
 from types import SimpleNamespace
 
 import pytest
@@ -23,6 +25,25 @@ def test_sync_dataset_creates_or_updates_dataset_with_items() -> None:
     assert result.item_count == 1
     assert result.version
     assert client.datasets["rewrite/v1"][0]["input"] == "Rewrite"
+
+
+def test_sync_dataset_can_create_live_items_concurrently(monkeypatch) -> None:
+    monkeypatch.setenv("EVALUATOR_HARNESS_DATASET_SYNC_WORKERS", "4")
+    sdk = SlowDatasetItemSdk(delay_seconds=0.05)
+    client = LangfuseClient(client=sdk)
+    items = [
+        DatasetItem(item_id=str(index), input=f"Rewrite {index}")
+        for index in range(8)
+    ]
+
+    result = client.sync_dataset(
+        DatasetSource(kind=DatasetKind.LOCAL_CSV, langfuse_dataset_name="rewrite/v1"),
+        items,
+    )
+
+    assert result.status == "synced"
+    assert len(sdk.created_items) == 8
+    assert sdk.max_active_creates > 1
 
 
 def test_sync_dataset_dry_run_reports_plan_without_creating_items() -> None:
@@ -504,3 +525,23 @@ class FakeTraceClient:
 
     def get(self, trace_id):
         return self.sdk.traces_by_id[str(trace_id)]
+
+
+class SlowDatasetItemSdk(FakeLangfuseSdk):
+    def __init__(self, *, delay_seconds: float) -> None:
+        super().__init__()
+        self.delay_seconds = delay_seconds
+        self.active_creates = 0
+        self.max_active_creates = 0
+        self.lock = threading.Lock()
+
+    def create_dataset_item(self, **kwargs):
+        with self.lock:
+            self.active_creates += 1
+            self.max_active_creates = max(self.max_active_creates, self.active_creates)
+        try:
+            time.sleep(self.delay_seconds)
+            self.created_items.append(kwargs)
+        finally:
+            with self.lock:
+                self.active_creates -= 1

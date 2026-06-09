@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import os
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Any
@@ -181,34 +182,46 @@ class LangfuseClient:
             synced_items: list[dict[str, Any]] = []
             reporter = progress or NullProgressReporter()
             with reporter.task("Syncing dataset items", total=len(items)) as task:
-                for item in items:
-                    if callable(create_dataset_item):
-                        create_dataset_item(
-                            dataset_name=name,
-                            id=f"{name}:{item.item_id}",
-                            input={"input": item.input},
-                            expected_output=item.ground_truth or item.reference_output,
-                            metadata={
-                                **item.metadata,
-                                "item_id": item.item_id,
-                                "input_hash": item.input_hash,
-                                "compatibility_version": compatibility_version,
-                            },
-                        )
-                    synced_items.append(
-                        {
-                            "id": item.item_id,
-                            "langfuse_item_id": f"{name}:{item.item_id}",
-                            "input": item.input,
-                            "expected_output": item.ground_truth or item.reference_output,
-                            "metadata": {
-                                **item.metadata,
-                                "item_id": item.item_id,
-                                "input_hash": item.input_hash,
-                            },
-                        }
+                item_payloads = [
+                    _dataset_item_sync_payload(
+                        name=name,
+                        item=item,
+                        compatibility_version=compatibility_version,
                     )
-                    task.advance()
+                    for item in items
+                ]
+                if callable(create_dataset_item):
+                    workers = _dataset_sync_workers()
+                    if workers > 1 and len(item_payloads) > 1:
+                        with ThreadPoolExecutor(
+                            max_workers=min(workers, len(item_payloads))
+                        ) as executor:
+                            futures = [
+                                executor.submit(
+                                    self._with_langfuse_retries,
+                                    operation=f"sync dataset item {payload['local']['id']}",
+                                    callback=lambda payload=payload: create_dataset_item(
+                                        **payload["live"]
+                                    ),
+                                )
+                                for payload in item_payloads
+                            ]
+                            for future in as_completed(futures):
+                                future.result()
+                                task.advance()
+                    else:
+                        for payload in item_payloads:
+                            self._with_langfuse_retries(
+                                operation=f"sync dataset item {payload['local']['id']}",
+                                callback=lambda payload=payload: create_dataset_item(
+                                    **payload["live"]
+                                ),
+                            )
+                            task.advance()
+                else:
+                    for _payload in item_payloads:
+                        task.advance()
+                synced_items = [payload["local"] for payload in item_payloads]
             self.datasets[name] = synced_items
             status = "synced"
         else:
@@ -1695,6 +1708,43 @@ def _reference_matches(reference: Any, fingerprint: Any) -> bool:
         else getattr(fingerprint, "__dict__", {})
     )
     return all(ref_data.get(field) == fp_data.get(field) for field in _FINGERPRINT_FIELDS)
+
+
+def _dataset_item_sync_payload(
+    *,
+    name: str,
+    item: DatasetItem,
+    compatibility_version: str,
+) -> dict[str, dict[str, Any]]:
+    expected_output = item.ground_truth or item.reference_output
+    metadata = {
+        **item.metadata,
+        "item_id": item.item_id,
+        "input_hash": item.input_hash,
+    }
+    return {
+        "live": {
+            "dataset_name": name,
+            "id": f"{name}:{item.item_id}",
+            "input": {"input": item.input},
+            "expected_output": expected_output,
+            "metadata": {
+                **metadata,
+                "compatibility_version": compatibility_version,
+            },
+        },
+        "local": {
+            "id": item.item_id,
+            "langfuse_item_id": f"{name}:{item.item_id}",
+            "input": item.input,
+            "expected_output": expected_output,
+            "metadata": metadata,
+        },
+    }
+
+
+def _dataset_sync_workers() -> int:
+    return _positive_int_env("EVALUATOR_HARNESS_DATASET_SYNC_WORKERS", default=4)
 
 
 def _langfuse_retry_attempts() -> int:
