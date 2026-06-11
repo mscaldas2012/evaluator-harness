@@ -6,6 +6,7 @@ from typing import Annotated
 import typer
 from rich.console import Console
 
+from evaluator_harness.excel_reports import create_excel_report
 from evaluator_harness.errors import HarnessError
 from evaluator_harness.progress import RichProgressReporter
 from evaluator_harness.runner import ExperimentRunner
@@ -387,6 +388,37 @@ def export(
     if result is not None:
         console.print(f"export: {result.output_path}")
         console.print(f"rows: {result.row_count}")
+
+
+@app.command("excel-report")
+def excel_report(
+    baseline: Annotated[str, typer.Option("--baseline")],
+    reports_dir: Annotated[Path, typer.Option("--reports-dir")] = Path("reports"),
+    output: Annotated[Path | None, typer.Option("--output")] = None,
+    overwrite: Annotated[
+        bool,
+        typer.Option(
+            "--overwrite",
+            help="Replace an existing workbook at the selected output path.",
+        ),
+    ] = False,
+) -> None:
+    result = _handle_command(
+        lambda: create_excel_report(
+            baseline_run_id=baseline,
+            reports_dir=reports_dir,
+            output_path=output,
+            overwrite=overwrite,
+        )
+    )
+    if result is not None:
+        console.print(f"excel-report: {result.output_path}")
+        console.print(f"baseline: {baseline}")
+        console.print(f"reports: {result.report_count}")
+        console.print(f"rows: {result.row_count}")
+        console.print(f"score-observations: {result.score_observation_count}")
+        for warning in result.warnings:
+            console.print(f"warning: {warning}")
 
 
 def _print_judge_setup_result(result: object) -> None:
