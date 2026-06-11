@@ -23,7 +23,7 @@ class FakeRunResult:
 
 @dataclass(frozen=True)
 class FakeExportResult:
-    output_path: Path = Path("reports/candidate-123.csv")
+    output_path: Path = Path("reports/rewrite-quality/candidate-123.csv")
     row_count: int = 2
 
 
@@ -100,7 +100,7 @@ def test_run_candidate_cli_exports_report_by_default(monkeypatch) -> None:
 
     assert result.exit_code == 0
     assert calls == [(Path("configs/projects/rewrite_quality.yaml"), "candidate-123", "csv")]
-    assert "report: reports\\candidate-123.csv" in result.stdout
+    assert "report: reports\\rewrite-quality\\candidate-123.csv" in result.stdout
     assert "report-rows: 2" in result.stdout
 
 

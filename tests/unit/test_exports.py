@@ -5,6 +5,7 @@ from pathlib import Path
 
 from evaluator_harness.exports import export_summary
 from evaluator_harness.langfuse_client import LangfuseClient
+from evaluator_harness.runner import ExperimentRunner
 
 
 def test_export_summary_writes_trace_rows_with_score_columns(tmp_path: Path) -> None:
@@ -98,6 +99,31 @@ def test_export_summary_writes_trace_rows_with_score_columns(tmp_path: Path) -> 
     assert "score_lists_preserved" in csv_text
     assert "0.75" in csv_text
     assert "Mostly active." in csv_text
+
+
+def test_runner_export_writes_csv_under_project_report_folder() -> None:
+    client = LangfuseClient(
+        traces=[
+            {
+                "trace_id": "trace-1",
+                "run_id": "baseline-123",
+                "metadata": {
+                    "dataset_item_id": "1",
+                    "project": "rewrite-quality",
+                },
+            }
+        ],
+    )
+    runner = ExperimentRunner(langfuse_client=client)
+
+    result = runner.export(
+        Path("configs/projects/rewrite_quality.yaml"),
+        "baseline-123",
+        "csv",
+    )
+
+    assert result.output_path == Path("reports/rewrite-quality/baseline-123.csv")
+    assert result.output_path.exists()
 
 
 def test_export_summary_leaves_missing_scores_empty(tmp_path: Path) -> None:

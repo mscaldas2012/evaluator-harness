@@ -1,0 +1,66 @@
+project:
+  name: campaign-mode
+  version: v1
+  score_config_prefix: eh_campaign_
+judge_setup:
+  default_judge_model: gpt-4.1
+dataset:
+  kind: local_csv
+  path: datasets/rewrite_quality.csv
+  langfuse_dataset_name: campaign-mode/v1
+task_prompt:
+  path: prompts/rewrite_quality/task_prompt.md
+  version: v1
+baseline:
+  name: baseline
+  provider: dry_run
+  auth_mode: none
+  model: dry-run
+  parameters:
+    temperature: 0.0
+candidates:
+  - name: included-candidate
+    exclude-from-campaign: false
+    provider: dry_run
+    auth_mode: none
+    model: dry-run
+    parameters:
+      temperature: 0.0
+  - name: excluded-candidate
+    exclude-from-campaign: true
+    provider: dry_run
+    auth_mode: none
+    model: dry-run
+    parameters:
+      temperature: 0.0
+  - name: default-included-candidate
+    provider: dry_run
+    auth_mode: none
+    model: dry-run
+    parameters:
+      temperature: 0.0
+evaluators:
+  - name: clarity
+    type: llm_as_judge
+    version: v1
+    mode: single_output
+    target: observation
+    target_observation_role: model_output
+    prompt_path: prompts/rewrite_quality/evaluators/clarity.md
+    score:
+      name: clarity
+      data_type: NUMERIC
+      min_value: 0
+      max_value: 1
+    variables: [input, output]
+    run_types: [baseline, candidate]
+    output_schema:
+      reasoning: string
+      score:
+        type: number
+        minimum: 0
+        maximum: 1
+      confidence:
+        type: number
+        minimum: 0
+        maximum: 1

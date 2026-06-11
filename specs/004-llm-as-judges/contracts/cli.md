@@ -121,7 +121,7 @@ Purpose:
 Output:
 
 ```text
-reports/evaluator-setup-rewrite-quality-v1.md
+reports/rewrite-quality/evaluator-setup-rewrite-quality-v1.md
 ```
 
 Exit codes:

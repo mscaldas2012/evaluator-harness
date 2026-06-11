@@ -38,8 +38,15 @@ def _handle_command(callback: object) -> None:
         raise typer.Exit(code=2) from exc
 
 
+def _resolve_project_path(project: Path) -> Path:
+    if project.parent == Path(".") and project.suffix == "":
+        return Path("configs/projects") / f"{project.name}.yaml"
+    return project
+
+
 @app.command()
 def validate(project: Annotated[Path, typer.Option("--project")]) -> None:
+    project = _resolve_project_path(project)
     result = _handle_command(lambda: ExperimentRunner().validate_project(project))
     if result is not None:
         console.print(f"project: {result.project_name}/{result.project_version}")
@@ -61,6 +68,7 @@ def sync_dataset(
     project: Annotated[Path, typer.Option("--project")],
     dry_run: Annotated[bool, typer.Option("--dry-run")] = False,
 ) -> None:
+    project = _resolve_project_path(project)
     result = _handle_command(lambda: _runner().sync_dataset(project, dry_run=dry_run))
     if result is not None:
         console.print(f"dataset: {result.name}")
@@ -76,6 +84,7 @@ def sync_score_configs(
     project: Annotated[Path, typer.Option("--project")],
     dry_run: Annotated[bool, typer.Option("--dry-run")] = False,
 ) -> None:
+    project = _resolve_project_path(project)
     results = _handle_command(
         lambda: _runner().sync_score_configs(project, dry_run=dry_run)
     )
@@ -99,6 +108,7 @@ def sync_prompts(
         ),
     ] = False,
 ) -> None:
+    project = _resolve_project_path(project)
     result = _handle_command(lambda: _runner().sync_prompts(project, dry_run=dry_run))
     if result is not None:
         console.print(f"project: {result.project}/{result.project_version}")
@@ -134,6 +144,7 @@ def sync_all(
     project: Annotated[Path, typer.Option("--project")],
     dry_run: Annotated[bool, typer.Option("--dry-run")] = False,
 ) -> None:
+    project = _resolve_project_path(project)
     result = _handle_command(lambda: _runner().sync_all(project, dry_run=dry_run))
     if result is not None:
         console.print("Report")
@@ -176,6 +187,7 @@ def sync_annotation_queue(
     project: Annotated[Path, typer.Option("--project")],
     dry_run: Annotated[bool, typer.Option("--dry-run")] = False,
 ) -> None:
+    project = _resolve_project_path(project)
     result = _handle_command(
         lambda: _runner().sync_annotation_queue(project, dry_run=dry_run)
     )
@@ -199,6 +211,7 @@ def sync_annotation_queue(
 
 @app.command("render-judge-prompts")
 def render_judge_prompts(project: Annotated[Path, typer.Option("--project")]) -> None:
+    project = _resolve_project_path(project)
     results = _handle_command(lambda: ExperimentRunner().render_judge_prompts(project))
     if results is not None:
         for result in results:
@@ -229,6 +242,7 @@ def render_judge_prompts(project: Annotated[Path, typer.Option("--project")]) ->
 
 @app.command("export-evaluator-setup")
 def export_evaluator_setup(project: Annotated[Path, typer.Option("--project")]) -> None:
+    project = _resolve_project_path(project)
     result = _handle_command(lambda: ExperimentRunner().export_evaluator_setup(project))
     if result is not None:
         console.print(f"export: {result}")
@@ -240,6 +254,7 @@ def sync_judge_evaluators(
     dry_run: Annotated[bool, typer.Option("--dry-run")] = False,
     audit: Annotated[bool, typer.Option("--audit")] = False,
 ) -> None:
+    project = _resolve_project_path(project)
     result = _handle_command(
         lambda: _runner().sync_judge_evaluators(
             project,
@@ -286,6 +301,7 @@ def run(
         ),
     ] = False,
 ) -> None:
+    project = _resolve_project_path(project)
     runner = _runner()
 
     def execute_run() -> object:
@@ -357,6 +373,7 @@ def select_review(
         ),
     ] = None,
 ) -> None:
+    project = _resolve_project_path(project)
     result = _handle_command(
         lambda: _runner().select_review(
             project,
@@ -384,10 +401,91 @@ def export(
     run_id: Annotated[str, typer.Option("--run")],
     fmt: Annotated[str, typer.Option("--format")] = "csv",
 ) -> None:
+    project = _resolve_project_path(project)
     result = _handle_command(lambda: _runner().export(project, run_id, fmt))
     if result is not None:
         console.print(f"export: {result.output_path}")
         console.print(f"rows: {result.row_count}")
+
+
+@app.command("campaign")
+def campaign(
+    project: Annotated[Path, typer.Option("--project")],
+    skip_sync: Annotated[
+        bool,
+        typer.Option(
+            "--skip-sync",
+            help="Skip dataset and score-config syncs before running.",
+        ),
+    ] = False,
+    skip_human_review: Annotated[
+        bool,
+        typer.Option(
+            "--skip-human-review",
+            help="Do not automatically select completed run outputs for human review.",
+        ),
+    ] = False,
+    no_report: Annotated[
+        bool,
+        typer.Option(
+            "--no-report",
+            help="Do not export CSV reports or create the Excel workbook.",
+        ),
+    ] = False,
+    overwrite: Annotated[
+        bool,
+        typer.Option(
+            "--overwrite",
+            help="Replace an existing campaign Excel workbook.",
+        ),
+    ] = False,
+    confirm_mixed_variant: Annotated[
+        bool,
+        typer.Option(
+            "--confirm-mixed-variant",
+            help="Bypass confirmation when a campaign candidate changes multiple axes.",
+        ),
+    ] = False,
+) -> None:
+    project = _resolve_project_path(project)
+    result = _handle_command(
+        lambda: _runner().campaign(
+            project,
+            skip_sync=skip_sync,
+            select_human_review=not skip_human_review,
+            no_report=no_report,
+            overwrite=overwrite,
+            confirm_mixed_variant=confirm_mixed_variant,
+        )
+    )
+    if result is not None:
+        if result.baseline_run is None:
+            console.print("campaign: skipped")
+            for warning in result.warnings:
+                console.print(f"reason: {warning}")
+            return
+        has_failures = any(candidate.status == "failed" for candidate in result.candidate_runs)
+        console.print(
+            "campaign: completed-with-failures" if has_failures else "campaign: completed"
+        )
+        console.print(f"baseline: {result.baseline_run.run_id}")
+        for candidate in result.candidate_runs:
+            if candidate.run_result is not None:
+                console.print(
+                    f"candidate: {candidate.candidate_name} {candidate.run_result.run_id}"
+                )
+            if candidate.status == "failed":
+                console.print(f"failed: {candidate.candidate_name} {candidate.message}")
+        for skipped in result.skipped_candidates:
+            console.print(f"skipped: {skipped.candidate_name} {skipped.reason}")
+        for report in result.csv_reports:
+            console.print(f"report: {report.output_path}")
+        if result.excel_report is not None:
+            console.print(f"excel-report: {result.excel_report.output_path}")
+        for warning in result.warnings:
+            console.print(f"warning: {warning}")
+        if has_failures:
+            raise typer.Exit(code=1)
 
 
 @app.command("excel-report")

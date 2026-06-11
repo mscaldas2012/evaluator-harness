@@ -1,7 +1,7 @@
 <!-- SPECKIT START -->
 For additional context about technologies to be used, project structure,
 shell commands, and other important information, read
-specs/018-excel-comparison-report/plan.md
+specs/019-campaign-mode/plan.md
 <!-- SPECKIT END -->
 
 ## Python Environment

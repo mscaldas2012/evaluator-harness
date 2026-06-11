@@ -430,6 +430,14 @@ Validate first:
 uv run python run_experiment.py validate --project configs/projects/rewrite_quality.yaml
 ```
 
+For project files under `configs/projects/`, you can pass just the project name:
+
+```powershell
+uv run python run_experiment.py validate --project rewrite_quality
+```
+
+The harness resolves that shorthand to `configs/projects/rewrite_quality.yaml`.
+
 Preview the full sync without mutating Langfuse:
 
 ```powershell
@@ -652,7 +660,13 @@ managed queue, a prior queue reference must already exist; otherwise run
 
 ### CSV and Excel Reports
 
-Baseline and candidate runs export a CSV report automatically after completion.
+Baseline and candidate runs export a CSV report automatically after completion
+under the project report folder:
+
+```text
+reports/<project-name>/<run-id>.csv
+```
+
 Use `--no-report` to skip that export:
 
 ```powershell
@@ -668,8 +682,8 @@ from a baseline run ID:
 ```powershell
 uv run python run_experiment.py excel-report `
   --baseline baseline-7140f0ce98a9 `
-  --reports-dir reports `
-  --output reports/baseline-7140f0ce98a9-comparison.xlsx
+  --reports-dir reports/rewrite-quality `
+  --output reports/rewrite-quality/baseline-7140f0ce98a9-comparison.xlsx
 ```
 
 The command finds the baseline CSV where `run_id` matches `--baseline`, then
@@ -682,6 +696,37 @@ Microsoft Excel must be installed on the Windows machine running the command,
 because the workbook uses native Excel PivotTable and chart automation. If the
 output file already exists, pass `--overwrite` or choose a different `--output`
 path.
+
+### Campaign Mode
+
+Campaign mode runs a fresh baseline, every campaign-included
+candidate, CSV report exports, and a final Excel comparison workbook in one
+command:
+
+```powershell
+uv run python run_experiment.py campaign `
+  --project configs/projects/rewrite_quality.yaml
+```
+
+Candidates are included in campaigns by default. Add
+`exclude-from-campaign: true` only to candidates that should be skipped:
+
+```yaml
+candidates:
+  - name: azure-mistral-large-3
+    provider: openai_compatible
+
+  - name: dry-run-candidate
+    exclude-from-campaign: true
+    provider: dry_run
+```
+
+If the flag is omitted, the candidate behaves as though
+`exclude-from-campaign: false` was set. Campaign mode uses the new baseline run ID
+for every included candidate and writes reports under `reports/<project-name>/`.
+Use `--skip-sync`, `--skip-human-review`, `--no-report`, `--overwrite`, and
+`--confirm-mixed-variant` for the same cases as the individual run and report
+commands.
 
 ### Candidate Variants
 

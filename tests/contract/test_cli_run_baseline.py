@@ -12,7 +12,7 @@ from tests.contract.test_cli_run_candidate import FakeRunResult
 
 @dataclass(frozen=True)
 class FakeExportResult:
-    output_path: Path = Path("reports/baseline-123.csv")
+    output_path: Path = Path("reports/rewrite-quality/baseline-123.csv")
     row_count: int = 2
 
 
@@ -132,7 +132,7 @@ def test_run_baseline_cli_exports_report_by_default(monkeypatch) -> None:
 
     assert result.exit_code == 0
     assert calls == [(Path("configs/projects/rewrite_quality.yaml"), "baseline-123", "csv")]
-    assert "report: reports\\baseline-123.csv" in result.stdout
+    assert "report: reports\\rewrite-quality\\baseline-123.csv" in result.stdout
     assert "report-rows: 2" in result.stdout
 
 

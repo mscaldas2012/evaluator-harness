@@ -37,7 +37,7 @@ from evaluator_harness.config import (
     validate_project_config,
 )
 from evaluator_harness.dataset_loader import dataset_compatibility_version, load_dataset
-from evaluator_harness.errors import ConfigError
+from evaluator_harness.errors import ConfigError, HarnessError
 from evaluator_harness.evaluators import (
     evaluator_score_summary,
     evaluator_target_summary,
@@ -90,6 +90,7 @@ from evaluator_harness.review_selection import (
     SampleStrategy,
     select_review_items,
 )
+from evaluator_harness.excel_reports import WorkbookOutput, create_excel_report
 from evaluator_harness.session_identity import (
     SessionIdentityInputs,
     item_comparison_session_id,
@@ -122,6 +123,32 @@ class RunResult:
     review_selection: ReviewSelectionResult | None = None
     model_output_targeting_status: str | None = None
     model_output_targeting_message: str | None = None
+
+
+@dataclass(frozen=True)
+class CampaignCandidateSelection:
+    candidate_name: str
+    included: bool
+    reason: str
+
+
+@dataclass(frozen=True)
+class CampaignCandidateRun:
+    candidate_name: str
+    run_result: RunResult | None
+    csv_report: ExportResult | None
+    status: str
+    message: str | None = None
+
+
+@dataclass(frozen=True)
+class CampaignRunResult:
+    baseline_run: RunResult | None
+    candidate_runs: list[CampaignCandidateRun]
+    skipped_candidates: list[CampaignCandidateSelection]
+    csv_reports: list[ExportResult]
+    excel_report: WorkbookOutput | None
+    warnings: list[str]
 
 
 @dataclass(frozen=True)
@@ -300,7 +327,10 @@ class ExperimentRunner:
     def export_evaluator_setup(self, project_path: Path) -> Path:
         config = self._load_project_config(project_path)
         validate_project_config(config)
-        output_path = Path("reports") / f"evaluator-setup-{config.project.name}-{config.project.version}.md"
+        output_path = (
+            _project_reports_dir(config)
+            / f"evaluator-setup-{config.project.name}-{config.project.version}.md"
+        )
         return export_evaluator_setup(config, output_path)
 
     def sync_judge_evaluators(
@@ -653,12 +683,113 @@ class ExperimentRunner:
             trace_ids=trace_ids,
             progress=self.progress,
         )
-        output_path = Path("reports") / f"{run_id}.csv"
+        output_path = _project_reports_dir(config) / f"{run_id}.csv"
         return export_summary(
             traces,
             output_path,
             scores=scores,
             progress=self.progress,
+        )
+
+    def campaign(
+        self,
+        project_path: Path,
+        *,
+        skip_sync: bool = False,
+        select_human_review: bool = True,
+        no_report: bool = False,
+        overwrite: bool = False,
+        confirm_mixed_variant: bool = False,
+    ) -> CampaignRunResult:
+        config = self._load_project_config(project_path)
+        validate_project_config(config)
+        selections = campaign_candidate_selections(config)
+        included_names = [
+            selection.candidate_name for selection in selections if selection.included
+        ]
+        skipped = [selection for selection in selections if not selection.included]
+        if not included_names:
+            return CampaignRunResult(
+                baseline_run=None,
+                candidate_runs=[],
+                skipped_candidates=skipped,
+                csv_reports=[],
+                excel_report=None,
+                warnings=["no candidates eligible for campaign"],
+            )
+
+        baseline_run = self.run(
+            project_path,
+            "baseline",
+            select_human_review=select_human_review,
+            skip_sync=skip_sync,
+        )
+        csv_reports: list[ExportResult] = []
+        if not no_report:
+            csv_reports.append(self.export(project_path, baseline_run.run_id, "csv"))
+
+        candidate_runs: list[CampaignCandidateRun] = []
+        for candidate_name in included_names:
+            try:
+                if not confirm_mixed_variant:
+                    axes = self.mixed_variant_axes(project_path, candidate_name)
+                    if "prompt" in axes and len(axes) > 1:
+                        raise ConfigError(
+                            "Candidate variant changes multiple comparison axes: "
+                            + ", ".join(axes)
+                            + ". Pass --confirm-mixed-variant to continue."
+                        )
+                candidate_result = self.run(
+                    project_path,
+                    "candidate",
+                    candidate=candidate_name,
+                    baseline=baseline_run.run_id,
+                    select_human_review=select_human_review,
+                    skip_sync=skip_sync,
+                )
+                csv_report = None
+                if not no_report:
+                    csv_report = self.export(project_path, candidate_result.run_id, "csv")
+                    csv_reports.append(csv_report)
+                candidate_runs.append(
+                    CampaignCandidateRun(
+                        candidate_name=candidate_name,
+                        run_result=candidate_result,
+                        csv_report=csv_report,
+                        status="completed",
+                    )
+                )
+            except HarnessError as exc:
+                candidate_runs.append(
+                    CampaignCandidateRun(
+                        candidate_name=candidate_name,
+                        run_result=None,
+                        csv_report=None,
+                        status="failed",
+                        message=str(exc),
+                    )
+                )
+
+        excel_report = None
+        warnings: list[str] = []
+        if not no_report:
+            try:
+                excel_report = create_excel_report(
+                    baseline_run_id=baseline_run.run_id,
+                    reports_dir=_project_reports_dir(config),
+                    overwrite=overwrite,
+                )
+                warnings.extend(excel_report.warnings)
+            except HarnessError as exc:
+                warnings.append(str(exc))
+
+        return CampaignRunResult(
+            baseline_run=baseline_run,
+            candidate_runs=candidate_runs,
+            skipped_candidates=skipped,
+            csv_reports=csv_reports,
+            excel_report=excel_report,
+            warnings=warnings,
         )
 
     def _validate_dataset(self, config: ProjectConfig) -> list[DatasetItem]:
@@ -1460,6 +1591,29 @@ def _required_str(value: object, option_name: str) -> str:
     if not isinstance(value, str) or not value:
         raise ConfigError(f"{option_name} is required for candidate runs")
     return value
+
+
+def _project_reports_dir(config: ProjectConfig) -> Path:
+    return Path("reports") / config.project.name
+
+
+def campaign_candidate_selections(config: ProjectConfig) -> list[CampaignCandidateSelection]:
+    selections: list[CampaignCandidateSelection] = []
+    for candidate in config.candidates:
+        included = candidate.exclude_from_campaign is False
+        reason = (
+            "exclude-from-campaign=false"
+            if included
+            else "exclude-from-campaign=true"
+        )
+        selections.append(
+            CampaignCandidateSelection(
+                candidate_name=candidate.name,
+                included=included,
+                reason=reason,
+            )
+        )
+    return selections
 
 
 def _parameter_hash(config: ModelConfig) -> str:
