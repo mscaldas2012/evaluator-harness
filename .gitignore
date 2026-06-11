@@ -14,6 +14,8 @@ credentials/
 venv/
 env/
 ENV/
+!tests/fixtures/env/
+!tests/fixtures/env/*.env
 __pycache__/
 *.py[cod]
 *$py.class

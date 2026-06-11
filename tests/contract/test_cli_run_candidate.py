@@ -21,8 +21,19 @@ class FakeRunResult:
     review_selection: object | None = None
 
 
+@dataclass(frozen=True)
+class FakeExportResult:
+    output_path: Path = Path("reports/candidate-123.csv")
+    row_count: int = 2
+
+
+class FakeRunnerBase:
+    def export(self, project, run_id, fmt):
+        return FakeExportResult()
+
+
 def test_run_candidate_cli_success_output(monkeypatch) -> None:
-    class FakeRunner:
+    class FakeRunner(FakeRunnerBase):
         def mixed_variant_axes(self, *_args, **_kwargs):
             return []
 
@@ -55,8 +66,76 @@ def test_run_candidate_cli_success_output(monkeypatch) -> None:
     assert "candidate: 2 completed, 0 failed" in result.stdout
 
 
+def test_run_candidate_cli_exports_report_by_default(monkeypatch) -> None:
+    calls: list[tuple[Path, str, str]] = []
+
+    class FakeRunner(FakeRunnerBase):
+        def mixed_variant_axes(self, *_args, **_kwargs):
+            return []
+
+        def run(self, project, mode, **kwargs):
+            assert mode == "candidate"
+            return FakeRunResult()
+
+        def export(self, project, run_id, fmt):
+            calls.append((project, run_id, fmt))
+            return FakeExportResult()
+
+    monkeypatch.setattr(cli, "ExperimentRunner", FakeRunner)
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "run",
+            "--project",
+            "configs/projects/rewrite_quality.yaml",
+            "--mode",
+            "candidate",
+            "--candidate",
+            "llama3-local",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert calls == [(Path("configs/projects/rewrite_quality.yaml"), "candidate-123", "csv")]
+    assert "report: reports\\candidate-123.csv" in result.stdout
+    assert "report-rows: 2" in result.stdout
+
+
+def test_run_candidate_cli_no_report_skips_export(monkeypatch) -> None:
+    class FakeRunner(FakeRunnerBase):
+        def mixed_variant_axes(self, *_args, **_kwargs):
+            return []
+
+        def run(self, project, mode, **kwargs):
+            assert mode == "candidate"
+            return FakeRunResult()
+
+        def export(self, *_args, **_kwargs):
+            raise AssertionError("export should not be called")
+
+    monkeypatch.setattr(cli, "ExperimentRunner", FakeRunner)
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "run",
+            "--project",
+            "configs/projects/rewrite_quality.yaml",
+            "--mode",
+            "candidate",
+            "--candidate",
+            "llama3-local",
+            "--no-report",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "report:" not in result.stdout
+
+
 def test_run_candidate_cli_prints_automatic_human_review_summary(monkeypatch) -> None:
-    class FakeRunner:
+    class FakeRunner(FakeRunnerBase):
         def mixed_variant_axes(self, *_args, **_kwargs):
             return []
 
@@ -91,7 +170,7 @@ def test_run_candidate_cli_prints_automatic_human_review_summary(monkeypatch) ->
 
 
 def test_run_candidate_cli_can_skip_automatic_human_review(monkeypatch) -> None:
-    class FakeRunner:
+    class FakeRunner(FakeRunnerBase):
         def mixed_variant_axes(self, *_args, **_kwargs):
             return []
 
@@ -120,7 +199,7 @@ def test_run_candidate_cli_can_skip_automatic_human_review(monkeypatch) -> None:
 
 
 def test_run_candidate_cli_failure_exit(monkeypatch) -> None:
-    class FakeRunner:
+    class FakeRunner(FakeRunnerBase):
         def mixed_variant_axes(self, *_args, **_kwargs):
             return []
 
@@ -149,7 +228,7 @@ def test_run_candidate_cli_failure_exit(monkeypatch) -> None:
 
 
 def test_run_candidate_cli_does_not_prompt_for_model_and_parameter_variant(monkeypatch) -> None:
-    class FakeRunner:
+    class FakeRunner(FakeRunnerBase):
         def mixed_variant_axes(self, project, candidate):
             assert project == Path("configs/projects/rewrite_quality.yaml")
             assert candidate == "azure-mistral-large-3"
@@ -182,7 +261,7 @@ def test_run_candidate_cli_does_not_prompt_for_model_and_parameter_variant(monke
 
 
 def test_run_candidate_cli_prompts_for_prompt_mixed_variant(monkeypatch) -> None:
-    class FakeRunner:
+    class FakeRunner(FakeRunnerBase):
         def mixed_variant_axes(self, project, candidate):
             assert project == Path("configs/projects/rewrite_quality.yaml")
             assert candidate == "azure-mistral-large-3"
@@ -216,7 +295,7 @@ def test_run_candidate_cli_prompts_for_prompt_mixed_variant(monkeypatch) -> None
 
 
 def test_run_candidate_cli_accepts_uppercase_y_for_mixed_variant(monkeypatch) -> None:
-    class FakeRunner:
+    class FakeRunner(FakeRunnerBase):
         def mixed_variant_axes(self, *_args, **_kwargs):
             return ["prompt", "params"]
 
@@ -245,7 +324,7 @@ def test_run_candidate_cli_accepts_uppercase_y_for_mixed_variant(monkeypatch) ->
 
 
 def test_run_candidate_cli_aborts_mixed_variant_without_y(monkeypatch) -> None:
-    class FakeRunner:
+    class FakeRunner(FakeRunnerBase):
         def mixed_variant_axes(self, *_args, **_kwargs):
             return ["prompt", "params"]
 
@@ -273,7 +352,7 @@ def test_run_candidate_cli_aborts_mixed_variant_without_y(monkeypatch) -> None:
 
 
 def test_run_candidate_cli_confirm_flag_bypasses_mixed_variant_prompt(monkeypatch) -> None:
-    class FakeRunner:
+    class FakeRunner(FakeRunnerBase):
         def mixed_variant_axes(self, *_args, **_kwargs):
             return ["prompt", "params"]
 
