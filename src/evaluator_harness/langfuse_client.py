@@ -1803,7 +1803,7 @@ def _langfuse_retry_max_delay() -> float:
 def _langfuse_trace_wait_seconds() -> float:
     return _positive_float_env(
         "EVALUATOR_HARNESS_LANGFUSE_TRACE_WAIT_SECONDS",
-        default=45.0,
+        default=180.0,
     )
 
 

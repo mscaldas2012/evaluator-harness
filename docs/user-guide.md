@@ -667,6 +667,11 @@ under the project report folder:
 reports/<project-name>/<run-id>.csv
 ```
 
+Live Langfuse traces can take time to become visible after a run finishes. The
+harness waits for the expected trace count before writing automatic reports.
+Tune this wait with `EVALUATOR_HARNESS_LANGFUSE_TRACE_WAIT_SECONDS` and
+`EVALUATOR_HARNESS_LANGFUSE_TRACE_POLL_INTERVAL_SECONDS` when needed.
+
 Use `--no-report` to skip that export:
 
 ```powershell
