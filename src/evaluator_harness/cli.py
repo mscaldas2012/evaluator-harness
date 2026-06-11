@@ -6,6 +6,7 @@ from typing import Annotated
 import typer
 from rich.console import Console
 
+from evaluator_harness.config import load_project_config
 from evaluator_harness.excel_reports import create_excel_report
 from evaluator_harness.errors import HarnessError
 from evaluator_harness.progress import RichProgressReporter
@@ -503,7 +504,8 @@ def campaign(
 @app.command("excel-report")
 def excel_report(
     baseline: Annotated[str, typer.Option("--baseline")],
-    reports_dir: Annotated[Path, typer.Option("--reports-dir")] = Path("reports"),
+    project: Annotated[Path | None, typer.Option("--project")] = None,
+    reports_dir: Annotated[Path | None, typer.Option("--reports-dir")] = None,
     output: Annotated[Path | None, typer.Option("--output")] = None,
     overwrite: Annotated[
         bool,
@@ -513,10 +515,18 @@ def excel_report(
         ),
     ] = False,
 ) -> None:
+    def selected_reports_dir() -> Path:
+        if reports_dir is not None:
+            return reports_dir
+        if project is None:
+            return Path("reports")
+        config = load_project_config(_resolve_project_path(project))
+        return Path("reports") / config.project.name
+
     result = _handle_command(
         lambda: create_excel_report(
             baseline_run_id=baseline,
-            reports_dir=reports_dir,
+            reports_dir=selected_reports_dir(),
             output_path=output,
             overwrite=overwrite,
         )

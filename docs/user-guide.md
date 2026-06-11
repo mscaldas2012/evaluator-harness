@@ -686,14 +686,25 @@ from a baseline run ID:
 
 ```powershell
 uv run python run_experiment.py excel-report `
+  --project rewrite-quality `
+  --baseline baseline-7140f0ce98a9
+```
+
+With `--project`, the command scans `reports/<project-name>/` and writes
+`reports/<project-name>/<baseline-run-id>-comparison.xlsx` by default. Use
+`--reports-dir` and `--output` when you need a custom location:
+
+```powershell
+uv run python run_experiment.py excel-report `
   --baseline baseline-7140f0ce98a9 `
   --reports-dir reports/rewrite-quality `
   --output reports/rewrite-quality/baseline-7140f0ce98a9-comparison.xlsx
 ```
 
 The command finds the baseline CSV where `run_id` matches `--baseline`, then
-adds every candidate CSV in `--reports-dir` whose `baseline_run_id` matches that
-same baseline run ID. The workbook contains `Run Summary` first, then
+adds every candidate CSV in the selected reports directory whose
+`baseline_run_id` matches that same baseline run ID. The workbook contains
+`Run Summary` first, then
 `Combined Data`, `Score Data`, a native Excel `Score Pivot`, and a clustered
 column `Score Chart` when numeric `score_*` columns are present.
 
