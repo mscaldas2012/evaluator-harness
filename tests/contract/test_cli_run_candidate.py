@@ -93,6 +93,8 @@ def test_run_candidate_cli_exports_report_by_default(monkeypatch) -> None:
             "candidate",
             "--candidate",
             "llama3-local",
+            "--baseline",
+            "latest-compatible",
         ],
     )
 
@@ -126,6 +128,8 @@ def test_run_candidate_cli_no_report_skips_export(monkeypatch) -> None:
             "candidate",
             "--candidate",
             "llama3-local",
+            "--baseline",
+            "latest-compatible",
             "--no-report",
         ],
     )
@@ -160,6 +164,8 @@ def test_run_candidate_cli_prints_automatic_human_review_summary(monkeypatch) ->
             "candidate",
             "--candidate",
             "llama3-local",
+            "--baseline",
+            "latest-compatible",
         ],
     )
 
@@ -190,6 +196,8 @@ def test_run_candidate_cli_can_skip_automatic_human_review(monkeypatch) -> None:
             "candidate",
             "--candidate",
             "llama3-local",
+            "--baseline",
+            "latest-compatible",
             "--skip-human-review",
         ],
     )
@@ -314,6 +322,8 @@ def test_run_candidate_cli_accepts_uppercase_y_for_mixed_variant(monkeypatch) ->
             "candidate",
             "--candidate",
             "azure-mistral-large-3",
+            "--baseline",
+            "latest-compatible",
         ],
         input="Y\n",
     )
@@ -343,6 +353,8 @@ def test_run_candidate_cli_aborts_mixed_variant_without_y(monkeypatch) -> None:
             "candidate",
             "--candidate",
             "azure-mistral-large-3",
+            "--baseline",
+            "latest-compatible",
         ],
         input="n\n",
     )
@@ -371,6 +383,8 @@ def test_run_candidate_cli_confirm_flag_bypasses_mixed_variant_prompt(monkeypatc
             "candidate",
             "--candidate",
             "azure-mistral-large-3",
+            "--baseline",
+            "latest-compatible",
             "--confirm-mixed-variant",
         ],
     )

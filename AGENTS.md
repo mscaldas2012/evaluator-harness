@@ -1,7 +1,7 @@
 <!-- SPECKIT START -->
 For additional context about technologies to be used, project structure,
 shell commands, and other important information, read
-specs/016-project-env-files/plan.md
+specs/017-item-comparison-sessions/plan.md
 <!-- SPECKIT END -->
 
 ## Python Environment

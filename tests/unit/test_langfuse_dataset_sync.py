@@ -244,6 +244,46 @@ def test_live_baseline_lookup_matches_dataset_compatibility_version_metadata() -
     assert reference.dataset_version == "sha256:compat"
 
 
+def test_live_baseline_lookup_latest_compatible_uses_newest_created_at() -> None:
+    fingerprint = SimpleNamespace(
+        project_name="rewrite-quality",
+        project_version="v1",
+        dataset_name="rewrite-quality/v1",
+        dataset_version="latest",
+        prompt_version="v1",
+        evaluator_set_id="clarity:v1",
+        baseline_model="gpt5.2-dgw-default",
+        baseline_parameters_hash="hash-1",
+    )
+    newest_metadata = {
+        **fingerprint.__dict__,
+        "baseline_run_id": "baseline-new",
+        "created_at": "2026-06-11T15:26:24+00:00",
+        "run_type": "baseline",
+    }
+    oldest_metadata = {
+        **fingerprint.__dict__,
+        "baseline_run_id": "baseline-old",
+        "created_at": "2026-06-04T23:25:04+00:00",
+        "run_type": "baseline",
+    }
+    sdk = FakeLangfuseSdk(
+        dataset_runs=[
+            SimpleNamespace(name="baseline-new", metadata=newest_metadata),
+            SimpleNamespace(name="baseline-old", metadata=oldest_metadata),
+        ],
+    )
+    client = LangfuseClient(client=sdk)
+
+    reference = client.lookup_baseline(
+        selector="latest-compatible",
+        fingerprint=fingerprint,
+    )
+
+    assert reference is not None
+    assert reference.baseline_run_id == "baseline-new"
+
+
 def test_live_traces_for_run_falls_back_to_dataset_run_metadata() -> None:
     metadata = {
         "run_id": "candidate-123",

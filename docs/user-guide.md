@@ -622,13 +622,33 @@ The candidate run:
 - Runs the candidate over the same dataset.
 - Records the baseline reference on every candidate output.
 - Logs comparison metadata to Langfuse.
+- Uses an official Langfuse session per dataset item so the baseline trace and
+  compatible candidate trace for the same item are grouped together.
 - Automatically selects review items when `human_review.enabled: true`.
 
 Use `--baseline latest-compatible` for the newest matching baseline, or pass an
 explicit baseline run ID when you need a specific prior run.
 
+Candidate runs require `--baseline`; the harness does not create fallback
+comparison sessions when the baseline reference is missing.
+
 The harness rejects incompatible baselines instead of silently comparing against
 a different project, dataset, prompt, baseline model, or baseline parameters.
+
+Use `--skip-sync` only when the Langfuse dataset, score configs, and managed
+annotation queue are already current:
+
+```powershell
+uv run python run_experiment.py run `
+  --project configs/projects/rewrite_quality.yaml `
+  --mode baseline `
+  --skip-sync
+```
+
+With `--skip-sync`, the run uses local project metadata for trace fields and
+does not call dataset or score-config sync. If automatic human review uses a
+managed queue, a prior queue reference must already exist; otherwise run
+`sync-annotation-queue` or run once without `--skip-sync`.
 
 ### Candidate Variants
 
@@ -757,6 +777,17 @@ High-level comparison steps:
 6. Decide whether the candidate model, prompt, or parameter set is better than
    the baseline.
 
+For item-level debugging, open a candidate trace and use its Langfuse session to
+inspect the same dataset item's baseline and candidate traces together. The
+trace metadata and CSV exports include `item_comparison_session_id` for
+diagnostics, but reports and aggregate comparisons continue to use run IDs,
+baseline references, and evaluator scores.
+
+Session IDs use the readable deterministic shape
+`<project>-<project_version>-<baseline_run_id>-row-<source_row>` after slug cleanup.
+If the cleaned value would exceed Langfuse's session ID limit, the harness
+truncates it and appends a short deterministic hash.
+
 ## Headless Workflow Summary
 
 ```powershell
@@ -790,3 +821,4 @@ are not configured.
 - Langfuse LLM-as-a-Judge: https://langfuse.com/docs/evaluation/evaluation-methods/llm-as-a-judge
 - Langfuse annotation queues: https://langfuse.com/docs/evaluation/evaluation-methods/annotation-queues
 - Langfuse scores: https://langfuse.com/docs/evaluation/scores/overview
+- Langfuse sessions: https://langfuse.com/docs/observability/features/sessions
