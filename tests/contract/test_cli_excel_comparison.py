@@ -51,6 +51,70 @@ def test_excel_report_cli_success_output(monkeypatch) -> None:
     assert "score-observations: 6" in result.stdout
 
 
+def test_excel_report_cli_uses_project_reports_dir_by_default(monkeypatch) -> None:
+    def fake_load_project_config(project_path):
+        assert project_path == Path("configs/projects/dfe-general-public.yaml")
+
+        class FakeProject:
+            name = "dfe-general-public"
+
+        class FakeConfig:
+            project = FakeProject()
+
+        return FakeConfig()
+
+    def fake_create_excel_report(*, baseline_run_id, reports_dir, output_path, overwrite):
+        assert baseline_run_id == "baseline-1"
+        assert reports_dir == Path("reports/dfe-general-public")
+        assert output_path is None
+        assert overwrite is False
+        return FakeExcelReportResult()
+
+    monkeypatch.setattr(cli, "load_project_config", fake_load_project_config)
+    monkeypatch.setattr(cli, "create_excel_report", fake_create_excel_report)
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "excel-report",
+            "--project",
+            "dfe-general-public",
+            "--baseline",
+            "baseline-1",
+        ],
+    )
+
+    assert result.exit_code == 0
+
+
+def test_excel_report_cli_keeps_explicit_reports_dir_with_project(monkeypatch) -> None:
+    def fake_load_project_config(_project_path):
+        raise AssertionError("project config is not needed with explicit --reports-dir")
+
+    def fake_create_excel_report(*, baseline_run_id, reports_dir, output_path, overwrite):
+        assert baseline_run_id == "baseline-1"
+        assert reports_dir == Path("custom-reports")
+        return FakeExcelReportResult()
+
+    monkeypatch.setattr(cli, "load_project_config", fake_load_project_config, raising=False)
+    monkeypatch.setattr(cli, "create_excel_report", fake_create_excel_report)
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "excel-report",
+            "--project",
+            "dfe-general-public",
+            "--baseline",
+            "baseline-1",
+            "--reports-dir",
+            "custom-reports",
+        ],
+    )
+
+    assert result.exit_code == 0
+
+
 def test_excel_report_cli_surfaces_warnings(monkeypatch) -> None:
     def fake_create_excel_report(**_kwargs):
         return FakeExcelReportResult(warnings=("No numeric score columns found.",))

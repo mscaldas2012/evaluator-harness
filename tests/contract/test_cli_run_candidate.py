@@ -23,12 +23,12 @@ class FakeRunResult:
 
 @dataclass(frozen=True)
 class FakeExportResult:
-    output_path: Path = Path("reports/candidate-123.csv")
+    output_path: Path = Path("reports/rewrite-quality/candidate-123.csv")
     row_count: int = 2
 
 
 class FakeRunnerBase:
-    def export(self, project, run_id, fmt):
+    def export(self, project, run_id, fmt, **_kwargs):
         return FakeExportResult()
 
 
@@ -67,7 +67,7 @@ def test_run_candidate_cli_success_output(monkeypatch) -> None:
 
 
 def test_run_candidate_cli_exports_report_by_default(monkeypatch) -> None:
-    calls: list[tuple[Path, str, str]] = []
+    calls: list[tuple[Path, str, str, int | None]] = []
 
     class FakeRunner(FakeRunnerBase):
         def mixed_variant_axes(self, *_args, **_kwargs):
@@ -75,10 +75,10 @@ def test_run_candidate_cli_exports_report_by_default(monkeypatch) -> None:
 
         def run(self, project, mode, **kwargs):
             assert mode == "candidate"
-            return FakeRunResult()
+            return FakeRunResult(completed_count=10, failed_count=2)
 
-        def export(self, project, run_id, fmt):
-            calls.append((project, run_id, fmt))
+        def export(self, project, run_id, fmt, **kwargs):
+            calls.append((project, run_id, fmt, kwargs.get("expected_count")))
             return FakeExportResult()
 
     monkeypatch.setattr(cli, "ExperimentRunner", FakeRunner)
@@ -99,8 +99,10 @@ def test_run_candidate_cli_exports_report_by_default(monkeypatch) -> None:
     )
 
     assert result.exit_code == 0
-    assert calls == [(Path("configs/projects/rewrite_quality.yaml"), "candidate-123", "csv")]
-    assert "report: reports\\candidate-123.csv" in result.stdout
+    assert calls == [
+        (Path("configs/projects/rewrite_quality.yaml"), "candidate-123", "csv", 12)
+    ]
+    assert "report: reports\\rewrite-quality\\candidate-123.csv" in result.stdout
     assert "report-rows: 2" in result.stdout
 
 

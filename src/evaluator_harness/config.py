@@ -148,6 +148,7 @@ class ModelConfig(BaseModel):
     provider: ProviderName
     auth_mode: AuthMode
     model: str
+    exclude_from_campaign: bool = Field(default=False, alias="exclude-from-campaign")
     task_prompt: PromptRef | None = None
     endpoint: str | None = None
     azure: AzureCredentialRefs | None = None

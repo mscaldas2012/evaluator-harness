@@ -5,8 +5,8 @@
 ```powershell
 uv run python run_experiment.py excel-report `
   --baseline baseline-7140f0ce98a9 `
-  --reports-dir reports `
-  --output reports/baseline-7140f0ce98a9-comparison.xlsx
+  --reports-dir reports/dfe-general-public `
+  --output reports/dfe-general-public/baseline-7140f0ce98a9-comparison.xlsx
 ```
 
 ## Purpose

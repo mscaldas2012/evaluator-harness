@@ -87,6 +87,7 @@ candidates:
       max_tokens: 2048
       token_limit_parameter: max_completion_tokens
   - name: dry-run-candidate
+    exclude-from-campaign: true
     provider: dry_run
     auth_mode: none
     model: dry-run

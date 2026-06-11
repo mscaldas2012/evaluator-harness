@@ -56,6 +56,67 @@ def test_loads_valid_azure_api_key_candidate_config() -> None:
     )
 
 
+def test_candidate_campaign_exclusion_defaults_false() -> None:
+    config = load_project_config(Path("tests/fixtures/projects/campaign_mode.yaml"))
+
+    assert config.candidates[2].exclude_from_campaign is False
+
+
+def test_candidate_campaign_exclusion_alias_parses_explicit_values() -> None:
+    config = load_project_config(Path("tests/fixtures/projects/campaign_mode.yaml"))
+
+    assert config.candidates[0].exclude_from_campaign is False
+    assert config.candidates[1].exclude_from_campaign is True
+
+
+def test_rejects_non_boolean_campaign_exclusion(tmp_path: Path) -> None:
+    project = tmp_path / "project.yaml"
+    project.write_text(
+        """
+project:
+  name: invalid-campaign-flag
+  version: v1
+  score_config_prefix: eh_invalid_campaign_
+dataset:
+  kind: local_csv
+  path: datasets/rewrite_quality.csv
+task_prompt:
+  path: prompts/rewrite_quality/task_prompt.md
+  version: v1
+baseline:
+  name: baseline
+  provider: dry_run
+  auth_mode: none
+  model: dry-run
+  parameters:
+    temperature: 0.0
+candidates:
+  - name: candidate
+    exclude-from-campaign: maybe
+    provider: dry_run
+    auth_mode: none
+    model: dry-run
+    parameters:
+      temperature: 0.0
+evaluators:
+  - name: clarity
+    type: llm_as_judge
+    version: v1
+    prompt_path: prompts/rewrite_quality/evaluators/clarity.md
+    score:
+      name: clarity
+      data_type: NUMERIC
+      min_value: 0
+      max_value: 1
+    variables: [input, output]
+""".strip(),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ConfigError, match="exclude-from-campaign"):
+        load_project_config(project)
+
+
 def test_accepts_candidate_level_task_prompt_override() -> None:
     config = load_project_config(
         Path("tests/fixtures/projects/valid_prompt_variant_candidate.yaml")

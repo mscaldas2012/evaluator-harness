@@ -1105,13 +1105,39 @@ class LangfuseClient:
         run_id: str,
         *,
         dataset_names: list[str] | None = None,
+        expected_count: int | None = None,
+        wait_timeout_seconds: float | None = None,
+        poll_interval_seconds: float | None = None,
     ) -> list[dict[str, Any]]:
         traces = [trace for trace in self.traces if trace.get("run_id") == run_id]
-        if traces or self.client is None:
+        if self.client is None:
             return traces
-        live_traces = self._live_traces_for_run(run_id, dataset_names=dataset_names)
-        self.traces.extend(live_traces)
-        return live_traces
+        if traces and _has_expected_trace_count(traces, expected_count):
+            return traces
+
+        deadline = time.monotonic() + (
+            wait_timeout_seconds
+            if wait_timeout_seconds is not None
+            else _langfuse_trace_wait_seconds()
+        )
+        poll_interval = (
+            poll_interval_seconds
+            if poll_interval_seconds is not None
+            else _langfuse_trace_poll_interval_seconds()
+        )
+        best_traces = traces
+        while True:
+            live_traces = self._live_traces_for_run(run_id, dataset_names=dataset_names)
+            if live_traces:
+                self.traces = _merge_traces(self.traces, live_traces)
+                best_traces = [
+                    trace for trace in self.traces if trace.get("run_id") == run_id
+                ]
+            if _has_expected_trace_count(best_traces, expected_count):
+                return best_traces
+            if expected_count is None or time.monotonic() >= deadline:
+                return best_traces
+            self.retry_sleep(poll_interval)
 
     def _live_list_prompt_versions(self, *, name: str | None = None) -> list[dict[str, Any]]:
         prompts_client = getattr(getattr(self.client, "api", None), "prompts", None)
@@ -1772,6 +1798,27 @@ def _langfuse_retry_max_delay() -> float:
         "EVALUATOR_HARNESS_LANGFUSE_RETRY_MAX_DELAY",
         default=15.0,
     )
+
+
+def _langfuse_trace_wait_seconds() -> float:
+    return _positive_float_env(
+        "EVALUATOR_HARNESS_LANGFUSE_TRACE_WAIT_SECONDS",
+        default=180.0,
+    )
+
+
+def _langfuse_trace_poll_interval_seconds() -> float:
+    return _positive_float_env(
+        "EVALUATOR_HARNESS_LANGFUSE_TRACE_POLL_INTERVAL_SECONDS",
+        default=2.0,
+    )
+
+
+def _has_expected_trace_count(
+    traces: list[dict[str, Any]],
+    expected_count: int | None,
+) -> bool:
+    return expected_count is None or len(traces) >= expected_count
 
 
 def _session_attributes_context(session_id: Any):

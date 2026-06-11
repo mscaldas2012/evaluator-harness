@@ -51,6 +51,7 @@ baseline:
 
 candidates:
   - name: dry-run-candidate
+    exclude-from-campaign: true
     provider: dry_run
     auth_mode: none
     model: dry-run

@@ -20,7 +20,7 @@ Example baseline output:
 
 ```text
 run: baseline-7140f0ce98a9
-report: reports/baseline-7140f0ce98a9.csv
+report: reports/dfe-general-public/baseline-7140f0ce98a9.csv
 ```
 
 Run candidates against that baseline.
@@ -38,14 +38,14 @@ uv run python run_experiment.py run `
 ```powershell
 uv run python run_experiment.py excel-report `
   --baseline baseline-7140f0ce98a9 `
-  --reports-dir reports `
-  --output reports/baseline-7140f0ce98a9-comparison.xlsx
+  --reports-dir reports/dfe-general-public `
+  --output reports/dfe-general-public/baseline-7140f0ce98a9-comparison.xlsx
 ```
 
 Expected output:
 
 ```text
-excel-report: reports/baseline-7140f0ce98a9-comparison.xlsx
+excel-report: reports/dfe-general-public/baseline-7140f0ce98a9-comparison.xlsx
 baseline: baseline-7140f0ce98a9
 reports: 3
 rows: 300
@@ -59,8 +59,8 @@ Use `--overwrite` when recreating the same workbook path.
 ```powershell
 uv run python run_experiment.py excel-report `
   --baseline baseline-7140f0ce98a9 `
-  --reports-dir reports `
-  --output reports/baseline-7140f0ce98a9-comparison.xlsx `
+  --reports-dir reports/dfe-general-public `
+  --output reports/dfe-general-public/baseline-7140f0ce98a9-comparison.xlsx `
   --overwrite
 ```
 
