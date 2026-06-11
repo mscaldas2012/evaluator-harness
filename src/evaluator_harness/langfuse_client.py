@@ -4,8 +4,9 @@ import hashlib
 import os
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from typing import Any
 
 import httpx
@@ -780,13 +781,14 @@ class LangfuseClient:
             create_event = getattr(self.client, "create_event", None)
             if callable(create_event):
                 try:
-                    create_event(
-                        trace_context={"trace_id": str(trace["trace_id"])},
-                        name=trace.get("name"),
-                        input=trace.get("input"),
-                        output=trace.get("output"),
-                        metadata=trace.get("metadata") or {},
-                    )
+                    with _session_attributes_context(trace.get("session_id")):
+                        create_event(
+                            trace_context={"trace_id": str(trace["trace_id"])},
+                            name=trace.get("name"),
+                            input=trace.get("input"),
+                            output=trace.get("output"),
+                            metadata=trace.get("metadata") or {},
+                        )
                     flush = getattr(self.client, "flush", None)
                     if callable(flush):
                         flush()
@@ -804,6 +806,7 @@ class LangfuseClient:
         name: str,
         input: Any,
         metadata: dict[str, Any],
+        session_id: str | None = None,
     ):
         start = (
             getattr(self.client, "start_as_current_observation", None)
@@ -813,14 +816,15 @@ class LangfuseClient:
         if not callable(start):
             yield None
             return
-        with start(
-            trace_context={"trace_id": trace_id},
-            as_type="span",
-            name=name,
-            input=input,
-            metadata=metadata,
-        ) as observation:
-            yield observation
+        with _session_attributes_context(session_id):
+            with start(
+                trace_context={"trace_id": trace_id},
+                as_type="span",
+                name=name,
+                input=input,
+                metadata=metadata,
+            ) as observation:
+                yield observation
         flush = getattr(self.client, "flush", None)
         if callable(flush):
             flush()
@@ -841,6 +845,7 @@ class LangfuseClient:
         metadata: dict[str, Any],
         model: str,
         model_parameters: dict[str, Any],
+        session_id: str | None = None,
     ):
         start = (
             getattr(self.client, "start_as_current_observation", None)
@@ -850,15 +855,16 @@ class LangfuseClient:
         if not callable(start):
             yield None
             return
-        with start(
-            as_type="generation",
-            name=name,
-            input=input,
-            metadata=metadata,
-            model=model,
-            model_parameters=model_parameters,
-        ) as observation:
-            yield observation
+        with _session_attributes_context(session_id):
+            with start(
+                as_type="generation",
+                name=name,
+                input=input,
+                metadata=metadata,
+                model=model,
+                model_parameters=model_parameters,
+            ) as observation:
+                yield observation
         flush = getattr(self.client, "flush", None)
         if callable(flush):
             flush()
@@ -954,8 +960,8 @@ class LangfuseClient:
         except Exception:
             return None
         runs = getattr(page, "data", None) or getattr(page, "runs", None) or []
-        matches: list[Any] = []
-        for run in runs:
+        matches: list[tuple[Any, dict[str, Any], int]] = []
+        for index, run in enumerate(runs):
             metadata = self._dataset_run_metadata(
                 dataset_name=str(dataset_name),
                 fingerprint=fingerprint,
@@ -968,11 +974,13 @@ class LangfuseClient:
                 if selector not in {str(run_name), str(metadata.get("baseline_run_id"))}:
                     continue
             if _metadata_matches(metadata, fingerprint):
-                matches.append(run)
+                matches.append((run, metadata, index))
         if not matches:
             return None
-        run = matches[-1]
-        metadata = getattr(run, "metadata", None) or {}
+        run, metadata, _index = max(
+            matches,
+            key=lambda match: _baseline_reference_sort_key(*match),
+        )
         from evaluator_harness.config import BaselineReference
 
         return BaselineReference(
@@ -1379,6 +1387,7 @@ class LangfuseClient:
         trace_context = {
             "trace_id": selection.trace_id,
             "run_id": selection.run_id,
+            "item_comparison_session_id": metadata.get("item_comparison_session_id"),
             "prompt_shape": metadata.get("prompt_shape"),
             "prompt_roles": metadata.get("prompt_roles"),
             "prompt_identity": metadata.get("prompt_identity"),
@@ -1765,6 +1774,16 @@ def _langfuse_retry_max_delay() -> float:
     )
 
 
+def _session_attributes_context(session_id: Any):
+    if not isinstance(session_id, str) or not session_id:
+        return nullcontext()
+    try:
+        from langfuse import propagate_attributes
+    except Exception:
+        return nullcontext()
+    return propagate_attributes(session_id=session_id)
+
+
 def _positive_int_env(name: str, *, default: int) -> int:
     raw = os.getenv(name)
     if raw is None:
@@ -1842,6 +1861,38 @@ def _metadata_fingerprint_value(metadata: dict[str, Any], field: str) -> str:
     else:
         value = metadata.get(field)
     return str(value)
+
+
+def _baseline_reference_sort_key(
+    run: Any,
+    metadata: dict[str, Any],
+    index: int,
+) -> tuple[datetime, int]:
+    created_at = (
+        metadata.get("created_at")
+        or getattr(run, "created_at", None)
+        or getattr(run, "createdAt", None)
+        or getattr(run, "created_at_iso", None)
+    )
+    parsed = _parse_datetime(created_at)
+    return (parsed or datetime.min.replace(tzinfo=UTC), index)
+
+
+def _parse_datetime(value: Any) -> datetime | None:
+    if isinstance(value, datetime):
+        return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    if text.endswith("Z"):
+        text = text[:-1] + "+00:00"
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=UTC)
 
 
 def _live_trace_to_dict(trace: Any) -> dict[str, Any]:

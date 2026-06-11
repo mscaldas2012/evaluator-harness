@@ -42,6 +42,7 @@ def test_export_summary_writes_trace_rows_with_score_columns(tmp_path: Path) -> 
                 "model_name": "llama3-local",
                 "temperature": 0.2,
                 "generation_parameter_hash": "params-hash",
+                "item_comparison_session_id": "eh-item-session",
                 "parameter_identity": {"temperature": 0.2, "top_p": 1.0},
                 "variant_identity": {
                     "candidate": "llama3-local",
@@ -82,6 +83,8 @@ def test_export_summary_writes_trace_rows_with_score_columns(tmp_path: Path) -> 
     assert "general_public" in csv_text
     assert "General public" in csv_text
     assert "generation_parameter_hash" in csv_text
+    assert "item_comparison_session_id" in csv_text
+    assert "eh-item-session" in csv_text
     assert "prompt_shape" in csv_text
     assert "prompt_content_identity" in csv_text
     assert "sha256:abc" in csv_text
@@ -170,3 +173,35 @@ def test_export_summary_uses_latest_duplicate_score(tmp_path: Path) -> None:
 
     rows = list(csv.DictReader(output_path.open(encoding="utf-8")))
     assert rows[0]["score_clarity"] == "1"
+
+
+def test_export_summary_groups_scores_by_trace_id_not_session_id(tmp_path: Path) -> None:
+    traces = [
+        {
+            "trace_id": "trace-1",
+            "run_id": "candidate-1",
+            "metadata": {
+                "dataset_item_id": "1",
+                "item_comparison_session_id": "shared-session",
+            },
+        },
+        {
+            "trace_id": "trace-2",
+            "run_id": "candidate-1",
+            "metadata": {
+                "dataset_item_id": "2",
+                "item_comparison_session_id": "shared-session",
+            },
+        },
+    ]
+    output_path = tmp_path / "summary.csv"
+
+    export_summary(
+        traces,
+        output_path,
+        scores=[{"trace_id": "trace-2", "name": "clarity", "value": 1}],
+    )
+
+    rows = list(csv.DictReader(output_path.open(encoding="utf-8")))
+    assert rows[0]["score_clarity"] == ""
+    assert rows[1]["score_clarity"] == "1"

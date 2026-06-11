@@ -83,6 +83,34 @@ def test_run_baseline_cli_can_skip_automatic_human_review(monkeypatch) -> None:
     assert "review: skipped" in result.stdout
 
 
+def test_run_baseline_cli_can_skip_sync(monkeypatch) -> None:
+    class FakeRunner:
+        def run(self, project, mode, **kwargs):
+            assert mode == "baseline"
+            assert kwargs["skip_sync"] is True
+            return FakeRunResult(run_id="baseline-123", run_type="baseline")
+
+        def export(self, project, run_id, fmt):
+            return FakeExportResult()
+
+    monkeypatch.setattr(cli, "ExperimentRunner", FakeRunner)
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "run",
+            "--project",
+            "configs/projects/rewrite_quality.yaml",
+            "--mode",
+            "baseline",
+            "--skip-sync",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "sync: skipped" in result.stdout
+
+
 def test_run_baseline_cli_exports_report_by_default(monkeypatch) -> None:
     calls: list[tuple[Path, str, str]] = []
 

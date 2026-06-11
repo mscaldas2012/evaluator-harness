@@ -277,10 +277,19 @@ def run(
             help="Do not automatically export a CSV report after the run completes.",
         ),
     ] = False,
+    skip_sync: Annotated[
+        bool,
+        typer.Option(
+            "--skip-sync",
+            help="Skip dataset and score-config syncs before running.",
+        ),
+    ] = False,
 ) -> None:
     runner = _runner()
 
     def execute_run() -> object:
+        if mode == "candidate" and not baseline:
+            raise HarnessError("--baseline is required for candidate runs")
         if mode == "candidate" and candidate and not confirm_mixed_variant:
             axes = runner.mixed_variant_axes(project, candidate)
             if "prompt" in axes and len(axes) > 1:
@@ -298,6 +307,7 @@ def run(
             candidate=candidate,
             baseline=baseline,
             select_human_review=not skip_human_review,
+            skip_sync=skip_sync,
         )
 
     result = _handle_command(
@@ -305,6 +315,8 @@ def run(
     )
     if result is not None:
         console.print(f"run: {result.run_id}")
+        if skip_sync:
+            console.print("sync: skipped")
         console.print(f"{result.run_type}: {result.completed_count} completed, {result.failed_count} failed")
         if result.baseline_reference is not None:
             reference_id = getattr(

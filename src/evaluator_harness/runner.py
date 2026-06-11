@@ -19,6 +19,7 @@ from evaluator_harness.certificates import configure_tls_truststore
 from evaluator_harness.annotation_queues import (
     AnnotationQueueReferenceStore,
     AnnotationQueueSyncResult,
+    queue_review_policy_version,
     resolve_annotation_queue,
     sync_annotation_queue,
 )
@@ -35,7 +36,7 @@ from evaluator_harness.config import (
     scenario_metadata,
     validate_project_config,
 )
-from evaluator_harness.dataset_loader import load_dataset
+from evaluator_harness.dataset_loader import dataset_compatibility_version, load_dataset
 from evaluator_harness.errors import ConfigError
 from evaluator_harness.evaluators import (
     evaluator_score_summary,
@@ -88,6 +89,10 @@ from evaluator_harness.review_selection import (
     ReviewCandidate,
     SampleStrategy,
     select_review_items,
+)
+from evaluator_harness.session_identity import (
+    SessionIdentityInputs,
+    item_comparison_session_id,
 )
 
 
@@ -226,6 +231,26 @@ class ExperimentRunner:
             dry_run=dry_run,
         )
 
+    def _skip_sync_dataset_result(
+        self,
+        config: ProjectConfig,
+        items: list[DatasetItem],
+    ) -> DatasetSyncResult:
+        name = config.dataset.langfuse_dataset_name or config.dataset.langfuse_dataset_id
+        if not name:
+            raise ConfigError("Dataset sync requires a Langfuse dataset name or ID")
+        compatibility_version = (
+            config.dataset.langfuse_dataset_version
+            or dataset_compatibility_version(items)
+        )
+        return DatasetSyncResult(
+            name=name,
+            version=config.dataset.langfuse_dataset_version or "latest",
+            compatibility_version=compatibility_version,
+            item_count=len(items),
+            status="skipped",
+        )
+
     def sync_prompts(
         self,
         project_path: Path,
@@ -361,28 +386,37 @@ class ExperimentRunner:
         config = self._load_project_config(project_path)
         validate_project_config(config)
         items = self._validate_dataset(config)
-        dataset_sync = self.langfuse_client.sync_dataset(
-            config.dataset,
-            items,
-            progress=self.progress,
-        )
-        self.langfuse_client.sync_score_configs(config, progress=self.progress)
+        skip_sync = bool(kwargs.get("skip_sync", False))
+        if skip_sync:
+            dataset_sync = self._skip_sync_dataset_result(config, items)
+        else:
+            dataset_sync = self.langfuse_client.sync_dataset(
+                config.dataset,
+                items,
+                progress=self.progress,
+            )
+            self.langfuse_client.sync_score_configs(config, progress=self.progress)
         if mode == "baseline":
             result = self._run_baseline(config, items, dataset_sync)
         else:
+            baseline_selector = _required_str(kwargs.get("baseline"), "--baseline")
             result = self._run_candidate(
                 config,
                 items,
                 dataset_sync,
                 candidate_name=_required_str(kwargs.get("candidate"), "--candidate"),
-                baseline_selector=str(kwargs.get("baseline") or "latest-compatible"),
+                baseline_selector=baseline_selector,
             )
         if (
             kwargs.get("select_human_review", True)
             and config.human_review.enabled
             and result.completed_count > 0
         ):
-            review = self.select_review(project_path, result.run_id)
+            review = self.select_review(
+                project_path,
+                result.run_id,
+                skip_sync=skip_sync,
+            )
             return RunResult(
                 run_id=result.run_id,
                 run_type=result.run_type,
@@ -421,6 +455,7 @@ class ExperimentRunner:
         run_id: str,
         *,
         sample_strategy: SampleStrategy | None = None,
+        skip_sync: bool = False,
     ) -> ReviewSelectionResult:
         if sample_strategy is not None and sample_strategy not in {"stable", "random"}:
             raise ConfigError("sample_strategy must be stable or random")
@@ -437,15 +472,22 @@ class ExperimentRunner:
             )
         score_results = (
             self.langfuse_client.sync_score_configs(config, progress=self.progress)
-            if config.human_review.queue_ownership == "managed_by_harness"
+            if (
+                config.human_review.queue_ownership == "managed_by_harness"
+                and not skip_sync
+            )
             else []
         )
         with self.progress.task("Resolving annotation queue", total=None):
-            queue = resolve_annotation_queue(
-                config,
-                self.langfuse_client,
-                score_results,
-                store=self.annotation_queue_store,
+            queue = (
+                self._resolve_annotation_queue_without_sync(config)
+                if skip_sync
+                else resolve_annotation_queue(
+                    config,
+                    self.langfuse_client,
+                    score_results,
+                    store=self.annotation_queue_store,
+                )
             )
         if not queue.queue_id:
             raise ConfigError("annotation queue could not be resolved")
@@ -533,6 +575,57 @@ class ExperimentRunner:
             reasons=reasons,
         )
 
+    def _resolve_annotation_queue_without_sync(
+        self,
+        config: ProjectConfig,
+    ) -> AnnotationQueueSyncResult:
+        if config.human_review.queue_ownership == "user_owned":
+            queue_id = str(config.human_review.annotation_queue_id or "")
+            if not queue_id:
+                raise ConfigError("user_owned human review requires annotation_queue_id")
+            return AnnotationQueueSyncResult(
+                queue_id=queue_id,
+                queue_name=queue_id,
+                ownership="user_owned",
+                status="user_owned",
+                message="using user-owned annotation queue",
+            )
+        if config.human_review.fallback_to_env:
+            queue_id = os.getenv("LANGFUSE_ANNOTATION_QUEUE_ID")
+            if queue_id:
+                return AnnotationQueueSyncResult(
+                    queue_id=queue_id,
+                    queue_name=queue_id,
+                    ownership="environment_override",
+                    status="environment_override",
+                    message="using LANGFUSE_ANNOTATION_QUEUE_ID override",
+                )
+        reference = self.annotation_queue_store.load(
+            config.project.name,
+            config.project.version,
+            queue_review_policy_version(config),
+        )
+        if reference is None:
+            raise ConfigError(
+                "--skip-sync requires an existing managed annotation queue reference; "
+                "run sync-annotation-queue or run without --skip-sync first."
+            )
+        return AnnotationQueueSyncResult(
+            queue_id=reference.queue_id,
+            queue_name=reference.queue_name,
+            ownership=reference.ownership,
+            status="resolved",
+            score_config_ids=reference.score_config_ids,
+            reference_path=str(
+                self.annotation_queue_store.path_for(
+                    config.project.name,
+                    config.project.version,
+                    reference.review_policy_version,
+                )
+            ),
+            message="using existing annotation queue reference",
+        )
+
     def export(self, project_path: Path, run_id: str, fmt: str) -> ExportResult:
         if fmt != "csv":
             raise ConfigError(f"Unsupported export format: {fmt}")
@@ -605,6 +698,7 @@ class ExperimentRunner:
             metadata=final_output_metadata(request.metadata),
             model=model_config.model,
             model_parameters=request.params,
+            session_id=str(request.metadata.get("item_comparison_session_id") or ""),
         ) as generation_observation:
             response = provider.generate(request)
             self.langfuse_client.update_generation_span(
@@ -662,6 +756,13 @@ class ExperimentRunner:
             trace_name = self._trace_name(config, run_type="baseline", item=item)
             rendered_prompt = self._render_prompt_payload(baseline_prompt_ref, item)
             prompt = rendered_prompt.display_text
+            session_inputs = self._session_identity_inputs(
+                config=config,
+                item=item,
+                dataset_sync=dataset_sync,
+                baseline_anchor=run_id,
+            )
+            session_id = item_comparison_session_id(session_inputs)
             request = ModelRequest(
                 prompt=prompt,
                 params=config.baseline.parameters.model_dump(mode="json", exclude_none=True),
@@ -676,6 +777,8 @@ class ExperimentRunner:
                     dataset_sync=dataset_sync,
                     fingerprint=fingerprint,
                     rendered_prompt=rendered_prompt,
+                    session_id=session_id,
+                    session_inputs=session_inputs,
                 ),
                 rendered_prompt=rendered_prompt,
             )
@@ -685,6 +788,7 @@ class ExperimentRunner:
                 name=trace_name,
                 input=item.input,
                 metadata=parent_metadata,
+                session_id=session_id,
             ) as parent_observation:
                 parent_observation_id = self.langfuse_client.observation_id(
                     parent_observation
@@ -719,6 +823,8 @@ class ExperimentRunner:
                         observation_role=(
                             RUN_ITEM_ROLE if uses_manual_generation else MODEL_OUTPUT_ROLE
                         ),
+                        session_id=session_id,
+                        session_inputs=session_inputs,
                     )
                     if self.langfuse_client.update_trace_span(parent_observation, trace):
                         trace["_live_observation_logged"] = True
@@ -769,6 +875,8 @@ class ExperimentRunner:
                         fingerprint=fingerprint,
                         rendered_prompt=rendered_prompt,
                         observation_role=RUN_ITEM_ROLE,
+                        session_id=session_id,
+                        session_inputs=session_inputs,
                     )
                     if self.langfuse_client.update_trace_span(parent_observation, trace):
                         trace["_live_observation_logged"] = True
@@ -881,6 +989,13 @@ class ExperimentRunner:
             )
             rendered_prompt = self._render_prompt_payload(candidate_prompt_ref, item)
             prompt = rendered_prompt.display_text
+            session_inputs = self._session_identity_inputs(
+                config=config,
+                item=item,
+                dataset_sync=dataset_sync,
+                baseline_anchor=baseline_reference.baseline_run_id,
+            )
+            session_id = item_comparison_session_id(session_inputs)
             request = ModelRequest(
                 prompt=prompt,
                 params=candidate.parameters.model_dump(mode="json", exclude_none=True),
@@ -896,6 +1011,8 @@ class ExperimentRunner:
                         dataset_sync=dataset_sync,
                         fingerprint=fingerprint,
                         rendered_prompt=rendered_prompt,
+                        session_id=session_id,
+                        session_inputs=session_inputs,
                     ),
                     "baseline_run_id": baseline_run_id,
                 },
@@ -907,6 +1024,7 @@ class ExperimentRunner:
                 name=trace_name,
                 input=item.input,
                 metadata=parent_metadata,
+                session_id=session_id,
             ) as parent_observation:
                 parent_observation_id = self.langfuse_client.observation_id(
                     parent_observation
@@ -944,6 +1062,8 @@ class ExperimentRunner:
                         observation_role=(
                             RUN_ITEM_ROLE if uses_manual_generation else MODEL_OUTPUT_ROLE
                         ),
+                        session_id=session_id,
+                        session_inputs=session_inputs,
                     )
                     if self.langfuse_client.update_trace_span(parent_observation, trace):
                         trace["_live_observation_logged"] = True
@@ -1000,6 +1120,8 @@ class ExperimentRunner:
                         parameter_hash=parameter_hash,
                         rendered_prompt=rendered_prompt,
                         observation_role=RUN_ITEM_ROLE,
+                        session_id=session_id,
+                        session_inputs=session_inputs,
                     )
                     if self.langfuse_client.update_trace_span(parent_observation, trace):
                         trace["_live_observation_logged"] = True
@@ -1046,6 +1168,8 @@ class ExperimentRunner:
         parameter_hash: str | None = None,
         rendered_prompt: RenderedPrompt | None = None,
         observation_role: str = MODEL_OUTPUT_ROLE,
+        session_id: str | None = None,
+        session_inputs: SessionIdentityInputs | None = None,
     ) -> dict[str, Any]:
         active_model = model_config or config.baseline
         active_prompt_identity = prompt_identity_for_model(config, active_model)
@@ -1060,6 +1184,7 @@ class ExperimentRunner:
         return {
             "trace_id": trace_id,
             "run_id": run_id,
+            "session_id": session_id,
             "name": trace_name,
             "input": item.input,
             "output": response.output if response is not None else None,
@@ -1086,6 +1211,10 @@ class ExperimentRunner:
                 "dataset_item_id": item.item_id,
                 "trace_id": trace_id,
                 "trace_name": trace_name,
+                "item_comparison_session_id": session_id,
+                "item_comparison_session_inputs": (
+                    session_inputs.metadata() if session_inputs is not None else None
+                ),
                 "observation_role": observation_role,
                 "langfuse_dataset_item_id": (
                     f"{dataset_sync.name}:{item.item_id}" if dataset_sync else None
@@ -1159,6 +1288,8 @@ class ExperimentRunner:
         dataset_sync: DatasetSyncResult,
         fingerprint: BaselineFingerprint,
         rendered_prompt: RenderedPrompt | None = None,
+        session_id: str | None = None,
+        session_inputs: SessionIdentityInputs | None = None,
     ) -> dict[str, Any]:
         active_prompt_identity = prompt_identity_for_model(config, model_config)
         prompt_ref = model_config.task_prompt or config.task_prompt
@@ -1182,6 +1313,10 @@ class ExperimentRunner:
             "evaluator_set_id": fingerprint.evaluator_set_id,
             "trace_id": trace_id,
             "trace_name": trace_name,
+            "item_comparison_session_id": session_id,
+            "item_comparison_session_inputs": (
+                session_inputs.metadata() if session_inputs is not None else None
+            ),
             "prompt_version": active_prompt_identity["version"],
             "prompt_shape": active_prompt_identity.get("shape"),
             "prompt_roles": active_prompt_identity.get("roles", []),
@@ -1208,6 +1343,24 @@ class ExperimentRunner:
                 rendered_prompt.model_dump(mode="json") if rendered_prompt else None
             ),
         }
+
+    def _session_identity_inputs(
+        self,
+        *,
+        config: ProjectConfig,
+        item: DatasetItem,
+        dataset_sync: DatasetSyncResult,
+        baseline_anchor: str,
+    ) -> SessionIdentityInputs:
+        return SessionIdentityInputs(
+            project=config.project.name,
+            project_version=config.project.version,
+            dataset_name=dataset_sync.name,
+            dataset_version=dataset_sync.compatibility_version or dataset_sync.version,
+            baseline_anchor=baseline_anchor,
+            dataset_item_id=item.item_id,
+            source_row=item.source_row,
+        )
 
     def _diagnose_run_model_output_targeting(
         self,

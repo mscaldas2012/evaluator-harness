@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from evaluator_harness.errors import ConfigError
+from evaluator_harness.annotation_queues import AnnotationQueueReferenceStore
 from evaluator_harness.langfuse_client import LangfuseClient
 from evaluator_harness.providers.base import ModelResponse
 from evaluator_harness.runner import ExperimentRunner
@@ -58,6 +59,52 @@ def test_run_baseline_can_skip_automatic_review_selection() -> None:
     assert result.completed_count == 2
     assert result.review_selection is None
     assert langfuse.annotation_queue_items == []
+
+
+def test_run_baseline_can_skip_sync_calls() -> None:
+    langfuse = LangfuseClient()
+    provider = FakeModelProvider(response=ModelResponse(output="baseline output"))
+    runner = ExperimentRunner(
+        langfuse_client=langfuse,
+        provider_factory=lambda _config: provider,
+    )
+
+    result = runner.run(
+        Path("configs/projects/rewrite_quality.yaml"),
+        "baseline",
+        select_human_review=False,
+        skip_sync=True,
+    )
+
+    call_names = [name for name, _payload in langfuse.calls]
+    assert result.completed_count == 2
+    assert "sync_dataset" not in call_names
+    assert "sync_score_configs" not in call_names
+    assert langfuse.traces[0]["metadata"]["dataset_name"] == "rewrite-quality/v1"
+
+
+def test_run_baseline_skip_sync_applies_to_automatic_review_selection(tmp_path) -> None:
+    langfuse = LangfuseClient()
+    provider = FakeModelProvider(response=ModelResponse(output="baseline output"))
+    runner = ExperimentRunner(
+        langfuse_client=langfuse,
+        provider_factory=lambda _config: provider,
+    )
+    runner.annotation_queue_store = AnnotationQueueReferenceStore(tmp_path)
+
+    runner.run(Path("configs/projects/rewrite_quality.yaml"), "baseline")
+    langfuse.calls.clear()
+
+    result = runner.run(
+        Path("configs/projects/rewrite_quality.yaml"),
+        "baseline",
+        skip_sync=True,
+    )
+
+    call_names = [name for name, _payload in langfuse.calls]
+    assert result.review_selection is not None
+    assert "sync_dataset" not in call_names
+    assert "sync_score_configs" not in call_names
 
 
 def test_role_based_baseline_passes_ordered_messages_to_provider() -> None:
