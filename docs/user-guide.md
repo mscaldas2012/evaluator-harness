@@ -650,6 +650,39 @@ does not call dataset or score-config sync. If automatic human review uses a
 managed queue, a prior queue reference must already exist; otherwise run
 `sync-annotation-queue` or run once without `--skip-sync`.
 
+### CSV and Excel Reports
+
+Baseline and candidate runs export a CSV report automatically after completion.
+Use `--no-report` to skip that export:
+
+```powershell
+uv run python run_experiment.py run `
+  --project configs/projects/rewrite_quality.yaml `
+  --mode baseline `
+  --no-report
+```
+
+After the baseline and candidate CSV files exist, create a comparison workbook
+from a baseline run ID:
+
+```powershell
+uv run python run_experiment.py excel-report `
+  --baseline baseline-7140f0ce98a9 `
+  --reports-dir reports `
+  --output reports/baseline-7140f0ce98a9-comparison.xlsx
+```
+
+The command finds the baseline CSV where `run_id` matches `--baseline`, then
+adds every candidate CSV in `--reports-dir` whose `baseline_run_id` matches that
+same baseline run ID. The workbook contains `Run Summary` first, then
+`Combined Data`, `Score Data`, a native Excel `Score Pivot`, and a clustered
+column `Score Chart` when numeric `score_*` columns are present.
+
+Microsoft Excel must be installed on the Windows machine running the command,
+because the workbook uses native Excel PivotTable and chart automation. If the
+output file already exists, pass `--overwrite` or choose a different `--output`
+path.
+
 ### Candidate Variants
 
 Candidates can vary by:

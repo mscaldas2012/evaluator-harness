@@ -53,6 +53,7 @@ outputs/
 exports/
 artifacts/
 reports/*.csv
+reports/*.xlsx
 reports/evaluator-setup-*.md
 reports/judge-evaluator-setup-*.json
 configs/langfuse/evaluator_bindings/*.generated.yaml
