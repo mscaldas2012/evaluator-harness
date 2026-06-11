@@ -186,7 +186,21 @@ def discover_prompt_artifacts(config: ProjectConfig) -> list[PromptArtifact]:
             version=config.task_prompt.version,
         )
     ]
-    seen = {artifacts[0].key}
+    seen = {artifacts[0].key: artifacts[0]}
+    for candidate in config.candidates:
+        if candidate.task_prompt is None:
+            continue
+        artifact = _artifact_from_prompt_ref(
+            config,
+            artifact_type="task",
+            artifact_name="task_prompt",
+            path=candidate.task_prompt.path,
+            version=candidate.task_prompt.version,
+        )
+        if _is_duplicate_prompt_artifact(artifact, seen):
+            continue
+        seen[artifact.key] = artifact
+        artifacts.append(artifact)
     for evaluator in config.evaluators:
         if (
             evaluator.type != "llm_as_judge"
@@ -201,12 +215,24 @@ def discover_prompt_artifacts(config: ProjectConfig) -> list[PromptArtifact]:
             path=evaluator.prompt_path,
             version=str(evaluator.prompt_version or evaluator.version),
         )
-        if artifact.key in seen:
-            raise ConfigError(f"Duplicate prompt artifact: {artifact.key}")
-        seen.add(artifact.key)
+        if _is_duplicate_prompt_artifact(artifact, seen):
+            continue
+        seen[artifact.key] = artifact
         artifacts.append(artifact)
     _assert_unique_managed_names(artifacts)
     return artifacts
+
+
+def _is_duplicate_prompt_artifact(
+    artifact: PromptArtifact,
+    seen: dict[tuple[str, str, str, str, str], PromptArtifact],
+) -> bool:
+    previous = seen.get(artifact.key)
+    if previous is None:
+        return False
+    if previous.content_identity == artifact.content_identity:
+        return True
+    raise ConfigError(f"Duplicate prompt artifact: {artifact.key}")
 
 
 def sync_project_prompts(
