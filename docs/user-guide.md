@@ -138,6 +138,30 @@ should use `LANGFUSE_HOST`.
 Credentials belong in `.env`, the shell, or a secret manager. Project YAML files
 should store only environment variable names, never secret values.
 
+Project-scoped commands also support project-specific environment files. The
+file name is derived from the configured project name:
+
+```text
+.env.<project-name>
+```
+
+For example, `project.name: gso` uses `.env.gso`, and
+`project.name: dfe-general-public` uses `.env.dfe-general-public`.
+
+Resolution order is:
+
+1. Values already present in the shell before the harness starts.
+2. Values from `.env.<project-name>`.
+3. Values from root `.env`.
+4. Missing.
+
+Use root `.env` for shared values such as common Langfuse settings, and use
+`.env.<project-name>` for project-specific provider credentials, endpoints, or
+annotation queue settings. Missing project-specific files are non-fatal, so
+existing projects that only use root `.env` continue to work. When required
+variables are missing, command output reports variable names only and does not
+print secret values.
+
 ## 1. Create Project Artifacts
 
 Create and commit the local artifacts that define the harness project:
@@ -690,6 +714,33 @@ run-specific risk items are additive.
 
 Use `random` when repeated `select-review` runs should expand the calibration
 set over time.
+
+Risk-priority selection is controlled by `human_review.prioritize`:
+
+```yaml
+human_review:
+  prioritize:
+    - failures
+    - low_confidence
+    - disputed
+```
+
+The harness implements those priorities as trace and score predicates:
+
+- `failures`: selects traces where the run recorded an `error`.
+- `low_confidence`: selects traces where fetched score metadata includes a
+  `confidence` value below `0.5`. If multiple scores have confidence values,
+  the lowest confidence for the trace is used.
+- `disputed`: selects traces where any fetched score has `disputed: true`.
+
+Selected risk items are routed with `selection_reason` values of `failure`,
+`low_confidence`, or `disputed`. Calibration sample items use
+`selection_reason: sample`. If a risky item is already part of the calibration
+sample, it is not duplicated in the queue and remains labeled as `sample`.
+
+`low_confidence` and `disputed` depend on those fields being present in the
+score objects returned from Langfuse. The harness does not currently infer
+disputes from score disagreement by itself.
 
 ### Compare Runs in Langfuse
 

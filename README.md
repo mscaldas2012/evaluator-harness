@@ -17,6 +17,12 @@ uv sync
 
 Store credentials in `.env`, your shell, or a secret manager. Project YAML files
 store only environment variable names such as `EDAV_CLIENT_SECRET`.
+For project-scoped commands, the harness loads root `.env` first and then
+`.env.<project-name>` for the active project. Values already present in the
+shell remain highest priority, project-specific file values override root `.env`
+values, and missing `.env.<project-name>` files are ignored. For example,
+`configs/projects/gso.yaml` with `project.name: gso` can use `.env.gso` for
+GSO-specific credentials while shared values stay in `.env`.
 
 Azure-hosted model configs use one Azure/OpenAI-compatible provider family with
 explicit auth per baseline or candidate. A baseline can use

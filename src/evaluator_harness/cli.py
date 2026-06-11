@@ -270,6 +270,13 @@ def run(
             help="Bypass confirmation when a candidate changes multiple comparison axes.",
         ),
     ] = False,
+    no_report: Annotated[
+        bool,
+        typer.Option(
+            "--no-report",
+            help="Do not automatically export a CSV report after the run completes.",
+        ),
+    ] = False,
 ) -> None:
     runner = _runner()
 
@@ -318,6 +325,11 @@ def run(
             console.print(f"review-duplicates-skipped: {review.skipped_duplicate_count}")
         elif skip_human_review:
             console.print("review: skipped")
+        if not no_report:
+            report = _handle_command(lambda: runner.export(project, result.run_id, "csv"))
+            if report is not None:
+                console.print(f"report: {report.output_path}")
+                console.print(f"report-rows: {report.row_count}")
 
 
 @app.command("select-review")

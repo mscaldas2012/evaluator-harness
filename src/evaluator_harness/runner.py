@@ -27,8 +27,10 @@ from evaluator_harness.config import (
     DatasetItem,
     DatasetKind,
     load_env_file,
+    load_layered_env_files,
     ModelConfig,
     ProjectConfig,
+    project_env_file_path,
     load_project_config,
     scenario_metadata,
     validate_project_config,
@@ -147,18 +149,28 @@ class ExperimentRunner:
     ) -> None:
         configure_tls_truststore()
         load_env_file()
-        self.langfuse_client = langfuse_client or (
-            LangfuseClient.from_env()
-            if os.getenv("EVALUATOR_HARNESS_LIVE") in {"1", "true", "TRUE", "yes"}
-            else LangfuseClient()
-        )
+        self._langfuse_client_provided = langfuse_client is not None
+        self.langfuse_client = langfuse_client or LangfuseClient()
         self.provider_factory = provider_factory or create_provider
         self.baseline_registry = baseline_registry or BaselineRegistry()
         self.annotation_queue_store = AnnotationQueueReferenceStore()
         self.progress = progress or NullProgressReporter()
 
-    def validate_project(self, project_path: Path) -> ValidationResult:
+    def _load_project_config(self, project_path: Path) -> ProjectConfig:
         config = load_project_config(project_path)
+        load_layered_env_files(
+            root_env_file=".env",
+            project_env_file=project_env_file_path(config.project.name),
+        )
+        if (
+            not self._langfuse_client_provided
+            and os.getenv("EVALUATOR_HARNESS_LIVE") in {"1", "true", "TRUE", "yes"}
+        ):
+            self.langfuse_client = LangfuseClient.from_env()
+        return config
+
+    def validate_project(self, project_path: Path) -> ValidationResult:
+        config = self._load_project_config(project_path)
         validate_project_config(config)
         items = self._validate_dataset(config)
         return ValidationResult(
@@ -190,7 +202,7 @@ class ExperimentRunner:
         )
 
     def sync_dataset(self, project_path: Path, *, dry_run: bool = False) -> DatasetSyncResult:
-        config = load_project_config(project_path)
+        config = self._load_project_config(project_path)
         validate_project_config(config)
         items = self._validate_dataset(config)
         return self.langfuse_client.sync_dataset(
@@ -206,7 +218,7 @@ class ExperimentRunner:
         *,
         dry_run: bool = False,
     ) -> list[ScoreConfigSyncResult]:
-        config = load_project_config(project_path)
+        config = self._load_project_config(project_path)
         validate_project_config(config)
         return self.langfuse_client.sync_score_configs(
             config,
@@ -220,7 +232,7 @@ class ExperimentRunner:
         *,
         dry_run: bool = False,
     ) -> PromptSyncReport:
-        config = load_project_config(project_path)
+        config = self._load_project_config(project_path)
         validate_project_config(config)
         return sync_project_prompts(
             config,
@@ -256,12 +268,12 @@ class ExperimentRunner:
         )
 
     def render_judge_prompts(self, project_path: Path) -> list[Any]:
-        config = load_project_config(project_path)
+        config = self._load_project_config(project_path)
         validate_project_config(config)
         return render_judge_prompts(config)
 
     def export_evaluator_setup(self, project_path: Path) -> Path:
-        config = load_project_config(project_path)
+        config = self._load_project_config(project_path)
         validate_project_config(config)
         output_path = Path("reports") / f"evaluator-setup-{config.project.name}-{config.project.version}.md"
         return export_evaluator_setup(config, output_path)
@@ -274,7 +286,7 @@ class ExperimentRunner:
         audit: bool = False,
         score_results: list[ScoreConfigSyncResult] | None = None,
     ) -> EvaluatorSetupResult:
-        config = load_project_config(project_path)
+        config = self._load_project_config(project_path)
         validate_project_config(config)
         effective_score_results = (
             score_results
@@ -319,7 +331,7 @@ class ExperimentRunner:
         dry_run: bool = False,
         score_results: list[ScoreConfigSyncResult] | None = None,
     ) -> AnnotationQueueSyncResult:
-        config = load_project_config(project_path)
+        config = self._load_project_config(project_path)
         validate_project_config(config)
         effective_score_results = (
             score_results
@@ -346,7 +358,7 @@ class ExperimentRunner:
                 f"Unsupported run mode {mode!r}; expected baseline or candidate."
             )
 
-        config = load_project_config(project_path)
+        config = self._load_project_config(project_path)
         validate_project_config(config)
         items = self._validate_dataset(config)
         dataset_sync = self.langfuse_client.sync_dataset(
@@ -388,7 +400,7 @@ class ExperimentRunner:
         project_path: Path,
         candidate_name: str,
     ) -> list[str]:
-        config = load_project_config(project_path)
+        config = self._load_project_config(project_path)
         validate_project_config(config)
         candidate = self._candidate_by_name(config, candidate_name)
         axes: list[str] = []
@@ -412,7 +424,7 @@ class ExperimentRunner:
     ) -> ReviewSelectionResult:
         if sample_strategy is not None and sample_strategy not in {"stable", "random"}:
             raise ConfigError("sample_strategy must be stable or random")
-        config = load_project_config(project_path)
+        config = self._load_project_config(project_path)
         validate_project_config(config)
         if not config.human_review.enabled:
             return ReviewSelectionResult(
@@ -524,7 +536,7 @@ class ExperimentRunner:
     def export(self, project_path: Path, run_id: str, fmt: str) -> ExportResult:
         if fmt != "csv":
             raise ConfigError(f"Unsupported export format: {fmt}")
-        config = load_project_config(project_path)
+        config = self._load_project_config(project_path)
         dataset_names = [
             name
             for name in [
