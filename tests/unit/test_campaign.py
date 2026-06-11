@@ -17,7 +17,7 @@ class RecordingRunner(ExperimentRunner):
     def __init__(self) -> None:
         super().__init__()
         self.run_calls: list[tuple[str, dict[str, object]]] = []
-        self.export_calls: list[tuple[Path, str, str]] = []
+        self.export_calls: list[tuple[Path, str, str, int | None]] = []
 
     def run(self, project_path: Path, mode: str, **kwargs: object) -> RunResult:
         self.run_calls.append((mode, kwargs))
@@ -26,8 +26,16 @@ class RecordingRunner(ExperimentRunner):
         candidate = str(kwargs["candidate"])
         return RunResult(f"candidate-{candidate}", "candidate", 3, 0)
 
-    def export(self, project_path: Path, run_id: str, fmt: str, **_kwargs) -> ExportResult:
-        self.export_calls.append((project_path, run_id, fmt))
+    def export(
+        self,
+        project_path: Path,
+        run_id: str,
+        fmt: str,
+        **kwargs,
+    ) -> ExportResult:
+        self.export_calls.append(
+            (project_path, run_id, fmt, kwargs.get("expected_count"))
+        )
         return ExportResult(Path("reports/campaign-mode") / f"{run_id}.csv", 3)
 
 
@@ -145,6 +153,7 @@ def test_campaign_exports_reports_and_passes_excel_overwrite(monkeypatch) -> Non
         "candidate-included-candidate",
         "candidate-default-included-candidate",
     ]
+    assert [call[3] for call in runner.export_calls] == [3, 3, 3]
     assert excel_calls == [
         {
             "baseline_run_id": "baseline-campaign",

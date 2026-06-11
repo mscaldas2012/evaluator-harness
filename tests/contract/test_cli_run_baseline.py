@@ -112,15 +112,20 @@ def test_run_baseline_cli_can_skip_sync(monkeypatch) -> None:
 
 
 def test_run_baseline_cli_exports_report_by_default(monkeypatch) -> None:
-    calls: list[tuple[Path, str, str]] = []
+    calls: list[tuple[Path, str, str, int | None]] = []
 
     class FakeRunner:
         def run(self, project, mode, **kwargs):
             assert mode == "baseline"
-            return FakeRunResult(run_id="baseline-123", run_type="baseline")
+            return FakeRunResult(
+                run_id="baseline-123",
+                run_type="baseline",
+                completed_count=10,
+                failed_count=2,
+            )
 
-        def export(self, project, run_id, fmt, **_kwargs):
-            calls.append((project, run_id, fmt))
+        def export(self, project, run_id, fmt, **kwargs):
+            calls.append((project, run_id, fmt, kwargs.get("expected_count")))
             return FakeExportResult()
 
     monkeypatch.setattr(cli, "ExperimentRunner", FakeRunner)
@@ -131,7 +136,9 @@ def test_run_baseline_cli_exports_report_by_default(monkeypatch) -> None:
     )
 
     assert result.exit_code == 0
-    assert calls == [(Path("configs/projects/rewrite_quality.yaml"), "baseline-123", "csv")]
+    assert calls == [
+        (Path("configs/projects/rewrite_quality.yaml"), "baseline-123", "csv", 12)
+    ]
     assert "report: reports\\rewrite-quality\\baseline-123.csv" in result.stdout
     assert "report-rows: 2" in result.stdout
 

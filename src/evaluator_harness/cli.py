@@ -360,7 +360,7 @@ def run(
                     project,
                     result.run_id,
                     "csv",
-                    expected_count=result.completed_count,
+                    expected_count=result.completed_count + result.failed_count,
                 )
             )
             if report is not None:

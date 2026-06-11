@@ -742,7 +742,7 @@ class ExperimentRunner:
                     project_path,
                     baseline_run.run_id,
                     "csv",
-                    expected_count=baseline_run.completed_count,
+                    expected_count=baseline_run.completed_count + baseline_run.failed_count,
                 )
             )
 
@@ -773,7 +773,10 @@ class ExperimentRunner:
                         project_path,
                         candidate_result.run_id,
                         "csv",
-                        expected_count=candidate_result.completed_count,
+                        expected_count=(
+                            candidate_result.completed_count
+                            + candidate_result.failed_count
+                        ),
                     )
                     csv_reports.append(csv_report)
                 candidate_runs.append(
