@@ -656,7 +656,14 @@ class ExperimentRunner:
             message="using existing annotation queue reference",
         )
 
-    def export(self, project_path: Path, run_id: str, fmt: str) -> ExportResult:
+    def export(
+        self,
+        project_path: Path,
+        run_id: str,
+        fmt: str,
+        *,
+        expected_count: int | None = None,
+    ) -> ExportResult:
         if fmt != "csv":
             raise ConfigError(f"Unsupported export format: {fmt}")
         config = self._load_project_config(project_path)
@@ -672,6 +679,7 @@ class ExperimentRunner:
             traces = self.langfuse_client.traces_for_run(
                 run_id,
                 dataset_names=dataset_names or None,
+                expected_count=expected_count,
             )
         trace_ids = [
             str(trace["trace_id"])
@@ -729,7 +737,14 @@ class ExperimentRunner:
         )
         csv_reports: list[ExportResult] = []
         if not no_report:
-            csv_reports.append(self.export(project_path, baseline_run.run_id, "csv"))
+            csv_reports.append(
+                self.export(
+                    project_path,
+                    baseline_run.run_id,
+                    "csv",
+                    expected_count=baseline_run.completed_count,
+                )
+            )
 
         candidate_runs: list[CampaignCandidateRun] = []
         for candidate_name in included_names:
@@ -754,7 +769,12 @@ class ExperimentRunner:
                 )
                 csv_report = None
                 if not no_report:
-                    csv_report = self.export(project_path, candidate_result.run_id, "csv")
+                    csv_report = self.export(
+                        project_path,
+                        candidate_result.run_id,
+                        "csv",
+                        expected_count=candidate_result.completed_count,
+                    )
                     csv_reports.append(csv_report)
                 candidate_runs.append(
                     CampaignCandidateRun(

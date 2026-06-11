@@ -486,6 +486,57 @@ def test_live_traces_for_run_fetches_traces_from_dataset_run_item_ids() -> None:
     assert traces[11]["output"] == "output 12"
 
 
+def test_traces_for_run_polls_until_expected_count_is_visible() -> None:
+    sdk = FakeLangfuseSdk(
+        dataset_runs_by_name={
+            "dfe/v1": [SimpleNamespace(name="baseline-dfe", metadata={})],
+        }
+    )
+    first_items = [
+        SimpleNamespace(
+            metadata={
+                "run_id": "baseline-dfe",
+                "trace_id": f"trace-row-{index}",
+                "dataset_item_id": f"row-{index}",
+                "dataset_name": "dfe/v1",
+            }
+        )
+        for index in range(1, 10)
+    ]
+    second_items = [
+        SimpleNamespace(
+            metadata={
+                "run_id": "baseline-dfe",
+                "trace_id": f"trace-row-{index}",
+                "dataset_item_id": f"row-{index}",
+                "dataset_name": "dfe/v1",
+            }
+        )
+        for index in range(1, 13)
+    ]
+    calls = 0
+
+    def delayed_items(**_kwargs):
+        nonlocal calls
+        calls += 1
+        return SimpleNamespace(items=first_items if calls == 1 else second_items)
+
+    sdk.get_dataset_run = delayed_items
+    client = LangfuseClient(client=sdk)
+    client.retry_sleep = lambda _delay: None
+
+    traces = client.traces_for_run(
+        "baseline-dfe",
+        dataset_names=["dfe/v1"],
+        expected_count=12,
+        wait_timeout_seconds=1,
+        poll_interval_seconds=0,
+    )
+
+    assert len(traces) == 12
+    assert calls == 2
+
+
 class FakeDatasetRunItemsClient:
     def __init__(self, sdk: FakeLangfuseSdk) -> None:
         self.sdk = sdk

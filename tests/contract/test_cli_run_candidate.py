@@ -28,7 +28,7 @@ class FakeExportResult:
 
 
 class FakeRunnerBase:
-    def export(self, project, run_id, fmt):
+    def export(self, project, run_id, fmt, **_kwargs):
         return FakeExportResult()
 
 
@@ -77,7 +77,7 @@ def test_run_candidate_cli_exports_report_by_default(monkeypatch) -> None:
             assert mode == "candidate"
             return FakeRunResult()
 
-        def export(self, project, run_id, fmt):
+        def export(self, project, run_id, fmt, **_kwargs):
             calls.append((project, run_id, fmt))
             return FakeExportResult()
 

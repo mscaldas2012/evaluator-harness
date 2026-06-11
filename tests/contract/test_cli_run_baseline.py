@@ -62,7 +62,7 @@ def test_run_baseline_cli_can_skip_automatic_human_review(monkeypatch) -> None:
             assert kwargs["select_human_review"] is False
             return FakeRunResult(run_id="baseline-123", run_type="baseline")
 
-        def export(self, project, run_id, fmt):
+        def export(self, project, run_id, fmt, **_kwargs):
             return FakeExportResult()
 
     monkeypatch.setattr(cli, "ExperimentRunner", FakeRunner)
@@ -90,7 +90,7 @@ def test_run_baseline_cli_can_skip_sync(monkeypatch) -> None:
             assert kwargs["skip_sync"] is True
             return FakeRunResult(run_id="baseline-123", run_type="baseline")
 
-        def export(self, project, run_id, fmt):
+        def export(self, project, run_id, fmt, **_kwargs):
             return FakeExportResult()
 
     monkeypatch.setattr(cli, "ExperimentRunner", FakeRunner)
@@ -119,7 +119,7 @@ def test_run_baseline_cli_exports_report_by_default(monkeypatch) -> None:
             assert mode == "baseline"
             return FakeRunResult(run_id="baseline-123", run_type="baseline")
 
-        def export(self, project, run_id, fmt):
+        def export(self, project, run_id, fmt, **_kwargs):
             calls.append((project, run_id, fmt))
             return FakeExportResult()
 

@@ -19,7 +19,7 @@ def test_run_cli_resolves_project_name_to_config_path(monkeypatch) -> None:
             assert mode == "baseline"
             return FakeRunResult(run_id="baseline-123", run_type="baseline")
 
-        def export(self, project, _run_id, _fmt):
+        def export(self, project, _run_id, _fmt, **_kwargs):
             calls.append(project)
             return FakeExportResult()
 
@@ -46,7 +46,7 @@ def test_run_cli_keeps_explicit_project_path(monkeypatch) -> None:
             assert mode == "baseline"
             return FakeRunResult(run_id="baseline-123", run_type="baseline")
 
-        def export(self, project, _run_id, _fmt):
+        def export(self, project, _run_id, _fmt, **_kwargs):
             calls.append(project)
             return FakeExportResult()
 

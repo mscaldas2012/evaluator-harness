@@ -26,7 +26,7 @@ class RecordingRunner(ExperimentRunner):
         candidate = str(kwargs["candidate"])
         return RunResult(f"candidate-{candidate}", "candidate", 3, 0)
 
-    def export(self, project_path: Path, run_id: str, fmt: str) -> ExportResult:
+    def export(self, project_path: Path, run_id: str, fmt: str, **_kwargs) -> ExportResult:
         self.export_calls.append((project_path, run_id, fmt))
         return ExportResult(Path("reports/campaign-mode") / f"{run_id}.csv", 3)
 

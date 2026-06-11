@@ -355,7 +355,14 @@ def run(
         elif skip_human_review:
             console.print("review: skipped")
         if not no_report:
-            report = _handle_command(lambda: runner.export(project, result.run_id, "csv"))
+            report = _handle_command(
+                lambda: runner.export(
+                    project,
+                    result.run_id,
+                    "csv",
+                    expected_count=result.completed_count,
+                )
+            )
             if report is not None:
                 console.print(f"report: {report.output_path}")
                 console.print(f"report-rows: {report.row_count}")
