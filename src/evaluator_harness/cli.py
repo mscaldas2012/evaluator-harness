@@ -448,6 +448,10 @@ def campaign(
     ] = False,
 ) -> None:
     project = _resolve_project_path(project)
+
+    def print_campaign_progress(run_type: str, name: str) -> None:
+        console.print(f"running: {run_type} {name}")
+
     result = _handle_command(
         lambda: _runner().campaign(
             project,
@@ -456,6 +460,7 @@ def campaign(
             no_report=no_report,
             overwrite=overwrite,
             confirm_mixed_variant=confirm_mixed_variant,
+            on_run_start=print_campaign_progress,
         )
     )
     if result is not None:

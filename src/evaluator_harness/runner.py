@@ -6,7 +6,7 @@ import os
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 from uuid import uuid4
 
 from evaluator_harness.baseline_registry import (
@@ -700,6 +700,7 @@ class ExperimentRunner:
         no_report: bool = False,
         overwrite: bool = False,
         confirm_mixed_variant: bool = False,
+        on_run_start: Callable[[str, str], None] | None = None,
     ) -> CampaignRunResult:
         config = self._load_project_config(project_path)
         validate_project_config(config)
@@ -718,6 +719,8 @@ class ExperimentRunner:
                 warnings=["no candidates eligible for campaign"],
             )
 
+        if on_run_start is not None:
+            on_run_start("baseline", config.baseline.name)
         baseline_run = self.run(
             project_path,
             "baseline",
@@ -731,6 +734,8 @@ class ExperimentRunner:
         candidate_runs: list[CampaignCandidateRun] = []
         for candidate_name in included_names:
             try:
+                if on_run_start is not None:
+                    on_run_start("candidate", candidate_name)
                 if not confirm_mixed_variant:
                     axes = self.mixed_variant_axes(project_path, candidate_name)
                     if "prompt" in axes and len(axes) > 1:

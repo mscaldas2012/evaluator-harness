@@ -23,6 +23,8 @@ def test_campaign_cli_success_output(monkeypatch) -> None:
             assert kwargs["select_human_review"] is True
             assert kwargs["no_report"] is False
             assert kwargs["overwrite"] is False
+            kwargs["on_run_start"]("baseline", "baseline")
+            kwargs["on_run_start"]("candidate", "included-candidate")
             return CampaignRunResult(
                 baseline_run=RunResult("baseline-1", "baseline", 2, 0),
                 candidate_runs=[
@@ -63,6 +65,8 @@ def test_campaign_cli_success_output(monkeypatch) -> None:
     )
 
     assert result.exit_code == 0
+    assert "running: baseline baseline" in result.stdout
+    assert "running: candidate included-candidate" in result.stdout
     assert "campaign: completed" in result.stdout
     assert "baseline: baseline-1" in result.stdout
     assert "candidate: included-candidate candidate-1" in result.stdout
