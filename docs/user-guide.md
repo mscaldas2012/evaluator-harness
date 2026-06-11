@@ -138,6 +138,30 @@ should use `LANGFUSE_HOST`.
 Credentials belong in `.env`, the shell, or a secret manager. Project YAML files
 should store only environment variable names, never secret values.
 
+Project-scoped commands also support project-specific environment files. The
+file name is derived from the configured project name:
+
+```text
+.env.<project-name>
+```
+
+For example, `project.name: gso` uses `.env.gso`, and
+`project.name: dfe-general-public` uses `.env.dfe-general-public`.
+
+Resolution order is:
+
+1. Values already present in the shell before the harness starts.
+2. Values from `.env.<project-name>`.
+3. Values from root `.env`.
+4. Missing.
+
+Use root `.env` for shared values such as common Langfuse settings, and use
+`.env.<project-name>` for project-specific provider credentials, endpoints, or
+annotation queue settings. Missing project-specific files are non-fatal, so
+existing projects that only use root `.env` continue to work. When required
+variables are missing, command output reports variable names only and does not
+print secret values.
+
 ## 1. Create Project Artifacts
 
 Create and commit the local artifacts that define the harness project:
@@ -406,6 +430,14 @@ Validate first:
 uv run python run_experiment.py validate --project configs/projects/rewrite_quality.yaml
 ```
 
+For project files under `configs/projects/`, you can pass just the project name:
+
+```powershell
+uv run python run_experiment.py validate --project rewrite_quality
+```
+
+The harness resolves that shorthand to `configs/projects/rewrite_quality.yaml`.
+
 Preview the full sync without mutating Langfuse:
 
 ```powershell
@@ -598,13 +630,119 @@ The candidate run:
 - Runs the candidate over the same dataset.
 - Records the baseline reference on every candidate output.
 - Logs comparison metadata to Langfuse.
+- Uses an official Langfuse session per dataset item so the baseline trace and
+  compatible candidate trace for the same item are grouped together.
 - Automatically selects review items when `human_review.enabled: true`.
 
 Use `--baseline latest-compatible` for the newest matching baseline, or pass an
 explicit baseline run ID when you need a specific prior run.
 
+Candidate runs require `--baseline`; the harness does not create fallback
+comparison sessions when the baseline reference is missing.
+
 The harness rejects incompatible baselines instead of silently comparing against
 a different project, dataset, prompt, baseline model, or baseline parameters.
+
+Use `--skip-sync` only when the Langfuse dataset, score configs, and managed
+annotation queue are already current:
+
+```powershell
+uv run python run_experiment.py run `
+  --project configs/projects/rewrite_quality.yaml `
+  --mode baseline `
+  --skip-sync
+```
+
+With `--skip-sync`, the run uses local project metadata for trace fields and
+does not call dataset or score-config sync. If automatic human review uses a
+managed queue, a prior queue reference must already exist; otherwise run
+`sync-annotation-queue` or run once without `--skip-sync`.
+
+### CSV and Excel Reports
+
+Baseline and candidate runs export a CSV report automatically after completion
+under the project report folder:
+
+```text
+reports/<project-name>/<run-id>.csv
+```
+
+Live Langfuse traces can take time to become visible after a run finishes. The
+harness waits for the expected trace count before writing automatic reports.
+Tune this wait with `EVALUATOR_HARNESS_LANGFUSE_TRACE_WAIT_SECONDS` and
+`EVALUATOR_HARNESS_LANGFUSE_TRACE_POLL_INTERVAL_SECONDS` when needed.
+
+Use `--no-report` to skip that export:
+
+```powershell
+uv run python run_experiment.py run `
+  --project configs/projects/rewrite_quality.yaml `
+  --mode baseline `
+  --no-report
+```
+
+After the baseline and candidate CSV files exist, create a comparison workbook
+from a baseline run ID:
+
+```powershell
+uv run python run_experiment.py excel-report `
+  --project rewrite-quality `
+  --baseline baseline-7140f0ce98a9
+```
+
+With `--project`, the command scans `reports/<project-name>/` and writes
+`reports/<project-name>/<baseline-run-id>-comparison.xlsx` by default. Use
+`--reports-dir` and `--output` when you need a custom location:
+
+```powershell
+uv run python run_experiment.py excel-report `
+  --baseline baseline-7140f0ce98a9 `
+  --reports-dir reports/rewrite-quality `
+  --output reports/rewrite-quality/baseline-7140f0ce98a9-comparison.xlsx
+```
+
+The command finds the baseline CSV where `run_id` matches `--baseline`, then
+adds every candidate CSV in the selected reports directory whose
+`baseline_run_id` matches that same baseline run ID. The workbook contains
+`Run Summary` first, then
+`Combined Data`, `Score Data`, a native Excel `Score Pivot`, and a clustered
+column `Score Chart` when numeric `score_*` columns are present.
+
+Microsoft Excel must be installed on the Windows machine running the command,
+because the workbook uses native Excel PivotTable and chart automation. If the
+output file already exists, pass `--overwrite` or choose a different `--output`
+path.
+
+### Campaign Mode
+
+Campaign mode runs a fresh baseline, every campaign-included
+candidate, CSV report exports, and a final Excel comparison workbook in one
+command:
+
+```powershell
+uv run python run_experiment.py campaign `
+  --project configs/projects/rewrite_quality.yaml
+```
+
+Candidates are included in campaigns by default. Add
+`exclude-from-campaign: true` only to candidates that should be skipped:
+
+```yaml
+candidates:
+  - name: azure-mistral-large-3
+    provider: openai_compatible
+
+  - name: dry-run-candidate
+    exclude-from-campaign: true
+    provider: dry_run
+```
+
+If the flag is omitted, the candidate behaves as though
+`exclude-from-campaign: false` was set. Campaign mode uses the new baseline run ID
+for every included candidate and writes reports under `reports/<project-name>/`.
+Use `--skip-sync`, `--skip-human-review`, `--no-report`, `--overwrite`, and
+`--confirm-mixed-variant` for the same cases as the individual run and report
+commands.
 
 ### Candidate Variants
 
@@ -691,6 +829,33 @@ run-specific risk items are additive.
 Use `random` when repeated `select-review` runs should expand the calibration
 set over time.
 
+Risk-priority selection is controlled by `human_review.prioritize`:
+
+```yaml
+human_review:
+  prioritize:
+    - failures
+    - low_confidence
+    - disputed
+```
+
+The harness implements those priorities as trace and score predicates:
+
+- `failures`: selects traces where the run recorded an `error`.
+- `low_confidence`: selects traces where fetched score metadata includes a
+  `confidence` value below `0.5`. If multiple scores have confidence values,
+  the lowest confidence for the trace is used.
+- `disputed`: selects traces where any fetched score has `disputed: true`.
+
+Selected risk items are routed with `selection_reason` values of `failure`,
+`low_confidence`, or `disputed`. Calibration sample items use
+`selection_reason: sample`. If a risky item is already part of the calibration
+sample, it is not duplicated in the queue and remains labeled as `sample`.
+
+`low_confidence` and `disputed` depend on those fields being present in the
+score objects returned from Langfuse. The harness does not currently infer
+disputes from score disagreement by itself.
+
 ### Compare Runs in Langfuse
 
 Use Langfuse for comparison, not local dashboards.
@@ -705,6 +870,17 @@ High-level comparison steps:
 5. Inspect low-confidence, failed, or disputed items.
 6. Decide whether the candidate model, prompt, or parameter set is better than
    the baseline.
+
+For item-level debugging, open a candidate trace and use its Langfuse session to
+inspect the same dataset item's baseline and candidate traces together. The
+trace metadata and CSV exports include `item_comparison_session_id` for
+diagnostics, but reports and aggregate comparisons continue to use run IDs,
+baseline references, and evaluator scores.
+
+Session IDs use the readable deterministic shape
+`<project>-<project_version>-<baseline_run_id>-row-<source_row>` after slug cleanup.
+If the cleaned value would exceed Langfuse's session ID limit, the harness
+truncates it and appends a short deterministic hash.
 
 ## Headless Workflow Summary
 
@@ -739,3 +915,4 @@ are not configured.
 - Langfuse LLM-as-a-Judge: https://langfuse.com/docs/evaluation/evaluation-methods/llm-as-a-judge
 - Langfuse annotation queues: https://langfuse.com/docs/evaluation/evaluation-methods/annotation-queues
 - Langfuse scores: https://langfuse.com/docs/evaluation/scores/overview
+- Langfuse sessions: https://langfuse.com/docs/observability/features/sessions

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from enum import Enum
 import csv
 import json
@@ -147,6 +148,7 @@ class ModelConfig(BaseModel):
     provider: ProviderName
     auth_mode: AuthMode
     model: str
+    exclude_from_campaign: bool = Field(default=False, alias="exclude-from-campaign")
     task_prompt: PromptRef | None = None
     endpoint: str | None = None
     azure: AzureCredentialRefs | None = None
@@ -505,9 +507,21 @@ class LiveSettings(BaseModel):
     annotation_queue_id: str | None = None
 
     @classmethod
-    def from_env(cls, *, env_file: Path | str = ".env", load_file: bool = True) -> LiveSettings:
+    def from_env(
+        cls,
+        *,
+        env_file: Path | str = ".env",
+        project_env_file: Path | str | None = None,
+        load_file: bool = True,
+    ) -> LiveSettings:
         if load_file:
-            load_env_file(env_file)
+            if project_env_file is None:
+                load_env_file(env_file)
+            else:
+                load_layered_env_files(
+                    root_env_file=env_file,
+                    project_env_file=project_env_file,
+                )
         _normalize_langfuse_host_alias()
         return cls(
             langfuse_public_key=os.getenv("LANGFUSE_PUBLIC_KEY"),
@@ -532,10 +546,86 @@ class LiveSettings(BaseModel):
             )
 
 
+@dataclass(frozen=True)
+class EnvLoadResult:
+    loaded_files: tuple[Path, ...]
+    loaded_keys: tuple[str, ...]
+    ignored_files: tuple[Path, ...] = ()
+    ignored_keys: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class _ManagedEnvValue:
+    value: str
+    source: str
+
+
+_MANAGED_ENV_VALUES: dict[str, _ManagedEnvValue] = {}
+
+
 def load_env_file(path: Path | str = ".env") -> None:
+    _load_env_file(path, override_managed=False, source=str(path))
+    _normalize_langfuse_host_alias()
+
+
+def load_layered_env_files(
+    *,
+    root_env_file: Path | str = ".env",
+    project_env_file: Path | str | None = None,
+) -> EnvLoadResult:
+    loaded_files: list[Path] = []
+    loaded_keys: set[str] = set()
+    ignored_files: list[Path] = []
+    ignored_keys: set[str] = set()
+
+    root_result = _load_env_file(
+        root_env_file,
+        override_managed=False,
+        source="root_env",
+        normalize_alias=False,
+    )
+    loaded_files.extend(root_result.loaded_files)
+    loaded_keys.update(root_result.loaded_keys)
+    ignored_files.extend(root_result.ignored_files)
+    ignored_keys.update(root_result.ignored_keys)
+
+    if project_env_file is not None:
+        project_result = _load_env_file(
+            project_env_file,
+            override_managed=True,
+            source="project_env",
+            normalize_alias=False,
+        )
+        loaded_files.extend(project_result.loaded_files)
+        loaded_keys.update(project_result.loaded_keys)
+        ignored_files.extend(project_result.ignored_files)
+        ignored_keys.update(project_result.ignored_keys)
+
+    _normalize_langfuse_host_alias()
+    return EnvLoadResult(
+        loaded_files=tuple(loaded_files),
+        loaded_keys=tuple(sorted(loaded_keys)),
+        ignored_files=tuple(ignored_files),
+        ignored_keys=tuple(sorted(ignored_keys)),
+    )
+
+
+def project_env_file_path(project_name: str, *, base_dir: Path | str = ".") -> Path:
+    return Path(base_dir) / f".env.{project_name}"
+
+
+def _load_env_file(
+    path: Path | str,
+    *,
+    override_managed: bool,
+    source: str,
+    normalize_alias: bool = True,
+) -> EnvLoadResult:
     env_path = Path(path)
     if not env_path.exists():
-        return
+        return EnvLoadResult(loaded_files=(), loaded_keys=(), ignored_files=(env_path,))
+    loaded_keys: set[str] = set()
+    ignored_keys: set[str] = set()
     for raw_line in env_path.read_text(encoding="utf-8").splitlines():
         line = raw_line.strip()
         if not line or line.startswith("#") or "=" not in line:
@@ -543,10 +633,25 @@ def load_env_file(path: Path | str = ".env") -> None:
         key, value = line.split("=", 1)
         key = key.strip()
         if not ENV_NAME_PATTERN.fullmatch(key):
+            ignored_keys.add(key)
             continue
         value = value.strip().strip('"').strip("'")
-        os.environ.setdefault(key, value)
-    _normalize_langfuse_host_alias()
+        managed_value = _MANAGED_ENV_VALUES.get(key)
+        env_value = os.environ.get(key)
+        is_shell_value = env_value is not None and (
+            managed_value is None or managed_value.value != env_value
+        )
+        if key not in os.environ or (override_managed and not is_shell_value):
+            os.environ[key] = value
+            _MANAGED_ENV_VALUES[key] = _ManagedEnvValue(value=value, source=source)
+            loaded_keys.add(key)
+    if normalize_alias:
+        _normalize_langfuse_host_alias()
+    return EnvLoadResult(
+        loaded_files=(env_path,),
+        loaded_keys=tuple(sorted(loaded_keys)),
+        ignored_keys=tuple(sorted(ignored_keys)),
+    )
 
 
 def _normalize_langfuse_host_alias() -> None:

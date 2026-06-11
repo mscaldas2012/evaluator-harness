@@ -1,0 +1,135 @@
+project:
+  name: gso
+  description: Evaluate whether generated GSO responses cite or mention CDC webpages.
+  version: v1
+  score_config_prefix: eh_gso_
+  metadata:
+    environment: local
+    tags:
+      - gso
+      - cdc-citations
+
+judge_setup:
+  default_judge_model: gpt-5.4-mini
+  default_llm_connection: Azure (Peraton)
+  binding_path: configs/langfuse/evaluator_bindings/gso.yaml
+  default_sampling_percent: 100
+  historical_backfill: disabled
+
+dataset:
+  kind: local_csv
+  path: datasets/GSO_performance.csv
+  langfuse_dataset_name: gso/v1
+  item_id_strategy: explicit_or_hash
+
+task_prompt:
+  path: prompts/gso/task_prompt.md
+  version: v1
+  template_variables:
+    - input
+
+baseline:
+  name: gpt5.2-dgw-default
+  provider: openai_compatible
+  auth_mode: azure_client_credentials
+  model: gpt5.2-dgw-default
+  azure:
+    tenant_id_env: EDAV_TENANT_ID
+    client_id_env: EDAV_CLIENT_ID
+    client_secret_env: EDAV_CLIENT_SECRET
+    scope_env: EDAV_SCOPE_TOKEN_AUDIENCE
+    subscription_key_env: EDAV_SUBSCRIPTION_KEY
+    api_version_env: EDAV_AZURE_OPENAI_API_VERSION
+    endpoint_env: EDAV_AZURE_OPENAI_ENDPOINT
+  parameters:
+    temperature: 0.2
+    top_p: 1.0
+    max_tokens: 2048
+    token_limit_parameter: max_completion_tokens
+
+candidates:
+  - name: dry-run-candidate
+    exclude-from-campaign: true
+    provider: dry_run
+    auth_mode: none
+    model: dry-run
+    parameters:
+      temperature: 0.0
+      top_p: 1.0
+      max_tokens: 2048
+  - name: azure-mistral-large-3
+    provider: openai_compatible
+    auth_mode: api_key
+    model: mistral-large-3
+    azure_api_key:
+      api_key_env: MISTRAL_LARGE_3_API_KEY
+      endpoint_env: MISTRAL_LARGE_3_ENDPOINT
+      api_version_env: MISTRAL_LARGE_3_API_VERSION
+    parameters:
+      temperature: 0.2
+      top_p: 1.0
+      max_tokens: 2048
+      token_limit_parameter: max_completion_tokens
+
+evaluators:
+  - name: citation_mentions_check
+    type: llm_as_judge
+    version: v1
+    dimension: citation_mentions_check
+    source_type: custom
+    target: observation
+    target_observation_role: model_output
+    run_types:
+      - baseline
+      - candidate
+    mode: single_output
+    blind: true
+    prompt_path: prompts/gso/evaluator/citation_mentions_check.md
+    prompt_version: v1
+    score:
+      name: citation_mentions_check
+      managed_by_harness: true
+      data_type: NUMERIC
+      min_value: 0
+      max_value: 1
+      description: CDC citation and CDC webpage mention check, scored 1 when a valid CDC URL citation is present.
+      allowed_score_sources:
+        - llm_judge
+        - human_annotation
+    required_inputs:
+      - input
+      - output
+    variables:
+      - input
+      - output
+    output_schema:
+      reasoning: string
+      score:
+        type: number
+        minimum: 0
+        maximum: 1
+      confidence:
+        type: number
+        minimum: 0
+        maximum: 1
+    filter_profile:
+      target: observation
+      observation_role: model_output
+      project: gso
+      project_version: v1
+      evaluator_set_id: citation_mentions_check:v1
+      run_types:
+        - baseline
+        - candidate
+
+human_review:
+  enabled: true
+  queue_ownership: managed_by_harness
+  review_policy_version: default
+  minimum_sample_percent: 5
+  minimum_sample_count: 1
+  sample_strategy: stable
+  prioritize:
+    - failures
+    - low_confidence
+    - disputed

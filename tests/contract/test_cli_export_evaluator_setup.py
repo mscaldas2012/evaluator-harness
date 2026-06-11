@@ -13,7 +13,7 @@ def test_export_evaluator_setup_writes_setup_markdown() -> None:
 
     from pathlib import Path
 
-    output = Path("reports/evaluator-setup-rewrite-quality-v1.md")
+    output = Path("reports/rewrite-quality/evaluator-setup-rewrite-quality-v1.md")
     assert result.exit_code == 0
     assert output.exists()
     text = output.read_text(encoding="utf-8")

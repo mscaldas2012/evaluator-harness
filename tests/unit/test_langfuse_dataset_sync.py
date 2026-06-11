@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import threading
+import time
 from types import SimpleNamespace
 
 import pytest
@@ -23,6 +25,25 @@ def test_sync_dataset_creates_or_updates_dataset_with_items() -> None:
     assert result.item_count == 1
     assert result.version
     assert client.datasets["rewrite/v1"][0]["input"] == "Rewrite"
+
+
+def test_sync_dataset_can_create_live_items_concurrently(monkeypatch) -> None:
+    monkeypatch.setenv("EVALUATOR_HARNESS_DATASET_SYNC_WORKERS", "4")
+    sdk = SlowDatasetItemSdk(delay_seconds=0.05)
+    client = LangfuseClient(client=sdk)
+    items = [
+        DatasetItem(item_id=str(index), input=f"Rewrite {index}")
+        for index in range(8)
+    ]
+
+    result = client.sync_dataset(
+        DatasetSource(kind=DatasetKind.LOCAL_CSV, langfuse_dataset_name="rewrite/v1"),
+        items,
+    )
+
+    assert result.status == "synced"
+    assert len(sdk.created_items) == 8
+    assert sdk.max_active_creates > 1
 
 
 def test_sync_dataset_dry_run_reports_plan_without_creating_items() -> None:
@@ -221,6 +242,46 @@ def test_live_baseline_lookup_matches_dataset_compatibility_version_metadata() -
     assert reference is not None
     assert reference.baseline_run_id == "baseline-123"
     assert reference.dataset_version == "sha256:compat"
+
+
+def test_live_baseline_lookup_latest_compatible_uses_newest_created_at() -> None:
+    fingerprint = SimpleNamespace(
+        project_name="rewrite-quality",
+        project_version="v1",
+        dataset_name="rewrite-quality/v1",
+        dataset_version="latest",
+        prompt_version="v1",
+        evaluator_set_id="clarity:v1",
+        baseline_model="gpt5.2-dgw-default",
+        baseline_parameters_hash="hash-1",
+    )
+    newest_metadata = {
+        **fingerprint.__dict__,
+        "baseline_run_id": "baseline-new",
+        "created_at": "2026-06-11T15:26:24+00:00",
+        "run_type": "baseline",
+    }
+    oldest_metadata = {
+        **fingerprint.__dict__,
+        "baseline_run_id": "baseline-old",
+        "created_at": "2026-06-04T23:25:04+00:00",
+        "run_type": "baseline",
+    }
+    sdk = FakeLangfuseSdk(
+        dataset_runs=[
+            SimpleNamespace(name="baseline-new", metadata=newest_metadata),
+            SimpleNamespace(name="baseline-old", metadata=oldest_metadata),
+        ],
+    )
+    client = LangfuseClient(client=sdk)
+
+    reference = client.lookup_baseline(
+        selector="latest-compatible",
+        fingerprint=fingerprint,
+    )
+
+    assert reference is not None
+    assert reference.baseline_run_id == "baseline-new"
 
 
 def test_live_traces_for_run_falls_back_to_dataset_run_metadata() -> None:
@@ -425,6 +486,57 @@ def test_live_traces_for_run_fetches_traces_from_dataset_run_item_ids() -> None:
     assert traces[11]["output"] == "output 12"
 
 
+def test_traces_for_run_polls_until_expected_count_is_visible() -> None:
+    sdk = FakeLangfuseSdk(
+        dataset_runs_by_name={
+            "dfe/v1": [SimpleNamespace(name="baseline-dfe", metadata={})],
+        }
+    )
+    first_items = [
+        SimpleNamespace(
+            metadata={
+                "run_id": "baseline-dfe",
+                "trace_id": f"trace-row-{index}",
+                "dataset_item_id": f"row-{index}",
+                "dataset_name": "dfe/v1",
+            }
+        )
+        for index in range(1, 10)
+    ]
+    second_items = [
+        SimpleNamespace(
+            metadata={
+                "run_id": "baseline-dfe",
+                "trace_id": f"trace-row-{index}",
+                "dataset_item_id": f"row-{index}",
+                "dataset_name": "dfe/v1",
+            }
+        )
+        for index in range(1, 13)
+    ]
+    calls = 0
+
+    def delayed_items(**_kwargs):
+        nonlocal calls
+        calls += 1
+        return SimpleNamespace(items=first_items if calls == 1 else second_items)
+
+    sdk.get_dataset_run = delayed_items
+    client = LangfuseClient(client=sdk)
+    client.retry_sleep = lambda _delay: None
+
+    traces = client.traces_for_run(
+        "baseline-dfe",
+        dataset_names=["dfe/v1"],
+        expected_count=12,
+        wait_timeout_seconds=1,
+        poll_interval_seconds=0,
+    )
+
+    assert len(traces) == 12
+    assert calls == 2
+
+
 class FakeDatasetRunItemsClient:
     def __init__(self, sdk: FakeLangfuseSdk) -> None:
         self.sdk = sdk
@@ -504,3 +616,23 @@ class FakeTraceClient:
 
     def get(self, trace_id):
         return self.sdk.traces_by_id[str(trace_id)]
+
+
+class SlowDatasetItemSdk(FakeLangfuseSdk):
+    def __init__(self, *, delay_seconds: float) -> None:
+        super().__init__()
+        self.delay_seconds = delay_seconds
+        self.active_creates = 0
+        self.max_active_creates = 0
+        self.lock = threading.Lock()
+
+    def create_dataset_item(self, **kwargs):
+        with self.lock:
+            self.active_creates += 1
+            self.max_active_creates = max(self.max_active_creates, self.active_creates)
+        try:
+            time.sleep(self.delay_seconds)
+            self.created_items.append(kwargs)
+        finally:
+            with self.lock:
+                self.active_creates -= 1

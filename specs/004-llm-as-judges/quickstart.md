@@ -133,7 +133,7 @@ uv run python run_experiment.py export-evaluator-setup `
 Expected output path:
 
 ```text
-reports\evaluator-setup-rewrite-quality-v1.md
+reports\rewrite-quality\evaluator-setup-rewrite-quality-v1.md
 ```
 
 ## 5. Run Baseline and Candidate Outputs

@@ -27,6 +27,24 @@ def test_discover_prompt_artifacts_includes_task_and_judge_prompts() -> None:
     assert artifacts[1].prompt_shape == "text"
 
 
+def test_discover_prompt_artifacts_includes_candidate_task_prompt_overrides() -> None:
+    config = load_project_config("tests/fixtures/projects/valid_prompt_variant_candidate.yaml")
+
+    artifacts = discover_prompt_artifacts(config)
+
+    assert [
+        (artifact.artifact_type, artifact.artifact_name, artifact.artifact_version)
+        for artifact in artifacts
+    ] == [
+        ("task", "task_prompt", "v1"),
+        ("task", "task_prompt", "v2"),
+        ("evaluator", "clarity", "v1"),
+    ]
+    assert artifacts[1].local_path == Path(
+        "tests/fixtures/prompts/rewrite_quality_task_prompt_v2.md"
+    )
+
+
 def test_sync_project_prompts_creates_missing_text_and_chat_versions(tmp_path: Path) -> None:
     langfuse = LangfuseClient()
 

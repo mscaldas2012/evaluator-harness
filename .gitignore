@@ -14,6 +14,8 @@ credentials/
 venv/
 env/
 ENV/
+!tests/fixtures/env/
+!tests/fixtures/env/*.env
 __pycache__/
 *.py[cod]
 *$py.class
@@ -51,8 +53,13 @@ outputs/
 exports/
 artifacts/
 reports/*.csv
+reports/**/*.csv
+reports/*.xlsx
+reports/**/*.xlsx
 reports/evaluator-setup-*.md
+reports/**/evaluator-setup-*.md
 reports/judge-evaluator-setup-*.json
+reports/**/judge-evaluator-setup-*.json
 configs/langfuse/evaluator_bindings/*.generated.yaml
 tmp/
 temp/

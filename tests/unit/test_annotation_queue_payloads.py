@@ -23,6 +23,7 @@ def test_builds_candidate_annotation_payload_without_provider_identity_for_blind
             "model_name": "llama3-local",
             "ground_truth": "Expected",
             "baseline_reference": {"baseline_run_id": "baseline-1"},
+            "item_comparison_session_id": "eh-item-session",
             "prompt_shape": "messages",
             "prompt_roles": ["system", "user"],
             "prompt_identity": {
@@ -52,6 +53,7 @@ def test_builds_candidate_annotation_payload_without_provider_identity_for_blind
     assert payload["baseline_output"] == "Baseline"
     assert payload["ground_truth"] == "Expected"
     assert payload["trace_context"]["prompt_shape"] == "messages"
+    assert payload["trace_context"]["item_comparison_session_id"] == "eh-item-session"
     assert payload["trace_context"]["prompt_roles"] == ["system", "user"]
     assert payload["trace_context"]["scenario_group"] == "dfe"
     assert payload["trace_context"]["scenario_name"] == "general_public"

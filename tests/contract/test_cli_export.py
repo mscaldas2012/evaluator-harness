@@ -11,7 +11,7 @@ from evaluator_harness.cli import app
 
 @dataclass(frozen=True)
 class FakeExportResult:
-    output_path: Path = Path("reports/candidate-1.csv")
+    output_path: Path = Path("reports/rewrite-quality/candidate-1.csv")
     row_count: int = 2
 
 

@@ -3,8 +3,10 @@ from __future__ import annotations
 import hashlib
 import os
 import time
-from contextlib import contextmanager
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from typing import Any
 
 import httpx
@@ -181,34 +183,46 @@ class LangfuseClient:
             synced_items: list[dict[str, Any]] = []
             reporter = progress or NullProgressReporter()
             with reporter.task("Syncing dataset items", total=len(items)) as task:
-                for item in items:
-                    if callable(create_dataset_item):
-                        create_dataset_item(
-                            dataset_name=name,
-                            id=f"{name}:{item.item_id}",
-                            input={"input": item.input},
-                            expected_output=item.ground_truth or item.reference_output,
-                            metadata={
-                                **item.metadata,
-                                "item_id": item.item_id,
-                                "input_hash": item.input_hash,
-                                "compatibility_version": compatibility_version,
-                            },
-                        )
-                    synced_items.append(
-                        {
-                            "id": item.item_id,
-                            "langfuse_item_id": f"{name}:{item.item_id}",
-                            "input": item.input,
-                            "expected_output": item.ground_truth or item.reference_output,
-                            "metadata": {
-                                **item.metadata,
-                                "item_id": item.item_id,
-                                "input_hash": item.input_hash,
-                            },
-                        }
+                item_payloads = [
+                    _dataset_item_sync_payload(
+                        name=name,
+                        item=item,
+                        compatibility_version=compatibility_version,
                     )
-                    task.advance()
+                    for item in items
+                ]
+                if callable(create_dataset_item):
+                    workers = _dataset_sync_workers()
+                    if workers > 1 and len(item_payloads) > 1:
+                        with ThreadPoolExecutor(
+                            max_workers=min(workers, len(item_payloads))
+                        ) as executor:
+                            futures = [
+                                executor.submit(
+                                    self._with_langfuse_retries,
+                                    operation=f"sync dataset item {payload['local']['id']}",
+                                    callback=lambda payload=payload: create_dataset_item(
+                                        **payload["live"]
+                                    ),
+                                )
+                                for payload in item_payloads
+                            ]
+                            for future in as_completed(futures):
+                                future.result()
+                                task.advance()
+                    else:
+                        for payload in item_payloads:
+                            self._with_langfuse_retries(
+                                operation=f"sync dataset item {payload['local']['id']}",
+                                callback=lambda payload=payload: create_dataset_item(
+                                    **payload["live"]
+                                ),
+                            )
+                            task.advance()
+                else:
+                    for _payload in item_payloads:
+                        task.advance()
+                synced_items = [payload["local"] for payload in item_payloads]
             self.datasets[name] = synced_items
             status = "synced"
         else:
@@ -767,13 +781,14 @@ class LangfuseClient:
             create_event = getattr(self.client, "create_event", None)
             if callable(create_event):
                 try:
-                    create_event(
-                        trace_context={"trace_id": str(trace["trace_id"])},
-                        name=trace.get("name"),
-                        input=trace.get("input"),
-                        output=trace.get("output"),
-                        metadata=trace.get("metadata") or {},
-                    )
+                    with _session_attributes_context(trace.get("session_id")):
+                        create_event(
+                            trace_context={"trace_id": str(trace["trace_id"])},
+                            name=trace.get("name"),
+                            input=trace.get("input"),
+                            output=trace.get("output"),
+                            metadata=trace.get("metadata") or {},
+                        )
                     flush = getattr(self.client, "flush", None)
                     if callable(flush):
                         flush()
@@ -791,6 +806,7 @@ class LangfuseClient:
         name: str,
         input: Any,
         metadata: dict[str, Any],
+        session_id: str | None = None,
     ):
         start = (
             getattr(self.client, "start_as_current_observation", None)
@@ -800,14 +816,15 @@ class LangfuseClient:
         if not callable(start):
             yield None
             return
-        with start(
-            trace_context={"trace_id": trace_id},
-            as_type="span",
-            name=name,
-            input=input,
-            metadata=metadata,
-        ) as observation:
-            yield observation
+        with _session_attributes_context(session_id):
+            with start(
+                trace_context={"trace_id": trace_id},
+                as_type="span",
+                name=name,
+                input=input,
+                metadata=metadata,
+            ) as observation:
+                yield observation
         flush = getattr(self.client, "flush", None)
         if callable(flush):
             flush()
@@ -828,6 +845,7 @@ class LangfuseClient:
         metadata: dict[str, Any],
         model: str,
         model_parameters: dict[str, Any],
+        session_id: str | None = None,
     ):
         start = (
             getattr(self.client, "start_as_current_observation", None)
@@ -837,15 +855,16 @@ class LangfuseClient:
         if not callable(start):
             yield None
             return
-        with start(
-            as_type="generation",
-            name=name,
-            input=input,
-            metadata=metadata,
-            model=model,
-            model_parameters=model_parameters,
-        ) as observation:
-            yield observation
+        with _session_attributes_context(session_id):
+            with start(
+                as_type="generation",
+                name=name,
+                input=input,
+                metadata=metadata,
+                model=model,
+                model_parameters=model_parameters,
+            ) as observation:
+                yield observation
         flush = getattr(self.client, "flush", None)
         if callable(flush):
             flush()
@@ -941,8 +960,8 @@ class LangfuseClient:
         except Exception:
             return None
         runs = getattr(page, "data", None) or getattr(page, "runs", None) or []
-        matches: list[Any] = []
-        for run in runs:
+        matches: list[tuple[Any, dict[str, Any], int]] = []
+        for index, run in enumerate(runs):
             metadata = self._dataset_run_metadata(
                 dataset_name=str(dataset_name),
                 fingerprint=fingerprint,
@@ -955,11 +974,13 @@ class LangfuseClient:
                 if selector not in {str(run_name), str(metadata.get("baseline_run_id"))}:
                     continue
             if _metadata_matches(metadata, fingerprint):
-                matches.append(run)
+                matches.append((run, metadata, index))
         if not matches:
             return None
-        run = matches[-1]
-        metadata = getattr(run, "metadata", None) or {}
+        run, metadata, _index = max(
+            matches,
+            key=lambda match: _baseline_reference_sort_key(*match),
+        )
         from evaluator_harness.config import BaselineReference
 
         return BaselineReference(
@@ -1084,13 +1105,39 @@ class LangfuseClient:
         run_id: str,
         *,
         dataset_names: list[str] | None = None,
+        expected_count: int | None = None,
+        wait_timeout_seconds: float | None = None,
+        poll_interval_seconds: float | None = None,
     ) -> list[dict[str, Any]]:
         traces = [trace for trace in self.traces if trace.get("run_id") == run_id]
-        if traces or self.client is None:
+        if self.client is None:
             return traces
-        live_traces = self._live_traces_for_run(run_id, dataset_names=dataset_names)
-        self.traces.extend(live_traces)
-        return live_traces
+        if traces and _has_expected_trace_count(traces, expected_count):
+            return traces
+
+        deadline = time.monotonic() + (
+            wait_timeout_seconds
+            if wait_timeout_seconds is not None
+            else _langfuse_trace_wait_seconds()
+        )
+        poll_interval = (
+            poll_interval_seconds
+            if poll_interval_seconds is not None
+            else _langfuse_trace_poll_interval_seconds()
+        )
+        best_traces = traces
+        while True:
+            live_traces = self._live_traces_for_run(run_id, dataset_names=dataset_names)
+            if live_traces:
+                self.traces = _merge_traces(self.traces, live_traces)
+                best_traces = [
+                    trace for trace in self.traces if trace.get("run_id") == run_id
+                ]
+            if _has_expected_trace_count(best_traces, expected_count):
+                return best_traces
+            if expected_count is None or time.monotonic() >= deadline:
+                return best_traces
+            self.retry_sleep(poll_interval)
 
     def _live_list_prompt_versions(self, *, name: str | None = None) -> list[dict[str, Any]]:
         prompts_client = getattr(getattr(self.client, "api", None), "prompts", None)
@@ -1366,6 +1413,7 @@ class LangfuseClient:
         trace_context = {
             "trace_id": selection.trace_id,
             "run_id": selection.run_id,
+            "item_comparison_session_id": metadata.get("item_comparison_session_id"),
             "prompt_shape": metadata.get("prompt_shape"),
             "prompt_roles": metadata.get("prompt_roles"),
             "prompt_identity": metadata.get("prompt_identity"),
@@ -1697,6 +1745,43 @@ def _reference_matches(reference: Any, fingerprint: Any) -> bool:
     return all(ref_data.get(field) == fp_data.get(field) for field in _FINGERPRINT_FIELDS)
 
 
+def _dataset_item_sync_payload(
+    *,
+    name: str,
+    item: DatasetItem,
+    compatibility_version: str,
+) -> dict[str, dict[str, Any]]:
+    expected_output = item.ground_truth or item.reference_output
+    metadata = {
+        **item.metadata,
+        "item_id": item.item_id,
+        "input_hash": item.input_hash,
+    }
+    return {
+        "live": {
+            "dataset_name": name,
+            "id": f"{name}:{item.item_id}",
+            "input": {"input": item.input},
+            "expected_output": expected_output,
+            "metadata": {
+                **metadata,
+                "compatibility_version": compatibility_version,
+            },
+        },
+        "local": {
+            "id": item.item_id,
+            "langfuse_item_id": f"{name}:{item.item_id}",
+            "input": item.input,
+            "expected_output": expected_output,
+            "metadata": metadata,
+        },
+    }
+
+
+def _dataset_sync_workers() -> int:
+    return _positive_int_env("EVALUATOR_HARNESS_DATASET_SYNC_WORKERS", default=4)
+
+
 def _langfuse_retry_attempts() -> int:
     return _positive_int_env("EVALUATOR_HARNESS_LANGFUSE_RETRY_ATTEMPTS", default=5)
 
@@ -1713,6 +1798,37 @@ def _langfuse_retry_max_delay() -> float:
         "EVALUATOR_HARNESS_LANGFUSE_RETRY_MAX_DELAY",
         default=15.0,
     )
+
+
+def _langfuse_trace_wait_seconds() -> float:
+    return _positive_float_env(
+        "EVALUATOR_HARNESS_LANGFUSE_TRACE_WAIT_SECONDS",
+        default=180.0,
+    )
+
+
+def _langfuse_trace_poll_interval_seconds() -> float:
+    return _positive_float_env(
+        "EVALUATOR_HARNESS_LANGFUSE_TRACE_POLL_INTERVAL_SECONDS",
+        default=2.0,
+    )
+
+
+def _has_expected_trace_count(
+    traces: list[dict[str, Any]],
+    expected_count: int | None,
+) -> bool:
+    return expected_count is None or len(traces) >= expected_count
+
+
+def _session_attributes_context(session_id: Any):
+    if not isinstance(session_id, str) or not session_id:
+        return nullcontext()
+    try:
+        from langfuse import propagate_attributes
+    except Exception:
+        return nullcontext()
+    return propagate_attributes(session_id=session_id)
 
 
 def _positive_int_env(name: str, *, default: int) -> int:
@@ -1792,6 +1908,38 @@ def _metadata_fingerprint_value(metadata: dict[str, Any], field: str) -> str:
     else:
         value = metadata.get(field)
     return str(value)
+
+
+def _baseline_reference_sort_key(
+    run: Any,
+    metadata: dict[str, Any],
+    index: int,
+) -> tuple[datetime, int]:
+    created_at = (
+        metadata.get("created_at")
+        or getattr(run, "created_at", None)
+        or getattr(run, "createdAt", None)
+        or getattr(run, "created_at_iso", None)
+    )
+    parsed = _parse_datetime(created_at)
+    return (parsed or datetime.min.replace(tzinfo=UTC), index)
+
+
+def _parse_datetime(value: Any) -> datetime | None:
+    if isinstance(value, datetime):
+        return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    if text.endswith("Z"):
+        text = text[:-1] + "+00:00"
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=UTC)
 
 
 def _live_trace_to_dict(trace: Any) -> dict[str, Any]:

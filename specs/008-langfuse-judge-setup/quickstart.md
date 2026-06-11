@@ -161,4 +161,4 @@ Result: exit 0; output included `mode: preview`, `operation: create`,
 uv run python run_experiment.py export-evaluator-setup --project configs/projects/rewrite_quality.yaml
 ```
 
-Result: exit 0; output path `reports/evaluator-setup-rewrite-quality-v1.md`.
+Result: exit 0; output path `reports/rewrite-quality/evaluator-setup-rewrite-quality-v1.md`.

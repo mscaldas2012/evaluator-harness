@@ -1,0 +1,35 @@
+bindings:
+- project: gso
+  project_version: v1
+  artifact_type: task
+  artifact_name: task_prompt
+  artifact_version: v1
+  managed_name: EH_gso_v1_prompt_task_task_prompt_v1
+  content_identity: sha256:81230a5593c1e7358fe0ecd35dbdb895c9cb730785815cacedf7d051480724d4
+  prompt_shape: text
+  active: true
+  last_synced_at: '2026-06-09T13:20:17.836768+00:00'
+  langfuse_prompt_version: 1
+  langfuse_labels:
+  - gso
+  - v1
+  - task
+  - prompt-v1
+  roles: []
+- project: gso
+  project_version: v1
+  artifact_type: evaluator
+  artifact_name: citation_mentions_check
+  artifact_version: v1
+  managed_name: EH_gso_v1_prompt_evaluator_citation_mentions_check_v1
+  content_identity: sha256:d960411363bb8431e08710fe290522093e839901a316d081414ef636f02319d2
+  prompt_shape: text
+  active: true
+  last_synced_at: '2026-06-09T13:20:17.836922+00:00'
+  langfuse_prompt_version: 1
+  langfuse_labels:
+  - gso
+  - v1
+  - evaluator
+  - prompt-v1
+  roles: []

@@ -108,3 +108,31 @@ def test_select_review_items_returns_empty_when_disabled() -> None:
     policy = HumanReviewPolicy(enabled=False)
 
     assert select_review_items(candidates, policy) == []
+
+
+def test_review_candidate_from_trace_ignores_session_metadata_for_selection() -> None:
+    trace = {
+        "trace_id": "trace-1",
+        "run_id": "candidate-1",
+        "error": "provider timeout",
+        "metadata": {
+            "dataset_item_id": "1",
+            "item_comparison_session_id": "eh-item-session",
+        },
+    }
+    scores = [
+        {
+            "trace_id": "trace-1",
+            "confidence": 0.2,
+            "disputed": True,
+        }
+    ]
+
+    candidate = ReviewCandidate.from_trace(trace, scores=scores)
+
+    assert candidate.item_id == "1"
+    assert candidate.run_id == "candidate-1"
+    assert candidate.trace_id == "trace-1"
+    assert candidate.failed is True
+    assert candidate.confidence == 0.2
+    assert candidate.disputed is True

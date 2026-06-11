@@ -6,6 +6,8 @@ from typing import Annotated
 import typer
 from rich.console import Console
 
+from evaluator_harness.config import load_project_config
+from evaluator_harness.excel_reports import create_excel_report
 from evaluator_harness.errors import HarnessError
 from evaluator_harness.progress import RichProgressReporter
 from evaluator_harness.runner import ExperimentRunner
@@ -37,8 +39,15 @@ def _handle_command(callback: object) -> None:
         raise typer.Exit(code=2) from exc
 
 
+def _resolve_project_path(project: Path) -> Path:
+    if project.parent == Path(".") and project.suffix == "":
+        return Path("configs/projects") / f"{project.name}.yaml"
+    return project
+
+
 @app.command()
 def validate(project: Annotated[Path, typer.Option("--project")]) -> None:
+    project = _resolve_project_path(project)
     result = _handle_command(lambda: ExperimentRunner().validate_project(project))
     if result is not None:
         console.print(f"project: {result.project_name}/{result.project_version}")
@@ -60,6 +69,7 @@ def sync_dataset(
     project: Annotated[Path, typer.Option("--project")],
     dry_run: Annotated[bool, typer.Option("--dry-run")] = False,
 ) -> None:
+    project = _resolve_project_path(project)
     result = _handle_command(lambda: _runner().sync_dataset(project, dry_run=dry_run))
     if result is not None:
         console.print(f"dataset: {result.name}")
@@ -75,6 +85,7 @@ def sync_score_configs(
     project: Annotated[Path, typer.Option("--project")],
     dry_run: Annotated[bool, typer.Option("--dry-run")] = False,
 ) -> None:
+    project = _resolve_project_path(project)
     results = _handle_command(
         lambda: _runner().sync_score_configs(project, dry_run=dry_run)
     )
@@ -98,6 +109,7 @@ def sync_prompts(
         ),
     ] = False,
 ) -> None:
+    project = _resolve_project_path(project)
     result = _handle_command(lambda: _runner().sync_prompts(project, dry_run=dry_run))
     if result is not None:
         console.print(f"project: {result.project}/{result.project_version}")
@@ -133,6 +145,7 @@ def sync_all(
     project: Annotated[Path, typer.Option("--project")],
     dry_run: Annotated[bool, typer.Option("--dry-run")] = False,
 ) -> None:
+    project = _resolve_project_path(project)
     result = _handle_command(lambda: _runner().sync_all(project, dry_run=dry_run))
     if result is not None:
         console.print("Report")
@@ -175,6 +188,7 @@ def sync_annotation_queue(
     project: Annotated[Path, typer.Option("--project")],
     dry_run: Annotated[bool, typer.Option("--dry-run")] = False,
 ) -> None:
+    project = _resolve_project_path(project)
     result = _handle_command(
         lambda: _runner().sync_annotation_queue(project, dry_run=dry_run)
     )
@@ -198,6 +212,7 @@ def sync_annotation_queue(
 
 @app.command("render-judge-prompts")
 def render_judge_prompts(project: Annotated[Path, typer.Option("--project")]) -> None:
+    project = _resolve_project_path(project)
     results = _handle_command(lambda: ExperimentRunner().render_judge_prompts(project))
     if results is not None:
         for result in results:
@@ -228,6 +243,7 @@ def render_judge_prompts(project: Annotated[Path, typer.Option("--project")]) ->
 
 @app.command("export-evaluator-setup")
 def export_evaluator_setup(project: Annotated[Path, typer.Option("--project")]) -> None:
+    project = _resolve_project_path(project)
     result = _handle_command(lambda: ExperimentRunner().export_evaluator_setup(project))
     if result is not None:
         console.print(f"export: {result}")
@@ -239,6 +255,7 @@ def sync_judge_evaluators(
     dry_run: Annotated[bool, typer.Option("--dry-run")] = False,
     audit: Annotated[bool, typer.Option("--audit")] = False,
 ) -> None:
+    project = _resolve_project_path(project)
     result = _handle_command(
         lambda: _runner().sync_judge_evaluators(
             project,
@@ -270,10 +287,27 @@ def run(
             help="Bypass confirmation when a candidate changes multiple comparison axes.",
         ),
     ] = False,
+    no_report: Annotated[
+        bool,
+        typer.Option(
+            "--no-report",
+            help="Do not automatically export a CSV report after the run completes.",
+        ),
+    ] = False,
+    skip_sync: Annotated[
+        bool,
+        typer.Option(
+            "--skip-sync",
+            help="Skip dataset and score-config syncs before running.",
+        ),
+    ] = False,
 ) -> None:
+    project = _resolve_project_path(project)
     runner = _runner()
 
     def execute_run() -> object:
+        if mode == "candidate" and not baseline:
+            raise HarnessError("--baseline is required for candidate runs")
         if mode == "candidate" and candidate and not confirm_mixed_variant:
             axes = runner.mixed_variant_axes(project, candidate)
             if "prompt" in axes and len(axes) > 1:
@@ -291,6 +325,7 @@ def run(
             candidate=candidate,
             baseline=baseline,
             select_human_review=not skip_human_review,
+            skip_sync=skip_sync,
         )
 
     result = _handle_command(
@@ -298,6 +333,8 @@ def run(
     )
     if result is not None:
         console.print(f"run: {result.run_id}")
+        if skip_sync:
+            console.print("sync: skipped")
         console.print(f"{result.run_type}: {result.completed_count} completed, {result.failed_count} failed")
         if result.baseline_reference is not None:
             reference_id = getattr(
@@ -318,6 +355,18 @@ def run(
             console.print(f"review-duplicates-skipped: {review.skipped_duplicate_count}")
         elif skip_human_review:
             console.print("review: skipped")
+        if not no_report:
+            report = _handle_command(
+                lambda: runner.export(
+                    project,
+                    result.run_id,
+                    "csv",
+                    expected_count=result.completed_count + result.failed_count,
+                )
+            )
+            if report is not None:
+                console.print(f"report: {report.output_path}")
+                console.print(f"report-rows: {report.row_count}")
 
 
 @app.command("select-review")
@@ -332,6 +381,7 @@ def select_review(
         ),
     ] = None,
 ) -> None:
+    project = _resolve_project_path(project)
     result = _handle_command(
         lambda: _runner().select_review(
             project,
@@ -359,10 +409,136 @@ def export(
     run_id: Annotated[str, typer.Option("--run")],
     fmt: Annotated[str, typer.Option("--format")] = "csv",
 ) -> None:
+    project = _resolve_project_path(project)
     result = _handle_command(lambda: _runner().export(project, run_id, fmt))
     if result is not None:
         console.print(f"export: {result.output_path}")
         console.print(f"rows: {result.row_count}")
+
+
+@app.command("campaign")
+def campaign(
+    project: Annotated[Path, typer.Option("--project")],
+    skip_sync: Annotated[
+        bool,
+        typer.Option(
+            "--skip-sync",
+            help="Skip dataset and score-config syncs before running.",
+        ),
+    ] = False,
+    skip_human_review: Annotated[
+        bool,
+        typer.Option(
+            "--skip-human-review",
+            help="Do not automatically select completed run outputs for human review.",
+        ),
+    ] = False,
+    no_report: Annotated[
+        bool,
+        typer.Option(
+            "--no-report",
+            help="Do not export CSV reports or create the Excel workbook.",
+        ),
+    ] = False,
+    overwrite: Annotated[
+        bool,
+        typer.Option(
+            "--overwrite",
+            help="Replace an existing campaign Excel workbook.",
+        ),
+    ] = False,
+    confirm_mixed_variant: Annotated[
+        bool,
+        typer.Option(
+            "--confirm-mixed-variant",
+            help="Bypass confirmation when a campaign candidate changes multiple axes.",
+        ),
+    ] = False,
+) -> None:
+    project = _resolve_project_path(project)
+
+    def print_campaign_progress(run_type: str, name: str) -> None:
+        console.print(f"running: {run_type} {name}")
+
+    result = _handle_command(
+        lambda: _runner().campaign(
+            project,
+            skip_sync=skip_sync,
+            select_human_review=not skip_human_review,
+            no_report=no_report,
+            overwrite=overwrite,
+            confirm_mixed_variant=confirm_mixed_variant,
+            on_run_start=print_campaign_progress,
+        )
+    )
+    if result is not None:
+        if result.baseline_run is None:
+            console.print("campaign: skipped")
+            for warning in result.warnings:
+                console.print(f"reason: {warning}")
+            return
+        has_failures = any(candidate.status == "failed" for candidate in result.candidate_runs)
+        console.print(
+            "campaign: completed-with-failures" if has_failures else "campaign: completed"
+        )
+        console.print(f"baseline: {result.baseline_run.run_id}")
+        for candidate in result.candidate_runs:
+            if candidate.run_result is not None:
+                console.print(
+                    f"candidate: {candidate.candidate_name} {candidate.run_result.run_id}"
+                )
+            if candidate.status == "failed":
+                console.print(f"failed: {candidate.candidate_name} {candidate.message}")
+        for skipped in result.skipped_candidates:
+            console.print(f"skipped: {skipped.candidate_name} {skipped.reason}")
+        for report in result.csv_reports:
+            console.print(f"report: {report.output_path}")
+        if result.excel_report is not None:
+            console.print(f"excel-report: {result.excel_report.output_path}")
+        for warning in result.warnings:
+            console.print(f"warning: {warning}")
+        if has_failures:
+            raise typer.Exit(code=1)
+
+
+@app.command("excel-report")
+def excel_report(
+    baseline: Annotated[str, typer.Option("--baseline")],
+    project: Annotated[Path | None, typer.Option("--project")] = None,
+    reports_dir: Annotated[Path | None, typer.Option("--reports-dir")] = None,
+    output: Annotated[Path | None, typer.Option("--output")] = None,
+    overwrite: Annotated[
+        bool,
+        typer.Option(
+            "--overwrite",
+            help="Replace an existing workbook at the selected output path.",
+        ),
+    ] = False,
+) -> None:
+    def selected_reports_dir() -> Path:
+        if reports_dir is not None:
+            return reports_dir
+        if project is None:
+            return Path("reports")
+        config = load_project_config(_resolve_project_path(project))
+        return Path("reports") / config.project.name
+
+    result = _handle_command(
+        lambda: create_excel_report(
+            baseline_run_id=baseline,
+            reports_dir=selected_reports_dir(),
+            output_path=output,
+            overwrite=overwrite,
+        )
+    )
+    if result is not None:
+        console.print(f"excel-report: {result.output_path}")
+        console.print(f"baseline: {baseline}")
+        console.print(f"reports: {result.report_count}")
+        console.print(f"rows: {result.row_count}")
+        console.print(f"score-observations: {result.score_observation_count}")
+        for warning in result.warnings:
+            console.print(f"warning: {warning}")
 
 
 def _print_judge_setup_result(result: object) -> None:

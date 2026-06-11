@@ -6,7 +6,7 @@ import os
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 from uuid import uuid4
 
 from evaluator_harness.baseline_registry import (
@@ -19,6 +19,7 @@ from evaluator_harness.certificates import configure_tls_truststore
 from evaluator_harness.annotation_queues import (
     AnnotationQueueReferenceStore,
     AnnotationQueueSyncResult,
+    queue_review_policy_version,
     resolve_annotation_queue,
     sync_annotation_queue,
 )
@@ -27,14 +28,16 @@ from evaluator_harness.config import (
     DatasetItem,
     DatasetKind,
     load_env_file,
+    load_layered_env_files,
     ModelConfig,
     ProjectConfig,
+    project_env_file_path,
     load_project_config,
     scenario_metadata,
     validate_project_config,
 )
-from evaluator_harness.dataset_loader import load_dataset
-from evaluator_harness.errors import ConfigError
+from evaluator_harness.dataset_loader import dataset_compatibility_version, load_dataset
+from evaluator_harness.errors import ConfigError, HarnessError
 from evaluator_harness.evaluators import (
     evaluator_score_summary,
     evaluator_target_summary,
@@ -87,6 +90,11 @@ from evaluator_harness.review_selection import (
     SampleStrategy,
     select_review_items,
 )
+from evaluator_harness.excel_reports import WorkbookOutput, create_excel_report
+from evaluator_harness.session_identity import (
+    SessionIdentityInputs,
+    item_comparison_session_id,
+)
 
 
 @dataclass(frozen=True)
@@ -115,6 +123,32 @@ class RunResult:
     review_selection: ReviewSelectionResult | None = None
     model_output_targeting_status: str | None = None
     model_output_targeting_message: str | None = None
+
+
+@dataclass(frozen=True)
+class CampaignCandidateSelection:
+    candidate_name: str
+    included: bool
+    reason: str
+
+
+@dataclass(frozen=True)
+class CampaignCandidateRun:
+    candidate_name: str
+    run_result: RunResult | None
+    csv_report: ExportResult | None
+    status: str
+    message: str | None = None
+
+
+@dataclass(frozen=True)
+class CampaignRunResult:
+    baseline_run: RunResult | None
+    candidate_runs: list[CampaignCandidateRun]
+    skipped_candidates: list[CampaignCandidateSelection]
+    csv_reports: list[ExportResult]
+    excel_report: WorkbookOutput | None
+    warnings: list[str]
 
 
 @dataclass(frozen=True)
@@ -147,18 +181,28 @@ class ExperimentRunner:
     ) -> None:
         configure_tls_truststore()
         load_env_file()
-        self.langfuse_client = langfuse_client or (
-            LangfuseClient.from_env()
-            if os.getenv("EVALUATOR_HARNESS_LIVE") in {"1", "true", "TRUE", "yes"}
-            else LangfuseClient()
-        )
+        self._langfuse_client_provided = langfuse_client is not None
+        self.langfuse_client = langfuse_client or LangfuseClient()
         self.provider_factory = provider_factory or create_provider
         self.baseline_registry = baseline_registry or BaselineRegistry()
         self.annotation_queue_store = AnnotationQueueReferenceStore()
         self.progress = progress or NullProgressReporter()
 
-    def validate_project(self, project_path: Path) -> ValidationResult:
+    def _load_project_config(self, project_path: Path) -> ProjectConfig:
         config = load_project_config(project_path)
+        load_layered_env_files(
+            root_env_file=".env",
+            project_env_file=project_env_file_path(config.project.name),
+        )
+        if (
+            not self._langfuse_client_provided
+            and os.getenv("EVALUATOR_HARNESS_LIVE") in {"1", "true", "TRUE", "yes"}
+        ):
+            self.langfuse_client = LangfuseClient.from_env()
+        return config
+
+    def validate_project(self, project_path: Path) -> ValidationResult:
+        config = self._load_project_config(project_path)
         validate_project_config(config)
         items = self._validate_dataset(config)
         return ValidationResult(
@@ -190,7 +234,7 @@ class ExperimentRunner:
         )
 
     def sync_dataset(self, project_path: Path, *, dry_run: bool = False) -> DatasetSyncResult:
-        config = load_project_config(project_path)
+        config = self._load_project_config(project_path)
         validate_project_config(config)
         items = self._validate_dataset(config)
         return self.langfuse_client.sync_dataset(
@@ -206,12 +250,32 @@ class ExperimentRunner:
         *,
         dry_run: bool = False,
     ) -> list[ScoreConfigSyncResult]:
-        config = load_project_config(project_path)
+        config = self._load_project_config(project_path)
         validate_project_config(config)
         return self.langfuse_client.sync_score_configs(
             config,
             progress=self.progress,
             dry_run=dry_run,
+        )
+
+    def _skip_sync_dataset_result(
+        self,
+        config: ProjectConfig,
+        items: list[DatasetItem],
+    ) -> DatasetSyncResult:
+        name = config.dataset.langfuse_dataset_name or config.dataset.langfuse_dataset_id
+        if not name:
+            raise ConfigError("Dataset sync requires a Langfuse dataset name or ID")
+        compatibility_version = (
+            config.dataset.langfuse_dataset_version
+            or dataset_compatibility_version(items)
+        )
+        return DatasetSyncResult(
+            name=name,
+            version=config.dataset.langfuse_dataset_version or "latest",
+            compatibility_version=compatibility_version,
+            item_count=len(items),
+            status="skipped",
         )
 
     def sync_prompts(
@@ -220,7 +284,7 @@ class ExperimentRunner:
         *,
         dry_run: bool = False,
     ) -> PromptSyncReport:
-        config = load_project_config(project_path)
+        config = self._load_project_config(project_path)
         validate_project_config(config)
         return sync_project_prompts(
             config,
@@ -256,14 +320,17 @@ class ExperimentRunner:
         )
 
     def render_judge_prompts(self, project_path: Path) -> list[Any]:
-        config = load_project_config(project_path)
+        config = self._load_project_config(project_path)
         validate_project_config(config)
         return render_judge_prompts(config)
 
     def export_evaluator_setup(self, project_path: Path) -> Path:
-        config = load_project_config(project_path)
+        config = self._load_project_config(project_path)
         validate_project_config(config)
-        output_path = Path("reports") / f"evaluator-setup-{config.project.name}-{config.project.version}.md"
+        output_path = (
+            _project_reports_dir(config)
+            / f"evaluator-setup-{config.project.name}-{config.project.version}.md"
+        )
         return export_evaluator_setup(config, output_path)
 
     def sync_judge_evaluators(
@@ -274,7 +341,7 @@ class ExperimentRunner:
         audit: bool = False,
         score_results: list[ScoreConfigSyncResult] | None = None,
     ) -> EvaluatorSetupResult:
-        config = load_project_config(project_path)
+        config = self._load_project_config(project_path)
         validate_project_config(config)
         effective_score_results = (
             score_results
@@ -319,7 +386,7 @@ class ExperimentRunner:
         dry_run: bool = False,
         score_results: list[ScoreConfigSyncResult] | None = None,
     ) -> AnnotationQueueSyncResult:
-        config = load_project_config(project_path)
+        config = self._load_project_config(project_path)
         validate_project_config(config)
         effective_score_results = (
             score_results
@@ -346,31 +413,40 @@ class ExperimentRunner:
                 f"Unsupported run mode {mode!r}; expected baseline or candidate."
             )
 
-        config = load_project_config(project_path)
+        config = self._load_project_config(project_path)
         validate_project_config(config)
         items = self._validate_dataset(config)
-        dataset_sync = self.langfuse_client.sync_dataset(
-            config.dataset,
-            items,
-            progress=self.progress,
-        )
-        self.langfuse_client.sync_score_configs(config, progress=self.progress)
+        skip_sync = bool(kwargs.get("skip_sync", False))
+        if skip_sync:
+            dataset_sync = self._skip_sync_dataset_result(config, items)
+        else:
+            dataset_sync = self.langfuse_client.sync_dataset(
+                config.dataset,
+                items,
+                progress=self.progress,
+            )
+            self.langfuse_client.sync_score_configs(config, progress=self.progress)
         if mode == "baseline":
             result = self._run_baseline(config, items, dataset_sync)
         else:
+            baseline_selector = _required_str(kwargs.get("baseline"), "--baseline")
             result = self._run_candidate(
                 config,
                 items,
                 dataset_sync,
                 candidate_name=_required_str(kwargs.get("candidate"), "--candidate"),
-                baseline_selector=str(kwargs.get("baseline") or "latest-compatible"),
+                baseline_selector=baseline_selector,
             )
         if (
             kwargs.get("select_human_review", True)
             and config.human_review.enabled
             and result.completed_count > 0
         ):
-            review = self.select_review(project_path, result.run_id)
+            review = self.select_review(
+                project_path,
+                result.run_id,
+                skip_sync=skip_sync,
+            )
             return RunResult(
                 run_id=result.run_id,
                 run_type=result.run_type,
@@ -388,7 +464,7 @@ class ExperimentRunner:
         project_path: Path,
         candidate_name: str,
     ) -> list[str]:
-        config = load_project_config(project_path)
+        config = self._load_project_config(project_path)
         validate_project_config(config)
         candidate = self._candidate_by_name(config, candidate_name)
         axes: list[str] = []
@@ -409,10 +485,11 @@ class ExperimentRunner:
         run_id: str,
         *,
         sample_strategy: SampleStrategy | None = None,
+        skip_sync: bool = False,
     ) -> ReviewSelectionResult:
         if sample_strategy is not None and sample_strategy not in {"stable", "random"}:
             raise ConfigError("sample_strategy must be stable or random")
-        config = load_project_config(project_path)
+        config = self._load_project_config(project_path)
         validate_project_config(config)
         if not config.human_review.enabled:
             return ReviewSelectionResult(
@@ -425,15 +502,22 @@ class ExperimentRunner:
             )
         score_results = (
             self.langfuse_client.sync_score_configs(config, progress=self.progress)
-            if config.human_review.queue_ownership == "managed_by_harness"
+            if (
+                config.human_review.queue_ownership == "managed_by_harness"
+                and not skip_sync
+            )
             else []
         )
         with self.progress.task("Resolving annotation queue", total=None):
-            queue = resolve_annotation_queue(
-                config,
-                self.langfuse_client,
-                score_results,
-                store=self.annotation_queue_store,
+            queue = (
+                self._resolve_annotation_queue_without_sync(config)
+                if skip_sync
+                else resolve_annotation_queue(
+                    config,
+                    self.langfuse_client,
+                    score_results,
+                    store=self.annotation_queue_store,
+                )
             )
         if not queue.queue_id:
             raise ConfigError("annotation queue could not be resolved")
@@ -521,10 +605,68 @@ class ExperimentRunner:
             reasons=reasons,
         )
 
-    def export(self, project_path: Path, run_id: str, fmt: str) -> ExportResult:
+    def _resolve_annotation_queue_without_sync(
+        self,
+        config: ProjectConfig,
+    ) -> AnnotationQueueSyncResult:
+        if config.human_review.queue_ownership == "user_owned":
+            queue_id = str(config.human_review.annotation_queue_id or "")
+            if not queue_id:
+                raise ConfigError("user_owned human review requires annotation_queue_id")
+            return AnnotationQueueSyncResult(
+                queue_id=queue_id,
+                queue_name=queue_id,
+                ownership="user_owned",
+                status="user_owned",
+                message="using user-owned annotation queue",
+            )
+        if config.human_review.fallback_to_env:
+            queue_id = os.getenv("LANGFUSE_ANNOTATION_QUEUE_ID")
+            if queue_id:
+                return AnnotationQueueSyncResult(
+                    queue_id=queue_id,
+                    queue_name=queue_id,
+                    ownership="environment_override",
+                    status="environment_override",
+                    message="using LANGFUSE_ANNOTATION_QUEUE_ID override",
+                )
+        reference = self.annotation_queue_store.load(
+            config.project.name,
+            config.project.version,
+            queue_review_policy_version(config),
+        )
+        if reference is None:
+            raise ConfigError(
+                "--skip-sync requires an existing managed annotation queue reference; "
+                "run sync-annotation-queue or run without --skip-sync first."
+            )
+        return AnnotationQueueSyncResult(
+            queue_id=reference.queue_id,
+            queue_name=reference.queue_name,
+            ownership=reference.ownership,
+            status="resolved",
+            score_config_ids=reference.score_config_ids,
+            reference_path=str(
+                self.annotation_queue_store.path_for(
+                    config.project.name,
+                    config.project.version,
+                    reference.review_policy_version,
+                )
+            ),
+            message="using existing annotation queue reference",
+        )
+
+    def export(
+        self,
+        project_path: Path,
+        run_id: str,
+        fmt: str,
+        *,
+        expected_count: int | None = None,
+    ) -> ExportResult:
         if fmt != "csv":
             raise ConfigError(f"Unsupported export format: {fmt}")
-        config = load_project_config(project_path)
+        config = self._load_project_config(project_path)
         dataset_names = [
             name
             for name in [
@@ -537,6 +679,7 @@ class ExperimentRunner:
             traces = self.langfuse_client.traces_for_run(
                 run_id,
                 dataset_names=dataset_names or None,
+                expected_count=expected_count,
             )
         trace_ids = [
             str(trace["trace_id"])
@@ -548,12 +691,133 @@ class ExperimentRunner:
             trace_ids=trace_ids,
             progress=self.progress,
         )
-        output_path = Path("reports") / f"{run_id}.csv"
+        output_path = _project_reports_dir(config) / f"{run_id}.csv"
         return export_summary(
             traces,
             output_path,
             scores=scores,
             progress=self.progress,
+        )
+
+    def campaign(
+        self,
+        project_path: Path,
+        *,
+        skip_sync: bool = False,
+        select_human_review: bool = True,
+        no_report: bool = False,
+        overwrite: bool = False,
+        confirm_mixed_variant: bool = False,
+        on_run_start: Callable[[str, str], None] | None = None,
+    ) -> CampaignRunResult:
+        config = self._load_project_config(project_path)
+        validate_project_config(config)
+        selections = campaign_candidate_selections(config)
+        included_names = [
+            selection.candidate_name for selection in selections if selection.included
+        ]
+        skipped = [selection for selection in selections if not selection.included]
+        if not included_names:
+            return CampaignRunResult(
+                baseline_run=None,
+                candidate_runs=[],
+                skipped_candidates=skipped,
+                csv_reports=[],
+                excel_report=None,
+                warnings=["no candidates eligible for campaign"],
+            )
+
+        if on_run_start is not None:
+            on_run_start("baseline", config.baseline.name)
+        baseline_run = self.run(
+            project_path,
+            "baseline",
+            select_human_review=select_human_review,
+            skip_sync=skip_sync,
+        )
+        csv_reports: list[ExportResult] = []
+        if not no_report:
+            csv_reports.append(
+                self.export(
+                    project_path,
+                    baseline_run.run_id,
+                    "csv",
+                    expected_count=baseline_run.completed_count + baseline_run.failed_count,
+                )
+            )
+
+        candidate_runs: list[CampaignCandidateRun] = []
+        for candidate_name in included_names:
+            try:
+                if on_run_start is not None:
+                    on_run_start("candidate", candidate_name)
+                if not confirm_mixed_variant:
+                    axes = self.mixed_variant_axes(project_path, candidate_name)
+                    if "prompt" in axes and len(axes) > 1:
+                        raise ConfigError(
+                            "Candidate variant changes multiple comparison axes: "
+                            + ", ".join(axes)
+                            + ". Pass --confirm-mixed-variant to continue."
+                        )
+                candidate_result = self.run(
+                    project_path,
+                    "candidate",
+                    candidate=candidate_name,
+                    baseline=baseline_run.run_id,
+                    select_human_review=select_human_review,
+                    skip_sync=skip_sync,
+                )
+                csv_report = None
+                if not no_report:
+                    csv_report = self.export(
+                        project_path,
+                        candidate_result.run_id,
+                        "csv",
+                        expected_count=(
+                            candidate_result.completed_count
+                            + candidate_result.failed_count
+                        ),
+                    )
+                    csv_reports.append(csv_report)
+                candidate_runs.append(
+                    CampaignCandidateRun(
+                        candidate_name=candidate_name,
+                        run_result=candidate_result,
+                        csv_report=csv_report,
+                        status="completed",
+                    )
+                )
+            except HarnessError as exc:
+                candidate_runs.append(
+                    CampaignCandidateRun(
+                        candidate_name=candidate_name,
+                        run_result=None,
+                        csv_report=None,
+                        status="failed",
+                        message=str(exc),
+                    )
+                )
+
+        excel_report = None
+        warnings: list[str] = []
+        if not no_report:
+            try:
+                excel_report = create_excel_report(
+                    baseline_run_id=baseline_run.run_id,
+                    reports_dir=_project_reports_dir(config),
+                    overwrite=overwrite,
+                )
+                warnings.extend(excel_report.warnings)
+            except HarnessError as exc:
+                warnings.append(str(exc))
+
+        return CampaignRunResult(
+            baseline_run=baseline_run,
+            candidate_runs=candidate_runs,
+            skipped_candidates=skipped,
+            csv_reports=csv_reports,
+            excel_report=excel_report,
+            warnings=warnings,
         )
 
     def _validate_dataset(self, config: ProjectConfig) -> list[DatasetItem]:
@@ -593,6 +857,7 @@ class ExperimentRunner:
             metadata=final_output_metadata(request.metadata),
             model=model_config.model,
             model_parameters=request.params,
+            session_id=str(request.metadata.get("item_comparison_session_id") or ""),
         ) as generation_observation:
             response = provider.generate(request)
             self.langfuse_client.update_generation_span(
@@ -650,6 +915,13 @@ class ExperimentRunner:
             trace_name = self._trace_name(config, run_type="baseline", item=item)
             rendered_prompt = self._render_prompt_payload(baseline_prompt_ref, item)
             prompt = rendered_prompt.display_text
+            session_inputs = self._session_identity_inputs(
+                config=config,
+                item=item,
+                dataset_sync=dataset_sync,
+                baseline_anchor=run_id,
+            )
+            session_id = item_comparison_session_id(session_inputs)
             request = ModelRequest(
                 prompt=prompt,
                 params=config.baseline.parameters.model_dump(mode="json", exclude_none=True),
@@ -664,6 +936,8 @@ class ExperimentRunner:
                     dataset_sync=dataset_sync,
                     fingerprint=fingerprint,
                     rendered_prompt=rendered_prompt,
+                    session_id=session_id,
+                    session_inputs=session_inputs,
                 ),
                 rendered_prompt=rendered_prompt,
             )
@@ -673,6 +947,7 @@ class ExperimentRunner:
                 name=trace_name,
                 input=item.input,
                 metadata=parent_metadata,
+                session_id=session_id,
             ) as parent_observation:
                 parent_observation_id = self.langfuse_client.observation_id(
                     parent_observation
@@ -707,6 +982,8 @@ class ExperimentRunner:
                         observation_role=(
                             RUN_ITEM_ROLE if uses_manual_generation else MODEL_OUTPUT_ROLE
                         ),
+                        session_id=session_id,
+                        session_inputs=session_inputs,
                     )
                     if self.langfuse_client.update_trace_span(parent_observation, trace):
                         trace["_live_observation_logged"] = True
@@ -757,6 +1034,8 @@ class ExperimentRunner:
                         fingerprint=fingerprint,
                         rendered_prompt=rendered_prompt,
                         observation_role=RUN_ITEM_ROLE,
+                        session_id=session_id,
+                        session_inputs=session_inputs,
                     )
                     if self.langfuse_client.update_trace_span(parent_observation, trace):
                         trace["_live_observation_logged"] = True
@@ -869,6 +1148,13 @@ class ExperimentRunner:
             )
             rendered_prompt = self._render_prompt_payload(candidate_prompt_ref, item)
             prompt = rendered_prompt.display_text
+            session_inputs = self._session_identity_inputs(
+                config=config,
+                item=item,
+                dataset_sync=dataset_sync,
+                baseline_anchor=baseline_reference.baseline_run_id,
+            )
+            session_id = item_comparison_session_id(session_inputs)
             request = ModelRequest(
                 prompt=prompt,
                 params=candidate.parameters.model_dump(mode="json", exclude_none=True),
@@ -884,6 +1170,8 @@ class ExperimentRunner:
                         dataset_sync=dataset_sync,
                         fingerprint=fingerprint,
                         rendered_prompt=rendered_prompt,
+                        session_id=session_id,
+                        session_inputs=session_inputs,
                     ),
                     "baseline_run_id": baseline_run_id,
                 },
@@ -895,6 +1183,7 @@ class ExperimentRunner:
                 name=trace_name,
                 input=item.input,
                 metadata=parent_metadata,
+                session_id=session_id,
             ) as parent_observation:
                 parent_observation_id = self.langfuse_client.observation_id(
                     parent_observation
@@ -932,6 +1221,8 @@ class ExperimentRunner:
                         observation_role=(
                             RUN_ITEM_ROLE if uses_manual_generation else MODEL_OUTPUT_ROLE
                         ),
+                        session_id=session_id,
+                        session_inputs=session_inputs,
                     )
                     if self.langfuse_client.update_trace_span(parent_observation, trace):
                         trace["_live_observation_logged"] = True
@@ -988,6 +1279,8 @@ class ExperimentRunner:
                         parameter_hash=parameter_hash,
                         rendered_prompt=rendered_prompt,
                         observation_role=RUN_ITEM_ROLE,
+                        session_id=session_id,
+                        session_inputs=session_inputs,
                     )
                     if self.langfuse_client.update_trace_span(parent_observation, trace):
                         trace["_live_observation_logged"] = True
@@ -1034,6 +1327,8 @@ class ExperimentRunner:
         parameter_hash: str | None = None,
         rendered_prompt: RenderedPrompt | None = None,
         observation_role: str = MODEL_OUTPUT_ROLE,
+        session_id: str | None = None,
+        session_inputs: SessionIdentityInputs | None = None,
     ) -> dict[str, Any]:
         active_model = model_config or config.baseline
         active_prompt_identity = prompt_identity_for_model(config, active_model)
@@ -1048,6 +1343,7 @@ class ExperimentRunner:
         return {
             "trace_id": trace_id,
             "run_id": run_id,
+            "session_id": session_id,
             "name": trace_name,
             "input": item.input,
             "output": response.output if response is not None else None,
@@ -1074,6 +1370,10 @@ class ExperimentRunner:
                 "dataset_item_id": item.item_id,
                 "trace_id": trace_id,
                 "trace_name": trace_name,
+                "item_comparison_session_id": session_id,
+                "item_comparison_session_inputs": (
+                    session_inputs.metadata() if session_inputs is not None else None
+                ),
                 "observation_role": observation_role,
                 "langfuse_dataset_item_id": (
                     f"{dataset_sync.name}:{item.item_id}" if dataset_sync else None
@@ -1147,6 +1447,8 @@ class ExperimentRunner:
         dataset_sync: DatasetSyncResult,
         fingerprint: BaselineFingerprint,
         rendered_prompt: RenderedPrompt | None = None,
+        session_id: str | None = None,
+        session_inputs: SessionIdentityInputs | None = None,
     ) -> dict[str, Any]:
         active_prompt_identity = prompt_identity_for_model(config, model_config)
         prompt_ref = model_config.task_prompt or config.task_prompt
@@ -1170,6 +1472,10 @@ class ExperimentRunner:
             "evaluator_set_id": fingerprint.evaluator_set_id,
             "trace_id": trace_id,
             "trace_name": trace_name,
+            "item_comparison_session_id": session_id,
+            "item_comparison_session_inputs": (
+                session_inputs.metadata() if session_inputs is not None else None
+            ),
             "prompt_version": active_prompt_identity["version"],
             "prompt_shape": active_prompt_identity.get("shape"),
             "prompt_roles": active_prompt_identity.get("roles", []),
@@ -1196,6 +1502,24 @@ class ExperimentRunner:
                 rendered_prompt.model_dump(mode="json") if rendered_prompt else None
             ),
         }
+
+    def _session_identity_inputs(
+        self,
+        *,
+        config: ProjectConfig,
+        item: DatasetItem,
+        dataset_sync: DatasetSyncResult,
+        baseline_anchor: str,
+    ) -> SessionIdentityInputs:
+        return SessionIdentityInputs(
+            project=config.project.name,
+            project_version=config.project.version,
+            dataset_name=dataset_sync.name,
+            dataset_version=dataset_sync.compatibility_version or dataset_sync.version,
+            baseline_anchor=baseline_anchor,
+            dataset_item_id=item.item_id,
+            source_row=item.source_row,
+        )
 
     def _diagnose_run_model_output_targeting(
         self,
@@ -1295,6 +1619,29 @@ def _required_str(value: object, option_name: str) -> str:
     if not isinstance(value, str) or not value:
         raise ConfigError(f"{option_name} is required for candidate runs")
     return value
+
+
+def _project_reports_dir(config: ProjectConfig) -> Path:
+    return Path("reports") / config.project.name
+
+
+def campaign_candidate_selections(config: ProjectConfig) -> list[CampaignCandidateSelection]:
+    selections: list[CampaignCandidateSelection] = []
+    for candidate in config.candidates:
+        included = candidate.exclude_from_campaign is False
+        reason = (
+            "exclude-from-campaign=false"
+            if included
+            else "exclude-from-campaign=true"
+        )
+        selections.append(
+            CampaignCandidateSelection(
+                candidate_name=candidate.name,
+                included=included,
+                reason=reason,
+            )
+        )
+    return selections
 
 
 def _parameter_hash(config: ModelConfig) -> str:
