@@ -90,7 +90,11 @@ from evaluator_harness.review_selection import (
     SampleStrategy,
     select_review_items,
 )
-from evaluator_harness.excel_reports import WorkbookOutput, create_excel_report
+from evaluator_harness.comparison_reports import (
+    ComparisonReportOutput,
+    create_comparison_reports,
+)
+from evaluator_harness.excel_reports import WorkbookOutput
 from evaluator_harness.session_identity import (
     SessionIdentityInputs,
     item_comparison_session_id,
@@ -147,8 +151,9 @@ class CampaignRunResult:
     candidate_runs: list[CampaignCandidateRun]
     skipped_candidates: list[CampaignCandidateSelection]
     csv_reports: list[ExportResult]
-    excel_report: WorkbookOutput | None
+    excel_report: WorkbookOutput | ComparisonReportOutput | None
     warnings: list[str]
+    final_reports: list[ComparisonReportOutput] | None = None
 
 
 @dataclass(frozen=True)
@@ -707,6 +712,7 @@ class ExperimentRunner:
         select_human_review: bool = True,
         no_report: bool = False,
         overwrite: bool = False,
+        report_format: str = "excel",
         confirm_mixed_variant: bool = False,
         on_run_start: Callable[[str, str], None] | None = None,
     ) -> CampaignRunResult:
@@ -725,6 +731,7 @@ class ExperimentRunner:
                 csv_reports=[],
                 excel_report=None,
                 warnings=["no candidates eligible for campaign"],
+                final_reports=[],
             )
 
         if on_run_start is not None:
@@ -799,15 +806,22 @@ class ExperimentRunner:
                 )
 
         excel_report = None
+        final_reports: list[ComparisonReportOutput] = []
         warnings: list[str] = []
         if not no_report:
             try:
-                excel_report = create_excel_report(
+                final_reports = create_comparison_reports(
                     baseline_run_id=baseline_run.run_id,
                     reports_dir=_project_reports_dir(config),
+                    formats=report_format,
                     overwrite=overwrite,
                 )
-                warnings.extend(excel_report.warnings)
+                excel_report = next(
+                    (report for report in final_reports if report.format == "excel"),
+                    None,
+                )
+                for report in final_reports:
+                    warnings.extend(report.warnings)
             except HarnessError as exc:
                 warnings.append(str(exc))
 
@@ -818,6 +832,7 @@ class ExperimentRunner:
             csv_reports=csv_reports,
             excel_report=excel_report,
             warnings=warnings,
+            final_reports=final_reports,
         )
 
     def _validate_dataset(self, config: ProjectConfig) -> list[DatasetItem]:

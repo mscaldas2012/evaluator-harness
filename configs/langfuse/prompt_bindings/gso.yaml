@@ -8,7 +8,7 @@ bindings:
   content_identity: sha256:81230a5593c1e7358fe0ecd35dbdb895c9cb730785815cacedf7d051480724d4
   prompt_shape: text
   active: true
-  last_synced_at: '2026-06-09T13:20:17.836768+00:00'
+  last_synced_at: '2026-06-11T14:21:27.703673+00:00'
   langfuse_prompt_version: 1
   langfuse_labels:
   - gso
@@ -25,7 +25,7 @@ bindings:
   content_identity: sha256:d960411363bb8431e08710fe290522093e839901a316d081414ef636f02319d2
   prompt_shape: text
   active: true
-  last_synced_at: '2026-06-09T13:20:17.836922+00:00'
+  last_synced_at: '2026-06-11T14:21:27.703833+00:00'
   langfuse_prompt_version: 1
   langfuse_labels:
   - gso
