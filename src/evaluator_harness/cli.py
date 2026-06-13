@@ -6,8 +6,8 @@ from typing import Annotated
 import typer
 from rich.console import Console
 
+from evaluator_harness.comparison_reports import create_comparison_reports, parse_report_format
 from evaluator_harness.config import load_project_config
-from evaluator_harness.excel_reports import create_excel_report
 from evaluator_harness.errors import HarnessError
 from evaluator_harness.progress import RichProgressReporter
 from evaluator_harness.runner import ExperimentRunner
@@ -43,6 +43,33 @@ def _resolve_project_path(project: Path) -> Path:
     if project.parent == Path(".") and project.suffix == "":
         return Path("configs/projects") / f"{project.name}.yaml"
     return project
+
+
+def _selected_reports_dir(project: Path | None, reports_dir: Path | None) -> Path:
+    if reports_dir is not None:
+        return reports_dir
+    if project is None:
+        return Path("reports")
+    config = load_project_config(_resolve_project_path(project))
+    return Path("reports") / config.project.name
+
+
+def _print_comparison_report_outputs(
+    outputs: list[object],
+    *,
+    baseline: str,
+) -> None:
+    first = outputs[0] if outputs else None
+    for output in outputs:
+        console.print(f"{output.format}-report: {output.output_path}")
+    if first is not None:
+        console.print(f"baseline: {baseline}")
+        console.print(f"reports: {first.report_count}")
+        console.print(f"rows: {first.row_count}")
+        console.print(f"score-observations: {first.score_observation_count}")
+    for output in outputs:
+        for warning in output.warnings:
+            console.print(f"warning: {warning}")
 
 
 @app.command()
@@ -437,14 +464,21 @@ def campaign(
         bool,
         typer.Option(
             "--no-report",
-            help="Do not export CSV reports or create the Excel workbook.",
+            help="Do not export CSV reports or create final comparison reports.",
         ),
     ] = False,
+    report_format: Annotated[
+        str,
+        typer.Option(
+            "--report-format",
+            help="Final comparison report format: excel, html, or both.",
+        ),
+    ] = "excel",
     overwrite: Annotated[
         bool,
         typer.Option(
             "--overwrite",
-            help="Replace an existing campaign Excel workbook.",
+            help="Replace existing campaign final comparison reports.",
         ),
     ] = False,
     confirm_mixed_variant: Annotated[
@@ -456,6 +490,9 @@ def campaign(
     ] = False,
 ) -> None:
     project = _resolve_project_path(project)
+    parsed_format = _handle_command(lambda: parse_report_format(report_format))
+    if parsed_format is None:
+        return
 
     def print_campaign_progress(run_type: str, name: str) -> None:
         console.print(f"running: {run_type} {name}")
@@ -467,6 +504,7 @@ def campaign(
             select_human_review=not skip_human_review,
             no_report=no_report,
             overwrite=overwrite,
+            report_format=report_format,
             confirm_mixed_variant=confirm_mixed_variant,
             on_run_start=print_campaign_progress,
         )
@@ -493,12 +531,52 @@ def campaign(
             console.print(f"skipped: {skipped.candidate_name} {skipped.reason}")
         for report in result.csv_reports:
             console.print(f"report: {report.output_path}")
-        if result.excel_report is not None:
+        final_reports = result.final_reports or []
+        if final_reports:
+            for final_report in final_reports:
+                console.print(f"{final_report.format}-report: {final_report.output_path}")
+        elif result.excel_report is not None:
             console.print(f"excel-report: {result.excel_report.output_path}")
         for warning in result.warnings:
             console.print(f"warning: {warning}")
         if has_failures:
             raise typer.Exit(code=1)
+
+
+@app.command("comparison-report")
+def comparison_report(
+    baseline: Annotated[str, typer.Option("--baseline")],
+    fmt: Annotated[
+        str,
+        typer.Option(
+            "--format",
+            help="Final comparison report format: excel, html, or both.",
+        ),
+    ] = "excel",
+    project: Annotated[Path | None, typer.Option("--project")] = None,
+    reports_dir: Annotated[Path | None, typer.Option("--reports-dir")] = None,
+    output: Annotated[Path | None, typer.Option("--output")] = None,
+    output_dir: Annotated[Path | None, typer.Option("--output-dir")] = None,
+    overwrite: Annotated[
+        bool,
+        typer.Option(
+            "--overwrite",
+            help="Replace existing comparison report artifacts.",
+        ),
+    ] = False,
+) -> None:
+    result = _handle_command(
+        lambda: create_comparison_reports(
+            baseline_run_id=baseline,
+            reports_dir=_selected_reports_dir(project, reports_dir),
+            formats=fmt,
+            output_path=output,
+            output_dir=output_dir,
+            overwrite=overwrite,
+        )
+    )
+    if result is not None:
+        _print_comparison_report_outputs(result, baseline=baseline)
 
 
 @app.command("excel-report")
@@ -515,30 +593,17 @@ def excel_report(
         ),
     ] = False,
 ) -> None:
-    def selected_reports_dir() -> Path:
-        if reports_dir is not None:
-            return reports_dir
-        if project is None:
-            return Path("reports")
-        config = load_project_config(_resolve_project_path(project))
-        return Path("reports") / config.project.name
-
     result = _handle_command(
-        lambda: create_excel_report(
+        lambda: create_comparison_reports(
             baseline_run_id=baseline,
-            reports_dir=selected_reports_dir(),
+            reports_dir=_selected_reports_dir(project, reports_dir),
+            formats="excel",
             output_path=output,
             overwrite=overwrite,
         )
     )
     if result is not None:
-        console.print(f"excel-report: {result.output_path}")
-        console.print(f"baseline: {baseline}")
-        console.print(f"reports: {result.report_count}")
-        console.print(f"rows: {result.row_count}")
-        console.print(f"score-observations: {result.score_observation_count}")
-        for warning in result.warnings:
-            console.print(f"warning: {warning}")
+        _print_comparison_report_outputs(result, baseline=baseline)
 
 
 def _print_judge_setup_result(result: object) -> None:

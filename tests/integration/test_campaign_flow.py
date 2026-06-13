@@ -7,20 +7,26 @@ from evaluator_harness.runner import ExperimentRunner
 
 
 def test_campaign_success_with_fake_backed_dry_run(monkeypatch) -> None:
-    excel_calls: list[dict[str, object]] = []
+    report_calls: list[dict[str, object]] = []
 
-    def fake_create_excel_report(**kwargs):
-        excel_calls.append(kwargs)
-        return type(
-            "FakeWorkbook",
-            (),
-            {
-                "output_path": Path("reports/campaign-mode/baseline-comparison.xlsx"),
-                "warnings": (),
-            },
-        )()
+    def fake_create_comparison_reports(**kwargs):
+        report_calls.append(kwargs)
+        return [
+            type(
+                "FakeWorkbook",
+                (),
+                {
+                    "format": "excel",
+                    "output_path": Path("reports/campaign-mode/baseline-comparison.xlsx"),
+                    "warnings": (),
+                },
+            )()
+        ]
 
-    monkeypatch.setattr("evaluator_harness.runner.create_excel_report", fake_create_excel_report)
+    monkeypatch.setattr(
+        "evaluator_harness.runner.create_comparison_reports",
+        fake_create_comparison_reports,
+    )
     runner = ExperimentRunner(langfuse_client=LangfuseClient())
 
     result = runner.campaign(
@@ -36,17 +42,23 @@ def test_campaign_success_with_fake_backed_dry_run(monkeypatch) -> None:
         "default-included-candidate",
     ]
     assert len(result.csv_reports) == 3
-    assert excel_calls[0]["baseline_run_id"] == result.baseline_run.run_id
+    assert report_calls[0]["baseline_run_id"] == result.baseline_run.run_id
 
 
 def test_campaign_runs_all_candidates_except_explicitly_excluded(monkeypatch) -> None:
     monkeypatch.setattr(
-        "evaluator_harness.runner.create_excel_report",
-        lambda **_kwargs: type(
-            "FakeWorkbook",
-            (),
-            {"output_path": Path("reports/campaign-mode/baseline-comparison.xlsx"), "warnings": ()},
-        )(),
+        "evaluator_harness.runner.create_comparison_reports",
+        lambda **_kwargs: [
+            type(
+                "FakeWorkbook",
+                (),
+                {
+                    "format": "excel",
+                    "output_path": Path("reports/campaign-mode/baseline-comparison.xlsx"),
+                    "warnings": (),
+                },
+            )()
+        ],
     )
     runner = ExperimentRunner(langfuse_client=LangfuseClient())
 

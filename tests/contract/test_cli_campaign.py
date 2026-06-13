@@ -23,8 +23,18 @@ def test_campaign_cli_success_output(monkeypatch) -> None:
             assert kwargs["select_human_review"] is True
             assert kwargs["no_report"] is False
             assert kwargs["overwrite"] is False
+            assert kwargs["report_format"] == "excel"
             kwargs["on_run_start"]("baseline", "baseline")
             kwargs["on_run_start"]("candidate", "included-candidate")
+            excel_report = type(
+                "FakeWorkbook",
+                (),
+                {
+                    "format": "excel",
+                    "output_path": Path("reports/campaign-mode/baseline-1-comparison.xlsx"),
+                    "warnings": (),
+                },
+            )()
             return CampaignRunResult(
                 baseline_run=RunResult("baseline-1", "baseline", 2, 0),
                 candidate_runs=[
@@ -46,14 +56,8 @@ def test_campaign_cli_success_output(monkeypatch) -> None:
                     ExportResult(Path("reports/campaign-mode/baseline-1.csv"), 2),
                     ExportResult(Path("reports/campaign-mode/candidate-1.csv"), 2),
                 ],
-                excel_report=type(
-                    "FakeWorkbook",
-                    (),
-                    {
-                        "output_path": Path("reports/campaign-mode/baseline-1-comparison.xlsx"),
-                        "warnings": (),
-                    },
-                )(),
+                excel_report=excel_report,
+                final_reports=[excel_report],
                 warnings=[],
             )
 
@@ -75,6 +79,122 @@ def test_campaign_cli_success_output(monkeypatch) -> None:
     assert "excel-report: reports\\campaign-mode\\baseline-1-comparison.xlsx" in result.stdout
 
 
+def test_campaign_cli_html_report_format_output(monkeypatch) -> None:
+    class FakeRunner:
+        def campaign(self, project, **kwargs):
+            assert project == Path("tests/fixtures/projects/campaign_mode.yaml")
+            assert kwargs["report_format"] == "html"
+            return CampaignRunResult(
+                baseline_run=RunResult("baseline-1", "baseline", 2, 0),
+                candidate_runs=[],
+                skipped_candidates=[],
+                csv_reports=[],
+                excel_report=None,
+                final_reports=[
+                    type(
+                        "FakeHtml",
+                        (),
+                        {
+                            "format": "html",
+                            "output_path": Path("reports/campaign-mode/baseline-1-comparison.html"),
+                            "warnings": (),
+                        },
+                    )()
+                ],
+                warnings=[],
+            )
+
+    monkeypatch.setattr(cli, "ExperimentRunner", FakeRunner)
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "campaign",
+            "--project",
+            "tests/fixtures/projects/campaign_mode.yaml",
+            "--report-format",
+            "html",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "html-report: reports\\campaign-mode\\baseline-1-comparison.html" in result.stdout
+    assert "excel-report:" not in result.stdout
+
+
+def test_campaign_cli_both_report_format_output(monkeypatch) -> None:
+    class FakeRunner:
+        def campaign(self, *_args, **kwargs):
+            assert kwargs["report_format"] == "both"
+            return CampaignRunResult(
+                baseline_run=RunResult("baseline-1", "baseline", 2, 0),
+                candidate_runs=[],
+                skipped_candidates=[],
+                csv_reports=[],
+                excel_report=None,
+                final_reports=[
+                    type(
+                        "FakeExcel",
+                        (),
+                        {
+                            "format": "excel",
+                            "output_path": Path("reports/campaign-mode/baseline-1-comparison.xlsx"),
+                            "warnings": (),
+                        },
+                    )(),
+                    type(
+                        "FakeHtml",
+                        (),
+                        {
+                            "format": "html",
+                            "output_path": Path("reports/campaign-mode/baseline-1-comparison.html"),
+                            "warnings": (),
+                        },
+                    )(),
+                ],
+                warnings=[],
+            )
+
+    monkeypatch.setattr(cli, "ExperimentRunner", FakeRunner)
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "campaign",
+            "--project",
+            "tests/fixtures/projects/campaign_mode.yaml",
+            "--report-format",
+            "both",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "excel-report: reports\\campaign-mode\\baseline-1-comparison.xlsx" in result.stdout
+    assert "html-report: reports\\campaign-mode\\baseline-1-comparison.html" in result.stdout
+
+
+def test_campaign_cli_rejects_unsupported_report_format(monkeypatch) -> None:
+    class FakeRunner:
+        def campaign(self, *_args, **_kwargs):
+            raise AssertionError("campaign should not start")
+
+    monkeypatch.setattr(cli, "ExperimentRunner", FakeRunner)
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "campaign",
+            "--project",
+            "tests/fixtures/projects/campaign_mode.yaml",
+            "--report-format",
+            "pdf",
+        ],
+    )
+
+    assert result.exit_code == 1
+    assert "Supported formats: excel, html, both" in result.stdout
+
+
 def test_campaign_cli_skipped_when_no_candidates_eligible(monkeypatch) -> None:
     class FakeRunner:
         def campaign(self, *_args, **_kwargs):
@@ -84,6 +204,7 @@ def test_campaign_cli_skipped_when_no_candidates_eligible(monkeypatch) -> None:
                 skipped_candidates=[],
                 csv_reports=[],
                 excel_report=None,
+                final_reports=[],
                 warnings=["no candidates eligible for campaign"],
             )
 
@@ -122,6 +243,7 @@ def test_campaign_cli_completed_with_failures_exits_nonzero(monkeypatch) -> None
                 skipped_candidates=[],
                 csv_reports=[ExportResult(Path("reports/campaign-mode/baseline-1.csv"), 2)],
                 excel_report=None,
+                final_reports=[],
                 warnings=[],
             )
 

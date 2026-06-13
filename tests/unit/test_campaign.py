@@ -128,20 +128,26 @@ def test_campaign_passes_skip_sync_and_skip_human_review_to_runs() -> None:
 
 def test_campaign_exports_reports_and_passes_excel_overwrite(monkeypatch) -> None:
     runner = RecordingRunner()
-    excel_calls: list[dict[str, object]] = []
+    report_calls: list[dict[str, object]] = []
 
-    def fake_create_excel_report(**kwargs):
-        excel_calls.append(kwargs)
-        return type(
-            "FakeWorkbook",
-            (),
-            {
-                "output_path": Path("reports/campaign-mode/baseline-campaign-comparison.xlsx"),
-                "warnings": (),
-            },
-        )()
+    def fake_create_comparison_reports(**kwargs):
+        report_calls.append(kwargs)
+        return [
+            type(
+                "FakeWorkbook",
+                (),
+                {
+                    "format": "excel",
+                    "output_path": Path("reports/campaign-mode/baseline-campaign-comparison.xlsx"),
+                    "warnings": (),
+                },
+            )()
+        ]
 
-    monkeypatch.setattr("evaluator_harness.runner.create_excel_report", fake_create_excel_report)
+    monkeypatch.setattr(
+        "evaluator_harness.runner.create_comparison_reports",
+        fake_create_comparison_reports,
+    )
 
     result = runner.campaign(
         Path("tests/fixtures/projects/campaign_mode.yaml"),
@@ -154,13 +160,97 @@ def test_campaign_exports_reports_and_passes_excel_overwrite(monkeypatch) -> Non
         "candidate-default-included-candidate",
     ]
     assert [call[3] for call in runner.export_calls] == [3, 3, 3]
-    assert excel_calls == [
+    assert report_calls == [
         {
             "baseline_run_id": "baseline-campaign",
             "reports_dir": Path("reports/campaign-mode"),
+            "formats": "excel",
             "overwrite": True,
         }
     ]
+    assert result.excel_report is not None
+
+
+def test_campaign_generates_html_report_when_requested(monkeypatch) -> None:
+    runner = RecordingRunner()
+    report_calls: list[dict[str, object]] = []
+
+    def fake_create_comparison_reports(**kwargs):
+        report_calls.append(kwargs)
+        return [
+            type(
+                "FakeHtml",
+                (),
+                {
+                    "format": "html",
+                    "output_path": Path("reports/campaign-mode/baseline-campaign-comparison.html"),
+                    "warnings": (),
+                },
+            )()
+        ]
+
+    monkeypatch.setattr(
+        "evaluator_harness.runner.create_comparison_reports",
+        fake_create_comparison_reports,
+        raising=False,
+    )
+
+    result = runner.campaign(
+        Path("tests/fixtures/projects/campaign_mode.yaml"),
+        report_format="html",
+        overwrite=True,
+    )
+
+    assert report_calls == [
+        {
+            "baseline_run_id": "baseline-campaign",
+            "reports_dir": Path("reports/campaign-mode"),
+            "formats": "html",
+            "overwrite": True,
+        }
+    ]
+    assert result.final_reports[0].format == "html"
+    assert result.excel_report is None
+
+
+def test_campaign_generates_both_report_formats(monkeypatch) -> None:
+    runner = RecordingRunner()
+
+    def fake_create_comparison_reports(**kwargs):
+        assert kwargs["formats"] == "both"
+        return [
+            type(
+                "FakeExcel",
+                (),
+                {
+                    "format": "excel",
+                    "output_path": Path("reports/campaign-mode/baseline-campaign-comparison.xlsx"),
+                    "warnings": (),
+                },
+            )(),
+            type(
+                "FakeHtml",
+                (),
+                {
+                    "format": "html",
+                    "output_path": Path("reports/campaign-mode/baseline-campaign-comparison.html"),
+                    "warnings": (),
+                },
+            )(),
+        ]
+
+    monkeypatch.setattr(
+        "evaluator_harness.runner.create_comparison_reports",
+        fake_create_comparison_reports,
+        raising=False,
+    )
+
+    result = runner.campaign(
+        Path("tests/fixtures/projects/campaign_mode.yaml"),
+        report_format="both",
+    )
+
+    assert [report.format for report in result.final_reports] == ["excel", "html"]
     assert result.excel_report is not None
 
 
@@ -175,15 +265,18 @@ def test_campaign_candidate_failures_preserve_successful_outputs(monkeypatch) ->
         ],
     )
     monkeypatch.setattr(
-        "evaluator_harness.runner.create_excel_report",
-        lambda **_kwargs: type(
-            "FakeWorkbook",
-            (),
-            {
-                "output_path": Path("reports/campaign-mode/baseline-campaign-comparison.xlsx"),
-                "warnings": (),
-            },
-        )(),
+        "evaluator_harness.runner.create_comparison_reports",
+        lambda **_kwargs: [
+            type(
+                "FakeWorkbook",
+                (),
+                {
+                    "format": "excel",
+                    "output_path": Path("reports/campaign-mode/baseline-campaign-comparison.xlsx"),
+                    "warnings": (),
+                },
+            )()
+        ],
     )
 
     result = runner.campaign(
@@ -209,7 +302,7 @@ def test_campaign_excel_failure_records_warning_and_preserves_reports(monkeypatc
     def fail_excel(**_kwargs):
         raise RuntimeDependencyError("Excel unavailable")
 
-    monkeypatch.setattr("evaluator_harness.runner.create_excel_report", fail_excel)
+    monkeypatch.setattr("evaluator_harness.runner.create_comparison_reports", fail_excel)
 
     result = runner.campaign(Path("tests/fixtures/projects/campaign_mode.yaml"))
 
@@ -220,3 +313,25 @@ def test_campaign_excel_failure_records_warning_and_preserves_reports(monkeypatc
         "candidate-included-candidate.csv",
         "candidate-default-included-candidate.csv",
     ]
+
+
+def test_campaign_no_report_skips_final_report_generation(monkeypatch) -> None:
+    runner = RecordingRunner()
+
+    def fail_if_called(**_kwargs):
+        raise AssertionError("final report generation should be skipped")
+
+    monkeypatch.setattr(
+        "evaluator_harness.runner.create_comparison_reports",
+        fail_if_called,
+        raising=False,
+    )
+
+    result = runner.campaign(
+        Path("tests/fixtures/projects/campaign_mode.yaml"),
+        no_report=True,
+        report_format="html",
+    )
+
+    assert result.csv_reports == []
+    assert result.final_reports == []
