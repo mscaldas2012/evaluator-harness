@@ -395,6 +395,18 @@ Azure OpenAI, OpenAI, or Ollama credentials.
 uv run pytest
 ```
 
+For local code quality reporting, run Ruff, Pyright, Import Linter, Radon, pytest
+coverage, and Vulture together:
+
+```powershell
+uv run python scripts/quality_report.py
+```
+
+The report command writes tool output, JUnit XML, coverage XML, a coverage
+summary, and HTML coverage files under `reports/quality/`. Vulture findings are
+reported as warning-only because dynamic CLI and fixture code can produce false
+positives.
+
 Opt-in live smoke tests hit configured Langfuse and Azure OpenAI resources:
 
 ```powershell

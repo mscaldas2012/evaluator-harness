@@ -319,7 +319,7 @@ def validate_judge_result_contract(
         raise ConfigError("Judge result example missing fields: " + ", ".join(missing))
     score = float(example["score"])
     if not evaluator.output_schema.score.minimum <= score <= evaluator.output_schema.score.maximum:
-        raise ConfigError(f"Judge result score is outside configured score range")
+        raise ConfigError("Judge result score is outside configured score range")
 
 
 def export_evaluator_setup(config: ProjectConfig, output_path: Path) -> Path:

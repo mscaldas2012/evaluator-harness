@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from collections import Counter
 from dataclasses import dataclass
-from typing import Any, Iterable, Literal, Mapping
+from typing import Any, Literal
+from collections.abc import Iterable, Mapping
 
 
 MODEL_OUTPUT_ROLE = "model_output"

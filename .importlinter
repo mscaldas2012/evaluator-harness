@@ -1,0 +1,35 @@
+[importlinter]
+root_package = evaluator_harness
+
+[importlinter:contract:providers-do-not-import-runtime-or-langfuse]
+name = Provider adapters stay independent from runner and Langfuse client
+type = forbidden
+source_modules =
+    evaluator_harness.providers
+forbidden_modules =
+    evaluator_harness.runner
+    evaluator_harness.langfuse_client
+
+[importlinter:contract:reporting-stays-offline]
+name = Local report generation stays offline
+type = forbidden
+source_modules =
+    evaluator_harness.comparison_reports
+    evaluator_harness.excel_reports
+    evaluator_harness.html_reports
+forbidden_modules =
+    evaluator_harness.runner
+    evaluator_harness.langfuse_client
+
+[importlinter:contract:core-modeling-does-not-import-runtime]
+name = Core configuration and targeting do not import runtime orchestration
+type = forbidden
+source_modules =
+    evaluator_harness.config
+    evaluator_harness.dataset_loader
+    evaluator_harness.model_output_targeting
+    evaluator_harness.prompts
+    evaluator_harness.session_identity
+forbidden_modules =
+    evaluator_harness.runner
+    evaluator_harness.langfuse_client
