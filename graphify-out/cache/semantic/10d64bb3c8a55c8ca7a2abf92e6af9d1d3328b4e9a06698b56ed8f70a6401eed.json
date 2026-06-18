@@ -1,0 +1,1 @@
+{"nodes": [{"id": "agentskills_speckitgitcommitconfig", "label": "speckit.git.commit config", "file_type": "code", "source_file": ".specify/extensions/git/git-config.yml", "source_location": null, "source_url": null, "captured_at": null, "author": "spec-kit-core", "contributor": null}], "edges": [], "hyperedges": []}

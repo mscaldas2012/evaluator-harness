@@ -1,0 +1,1 @@
+{"nodes": [], "edges": [{"source": "019campaignmode_checklists_requirements", "target": "019campaignmode_spec", "relation": "references", "confidence": "EXTRACTED", "confidence_score": 1.0, "source_file": "specs/019-campaign-mode/checklists/requirements.md", "source_location": null, "weight": 1.0}], "hyperedges": []}
