@@ -561,6 +561,9 @@ def _blocked_plan(
         prompt=_prompt_text(evaluator),
         prompt_version=evaluator.prompt_version,
         output_definition=_output_definition(evaluator),
+        judge_model=evaluator.judge_model or config.judge_setup.default_judge_model,
+        llm_connection=evaluator.llm_connection
+        or config.judge_setup.default_llm_connection,
         sampling_percent=effective_sampling_percent(config, evaluator),
         backfill_status=backfill_status,
         binding_status="not-applicable",

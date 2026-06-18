@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from evaluator_harness.evaluator_bindings import EvaluatorBindingStore, load_evaluator_bindings
+from evaluator_harness.evaluator_bindings import load_evaluator_bindings
 from evaluator_harness.langfuse_client import LangfuseClient
 from evaluator_harness.runner import ExperimentRunner
 
