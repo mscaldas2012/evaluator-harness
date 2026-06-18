@@ -9,7 +9,7 @@ import pytest
 
 from evaluator_harness.config import LiveSettings
 from evaluator_harness.errors import ConfigError
-from evaluator_harness.langfuse_client import LangfuseClient
+from evaluator_harness.langfuse_default_gateway import DefaultLangfuseGateway
 
 
 def _settings() -> LiveSettings:
@@ -22,8 +22,8 @@ def _settings() -> LiveSettings:
 
 def _client_without_sdk_evaluators(
     handler: httpx.MockTransport,
-) -> LangfuseClient:
-    return LangfuseClient(
+) -> DefaultLangfuseGateway:
+    return DefaultLangfuseGateway(
         client=type("FakeClient", (), {"api": type("Api", (), {})()})(),
         settings=_settings(),
         http_transport=handler,
@@ -470,7 +470,7 @@ def test_sdk_evaluator_resource_is_preferred_over_rest_fallback() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         raise AssertionError("REST fallback should not be used when SDK evaluator API exists")
 
-    client = LangfuseClient(
+    client = DefaultLangfuseGateway(
         client=FakeClient(),
         settings=_settings(),
         http_transport=httpx.MockTransport(handler),

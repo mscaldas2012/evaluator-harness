@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 
-from evaluator_harness.langfuse_client import LangfuseClient
+from evaluator_harness.langfuse_default_gateway import DefaultLangfuseGateway
 from evaluator_harness.providers.base import ModelResponse
 from evaluator_harness.runner import ExperimentRunner
 from tests.fixtures.fake_provider import FakeModelProvider
@@ -26,9 +26,9 @@ class FakeScoreConfigsApi:
 
 
 def test_runner_uses_langfuse_valid_trace_ids_for_outputs() -> None:
-    langfuse = LangfuseClient()
+    langfuse = DefaultLangfuseGateway()
     runner = ExperimentRunner(
-        langfuse_client=langfuse,
+        langfuse_gateway=langfuse,
         provider_factory=lambda _config: FakeModelProvider(
             response=ModelResponse(output="baseline output")
         ),
@@ -58,7 +58,7 @@ def test_live_log_trace_passes_trace_context_to_create_event() -> None:
             pass
 
     live_client = FakeLiveClient()
-    langfuse = LangfuseClient(client=live_client)
+    langfuse = DefaultLangfuseGateway(client=live_client)
     trace_id = langfuse.create_trace_id("run:item")
 
     langfuse.log_trace(
@@ -83,7 +83,7 @@ def test_create_run_does_not_emit_empty_live_trace_event() -> None:
             self.create_event_called = True
 
     live_client = FakeLiveClient()
-    langfuse = LangfuseClient(client=live_client)
+    langfuse = DefaultLangfuseGateway(client=live_client)
 
     langfuse.create_run(run_id="baseline-1", run_name="empty-run-event")
 
@@ -136,10 +136,12 @@ def test_runner_nests_openai_generation_under_parent_trace_span() -> None:
 
     captured_requests = []
     live_client = FakeLiveClient()
-    langfuse = LangfuseClient(client=live_client)
+    langfuse = DefaultLangfuseGateway(client=live_client)
 
     def provider_factory(config):
-        from evaluator_harness.providers.openai_compatible import OpenAICompatibleProvider
+        from evaluator_harness.providers.openai_compatible import (
+            OpenAICompatibleProvider,
+        )
 
         class Provider:
             def generate(self, request):
@@ -150,7 +152,7 @@ def test_runner_nests_openai_generation_under_parent_trace_span() -> None:
         return provider
 
     runner = ExperimentRunner(
-        langfuse_client=langfuse,
+        langfuse_gateway=langfuse,
         provider_factory=provider_factory,
     )
 
@@ -224,9 +226,9 @@ def test_runner_does_not_create_openai_generation_for_non_openai_provider() -> N
             pass
 
     live_client = FakeLiveClient()
-    langfuse = LangfuseClient(client=live_client)
+    langfuse = DefaultLangfuseGateway(client=live_client)
     runner = ExperimentRunner(
-        langfuse_client=langfuse,
+        langfuse_gateway=langfuse,
         provider_factory=lambda _config: FakeModelProvider(
             response=ModelResponse(output="baseline output")
         ),

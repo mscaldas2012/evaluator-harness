@@ -4,7 +4,7 @@ import csv
 from pathlib import Path
 
 from evaluator_harness.exports import export_summary
-from evaluator_harness.langfuse_client import LangfuseClient
+from evaluator_harness.langfuse_default_gateway import DefaultLangfuseGateway
 from evaluator_harness.runner import ExperimentRunner
 
 
@@ -102,7 +102,7 @@ def test_export_summary_writes_trace_rows_with_score_columns(tmp_path: Path) -> 
 
 
 def test_runner_export_writes_csv_under_project_report_folder() -> None:
-    client = LangfuseClient(
+    client = DefaultLangfuseGateway(
         traces=[
             {
                 "trace_id": "trace-1",
@@ -114,7 +114,7 @@ def test_runner_export_writes_csv_under_project_report_folder() -> None:
             }
         ],
     )
-    runner = ExperimentRunner(langfuse_client=client)
+    runner = ExperimentRunner(langfuse_gateway=client)
 
     result = runner.export(
         Path("configs/projects/rewrite_quality.yaml"),
@@ -154,7 +154,7 @@ def test_export_summary_leaves_missing_scores_empty(tmp_path: Path) -> None:
 
 
 def test_fetch_scores_filters_fake_scores_by_trace_id() -> None:
-    client = LangfuseClient(
+    client = DefaultLangfuseGateway(
         scores={
             "baseline-1": [
                 {"trace_id": "trace-1", "name": "clarity", "score": 1},

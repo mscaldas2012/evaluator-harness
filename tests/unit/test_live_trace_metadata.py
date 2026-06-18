@@ -2,17 +2,17 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from evaluator_harness.langfuse_client import LangfuseClient
+from evaluator_harness.langfuse_default_gateway import DefaultLangfuseGateway
 from evaluator_harness.providers.base import ModelResponse
 from evaluator_harness.runner import ExperimentRunner
 from tests.fixtures.fake_provider import FakeModelProvider
 
 
 def test_live_trace_metadata_contains_dataset_item_correlation_fields() -> None:
-    langfuse = LangfuseClient()
+    langfuse = DefaultLangfuseGateway()
     provider = FakeModelProvider(response=ModelResponse(output="baseline output"))
     runner = ExperimentRunner(
-        langfuse_client=langfuse,
+        langfuse_gateway=langfuse,
         provider_factory=lambda _config: provider,
     )
 

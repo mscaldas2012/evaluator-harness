@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from evaluator_harness.langfuse_client import LangfuseClient
+from evaluator_harness.langfuse_default_gateway import DefaultLangfuseGateway
 from evaluator_harness.runner import ExperimentRunner
 
 
@@ -27,7 +27,7 @@ def test_campaign_success_with_fake_backed_dry_run(monkeypatch) -> None:
         "evaluator_harness.runner.create_comparison_reports",
         fake_create_comparison_reports,
     )
-    runner = ExperimentRunner(langfuse_client=LangfuseClient())
+    runner = ExperimentRunner(langfuse_gateway=DefaultLangfuseGateway())
 
     result = runner.campaign(
         Path("tests/fixtures/projects/campaign_mode.yaml"),
@@ -60,7 +60,7 @@ def test_campaign_runs_all_candidates_except_explicitly_excluded(monkeypatch) ->
             )()
         ],
     )
-    runner = ExperimentRunner(langfuse_client=LangfuseClient())
+    runner = ExperimentRunner(langfuse_gateway=DefaultLangfuseGateway())
 
     result = runner.campaign(
         Path("tests/fixtures/projects/campaign_mode.yaml"),

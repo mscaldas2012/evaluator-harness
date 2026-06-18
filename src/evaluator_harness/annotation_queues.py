@@ -144,7 +144,7 @@ def now_utc() -> str:
 
 def sync_annotation_queue(
     config: ProjectConfig,
-    langfuse_client: object,
+    langfuse_gateway: object,
     score_config_results: Sequence[object],
     *,
     store: AnnotationQueueReferenceStore | None = None,
@@ -165,7 +165,7 @@ def sync_annotation_queue(
         queue_id = str(policy.annotation_queue_id or "")
         if not queue_id:
             raise ConfigError("user_owned human review requires annotation_queue_id")
-        _get_annotation_queue(langfuse_client, queue_id)
+        _get_annotation_queue(langfuse_gateway, queue_id)
         return AnnotationQueueSyncResult(
             queue_id=queue_id,
             queue_name=queue_id,
@@ -197,13 +197,13 @@ def sync_annotation_queue(
             config,
             review_version,
             queue_name,
-            langfuse_client,
+            langfuse_gateway,
             score_config_results,
             existing_reference,
         )
     if existing_reference is not None:
         try:
-            existing_queue = _get_annotation_queue(langfuse_client, existing_reference.queue_id)
+            existing_queue = _get_annotation_queue(langfuse_gateway, existing_reference.queue_id)
         except (ConfigError, LangfuseError) as exc:
             if isinstance(exc, LangfuseError) and "not found" not in str(exc).lower():
                 raise
@@ -213,7 +213,7 @@ def sync_annotation_queue(
         else:
             queue_score_ids = _queue_score_config_ids(existing_queue) or score_config_ids
             _align_queue_score_configs(
-                langfuse_client,
+                langfuse_gateway,
                 queue_score_ids=queue_score_ids,
                 score_config_results=score_config_results,
             )
@@ -227,12 +227,12 @@ def sync_annotation_queue(
                 message="reused local annotation queue reference",
             )
 
-    for queue in _list_annotation_queues(langfuse_client):
+    for queue in _list_annotation_queues(langfuse_gateway):
         if queue.get("name") != queue_name:
             continue
         queue_score_ids = _queue_score_config_ids(queue) or score_config_ids
         _align_queue_score_configs(
-            langfuse_client,
+            langfuse_gateway,
             queue_score_ids=queue_score_ids,
             score_config_results=score_config_results,
         )
@@ -248,7 +248,7 @@ def sync_annotation_queue(
 
     try:
         created = _create_annotation_queue(
-            langfuse_client,
+            langfuse_gateway,
             name=queue_name,
             score_config_ids=score_config_ids,
             description=(
@@ -259,13 +259,13 @@ def sync_annotation_queue(
     except LangfuseError as exc:
         if "maximum number of annotation queues reached" not in str(exc).lower():
             raise
-        queues = _list_annotation_queues(langfuse_client)
+        queues = _list_annotation_queues(langfuse_gateway)
         if len(queues) != 1:
             raise
         queue = queues[0]
         queue_score_ids = _queue_score_config_ids(queue) or score_config_ids
         _align_queue_score_configs(
-            langfuse_client,
+            langfuse_gateway,
             queue_score_ids=queue_score_ids,
             score_config_results=score_config_results,
         )
@@ -291,7 +291,7 @@ def sync_annotation_queue(
 
 def resolve_annotation_queue(
     config: ProjectConfig,
-    langfuse_client: object,
+    langfuse_gateway: object,
     score_config_results: Sequence[object],
     *,
     store: AnnotationQueueReferenceStore | None = None,
@@ -306,14 +306,14 @@ def resolve_annotation_queue(
     if policy.queue_ownership == "user_owned":
         return sync_annotation_queue(
             config,
-            langfuse_client,
+            langfuse_gateway,
             score_config_results,
             store=store,
         )
     if policy.fallback_to_env:
         queue_id = os.getenv("LANGFUSE_ANNOTATION_QUEUE_ID")
         if queue_id:
-            _get_annotation_queue(langfuse_client, queue_id)
+            _get_annotation_queue(langfuse_gateway, queue_id)
             return AnnotationQueueSyncResult(
                 queue_id=queue_id,
                 queue_name=queue_id,
@@ -323,7 +323,7 @@ def resolve_annotation_queue(
             )
     return sync_annotation_queue(
         config,
-        langfuse_client,
+        langfuse_gateway,
         score_config_results,
         store=store,
     )
@@ -371,7 +371,7 @@ def _dry_run_annotation_queue(
     config: ProjectConfig,
     review_version: str,
     queue_name: str,
-    langfuse_client: object,
+    langfuse_gateway: object,
     score_config_results: Sequence[object],
     existing_reference: AnnotationQueueReference | None,
 ) -> AnnotationQueueSyncResult:
@@ -399,7 +399,7 @@ def _dry_run_annotation_queue(
 
     if existing_reference is not None:
         try:
-            queue = _get_annotation_queue(langfuse_client, existing_reference.queue_id)
+            queue = _get_annotation_queue(langfuse_gateway, existing_reference.queue_id)
         except (ConfigError, LangfuseError) as exc:
             if isinstance(exc, LangfuseError) and "not found" not in str(exc).lower():
                 raise
@@ -411,7 +411,7 @@ def _dry_run_annotation_queue(
                 message="local annotation queue reference points to an existing queue",
             )
 
-    for queue in _list_annotation_queues(langfuse_client):
+    for queue in _list_annotation_queues(langfuse_gateway):
         if queue.get("name") == queue_name:
             return _dry_run_queue_match_result(
                 queue,
@@ -420,7 +420,7 @@ def _dry_run_annotation_queue(
                 message="matching Langfuse annotation queue already exists",
             )
 
-    queues = _list_annotation_queues(langfuse_client)
+    queues = _list_annotation_queues(langfuse_gateway)
     if len(queues) == 1:
         queue = queues[0]
         queue_score_ids = set(_queue_score_config_ids(queue))
@@ -484,7 +484,7 @@ def _queue_score_config_ids(queue: dict[str, object]) -> list[str]:
 
 
 def _align_queue_score_configs(
-    langfuse_client: object,
+    langfuse_gateway: object,
     *,
     queue_score_ids: list[str],
     score_config_results: Sequence[object],
@@ -498,7 +498,7 @@ def _align_queue_score_configs(
         return
     if len(queue_score_ids) != len(score_config_results):
         return
-    align = getattr(langfuse_client, "align_score_config_to_existing_id", None)
+    align = getattr(langfuse_gateway, "align_score_config_to_existing_id", None)
     if not callable(align):
         return
     for queue_score_id, result in zip(queue_score_ids, score_config_results, strict=True):
@@ -509,21 +509,21 @@ def _align_queue_score_configs(
 
 
 def _create_annotation_queue(
-    langfuse_client: object,
+    langfuse_gateway: object,
     *,
     name: str,
     score_config_ids: list[str],
     description: str,
 ) -> dict[str, object]:
-    create = getattr(langfuse_client, "create_annotation_queue")
+    create = getattr(langfuse_gateway, "create_annotation_queue")
     return create(name=name, score_config_ids=score_config_ids, description=description)
 
 
-def _list_annotation_queues(langfuse_client: object) -> list[dict[str, object]]:
-    list_queues = getattr(langfuse_client, "list_annotation_queues")
+def _list_annotation_queues(langfuse_gateway: object) -> list[dict[str, object]]:
+    list_queues = getattr(langfuse_gateway, "list_annotation_queues")
     return list_queues()
 
 
-def _get_annotation_queue(langfuse_client: object, queue_id: str) -> dict[str, object]:
-    get_queue = getattr(langfuse_client, "get_annotation_queue")
+def _get_annotation_queue(langfuse_gateway: object, queue_id: str) -> dict[str, object]:
+    get_queue = getattr(langfuse_gateway, "get_annotation_queue")
     return get_queue(queue_id)

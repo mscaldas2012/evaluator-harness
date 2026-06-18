@@ -13,7 +13,7 @@ from evaluator_harness.annotation_queues import (
 from evaluator_harness.config import load_project_config
 from evaluator_harness.errors import ConfigError
 from evaluator_harness.errors import LangfuseError
-from evaluator_harness.langfuse_client import LangfuseClient, ScoreConfigSyncResult
+from evaluator_harness.langfuse_default_gateway import DefaultLangfuseGateway, ScoreConfigSyncResult
 
 
 def _store() -> AnnotationQueueReferenceStore:
@@ -43,7 +43,7 @@ def test_managed_queue_name_uses_eh_project_version_and_policy() -> None:
 
 def test_sync_annotation_queue_creates_and_persists_managed_reference() -> None:
     config = load_project_config("tests/fixtures/projects/managed_annotation_queue.yaml")
-    client = LangfuseClient()
+    client = DefaultLangfuseGateway()
     store = _store()
 
     result = sync_annotation_queue(config, client, _score_results(), store=store)
@@ -56,7 +56,7 @@ def test_sync_annotation_queue_creates_and_persists_managed_reference() -> None:
 
 def test_sync_annotation_queue_dry_run_plans_create_without_reference_write() -> None:
     config = load_project_config("tests/fixtures/projects/managed_annotation_queue.yaml")
-    client = LangfuseClient()
+    client = DefaultLangfuseGateway()
     store = _store()
 
     result = sync_annotation_queue(
@@ -76,7 +76,7 @@ def test_sync_annotation_queue_dry_run_plans_create_without_reference_write() ->
 
 def test_sync_annotation_queue_dry_run_reuses_matching_existing_queue() -> None:
     config = load_project_config("tests/fixtures/projects/managed_annotation_queue.yaml")
-    client = LangfuseClient()
+    client = DefaultLangfuseGateway()
     client.annotation_queues["annotation-queue-1"] = {
         "id": "annotation-queue-1",
         "name": "EH_rewrite-quality_v1_review_default",
@@ -98,7 +98,7 @@ def test_sync_annotation_queue_dry_run_reuses_matching_existing_queue() -> None:
 
 def test_sync_annotation_queue_dry_run_conflicts_with_single_incompatible_queue() -> None:
     config = load_project_config("tests/fixtures/projects/managed_annotation_queue.yaml")
-    client = LangfuseClient()
+    client = DefaultLangfuseGateway()
     client.annotation_queues["other-queue"] = {
         "id": "other-queue",
         "name": "EH_other_v1_review_default",
@@ -121,7 +121,7 @@ def test_sync_annotation_queue_dry_run_conflicts_with_single_incompatible_queue(
 
 def test_sync_annotation_queue_reuses_local_managed_reference() -> None:
     config = load_project_config("tests/fixtures/projects/managed_annotation_queue.yaml")
-    client = LangfuseClient()
+    client = DefaultLangfuseGateway()
     store = _store()
 
     first = sync_annotation_queue(config, client, _score_results(), store=store)
@@ -134,7 +134,7 @@ def test_sync_annotation_queue_reuses_local_managed_reference() -> None:
 
 def test_sync_annotation_queue_overwrites_stale_local_score_config_reference() -> None:
     config = load_project_config("tests/fixtures/projects/managed_annotation_queue.yaml")
-    client = LangfuseClient()
+    client = DefaultLangfuseGateway()
     store = _store()
 
     first = sync_annotation_queue(config, client, _score_results(), store=store)
@@ -157,7 +157,7 @@ def test_sync_annotation_queue_overwrites_stale_local_score_config_reference() -
 
 
 def test_sync_annotation_queue_aligns_queue_score_config_when_reusing_existing_queue() -> None:
-    class AligningClient(LangfuseClient):
+    class AligningClient(DefaultLangfuseGateway):
         def __init__(self) -> None:
             super().__init__()
             self.aligned: list[tuple[str, str]] = []
@@ -190,7 +190,7 @@ def test_sync_annotation_queue_aligns_queue_score_config_when_reusing_existing_q
 
 
 def test_sync_annotation_queue_reuses_sole_existing_queue_when_plan_limit_is_reached() -> None:
-    class PlanLimitedClient(LangfuseClient):
+    class PlanLimitedClient(DefaultLangfuseGateway):
         def create_annotation_queue(self, **kwargs):  # type: ignore[no-untyped-def]
             raise LangfuseError("Maximum number of annotation queues reached on Hobby plan.")
 
@@ -214,4 +214,4 @@ def test_sync_annotation_queue_requires_score_config_ids() -> None:
     config = load_project_config("tests/fixtures/projects/managed_annotation_queue.yaml")
 
     with pytest.raises(ConfigError, match="score config"):
-        sync_annotation_queue(config, LangfuseClient(), [], store=_store())
+        sync_annotation_queue(config, DefaultLangfuseGateway(), [], store=_store())

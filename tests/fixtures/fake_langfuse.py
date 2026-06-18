@@ -5,7 +5,7 @@ from typing import Any
 
 
 @dataclass
-class FakeLangfuseClient:
+class FakeDefaultLangfuseGateway:
     reachable: bool = True
     datasets: dict[str, Any] = field(default_factory=dict)
     runs: dict[str, Any] = field(default_factory=dict)

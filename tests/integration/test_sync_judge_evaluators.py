@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from evaluator_harness.evaluator_bindings import load_evaluator_bindings
-from evaluator_harness.langfuse_client import LangfuseClient
+from evaluator_harness.langfuse_default_gateway import DefaultLangfuseGateway
 from evaluator_harness.runner import ExperimentRunner
 
 
@@ -20,8 +20,8 @@ def _project_with_binding(tmp_path: Path, source: str = "tests/fixtures/projects
 
 
 def test_sync_judge_evaluators_apply_creates_active_fake_evaluator(tmp_path: Path) -> None:
-    client = LangfuseClient()
-    runner = ExperimentRunner(langfuse_client=client)
+    client = DefaultLangfuseGateway()
+    runner = ExperimentRunner(langfuse_gateway=client)
     project = _project_with_binding(tmp_path)
     path = tmp_path / "bindings.yaml"
 
@@ -34,8 +34,8 @@ def test_sync_judge_evaluators_apply_creates_active_fake_evaluator(tmp_path: Pat
 
 
 def test_sync_judge_evaluators_apply_uses_resolved_score_config_id(tmp_path: Path) -> None:
-    client = LangfuseClient()
-    runner = ExperimentRunner(langfuse_client=client)
+    client = DefaultLangfuseGateway()
+    runner = ExperimentRunner(langfuse_gateway=client)
     project = _project_with_binding(tmp_path)
     path = tmp_path / "bindings.yaml"
 
@@ -52,8 +52,8 @@ def test_sync_judge_evaluators_apply_uses_resolved_score_config_id(tmp_path: Pat
 
 
 def test_sync_judge_evaluators_dry_run_does_not_mutate_fake_state(tmp_path: Path) -> None:
-    client = LangfuseClient()
-    runner = ExperimentRunner(langfuse_client=client)
+    client = DefaultLangfuseGateway()
+    runner = ExperimentRunner(langfuse_gateway=client)
     project = _project_with_binding(tmp_path)
 
     result = runner.sync_judge_evaluators(
@@ -66,8 +66,8 @@ def test_sync_judge_evaluators_dry_run_does_not_mutate_fake_state(tmp_path: Path
 
 
 def test_sync_judge_evaluators_apply_updates_mismatched_score_config_id(tmp_path: Path) -> None:
-    client = LangfuseClient()
-    runner = ExperimentRunner(langfuse_client=client)
+    client = DefaultLangfuseGateway()
+    runner = ExperimentRunner(langfuse_gateway=client)
     project = _project_with_binding(tmp_path)
 
     first = runner.sync_judge_evaluators(project)
@@ -82,7 +82,7 @@ def test_sync_judge_evaluators_apply_updates_mismatched_score_config_id(tmp_path
 
 
 def test_sync_judge_evaluators_partial_success_preserves_created_evaluator(tmp_path: Path) -> None:
-    class FailingSecondCreateClient(LangfuseClient):
+    class FailingSecondCreateClient(DefaultLangfuseGateway):
         def create_evaluator(self, payload):
             if self.evaluators:
                 store = load_evaluator_bindings(tmp_path / "bindings.yaml")
@@ -92,7 +92,7 @@ def test_sync_judge_evaluators_partial_success_preserves_created_evaluator(tmp_p
             return super().create_evaluator(payload)
 
     client = FailingSecondCreateClient()
-    runner = ExperimentRunner(langfuse_client=client)
+    runner = ExperimentRunner(langfuse_gateway=client)
     project = _project_with_binding(tmp_path)
     text = project.read_text(encoding="utf-8")
     second = text[text.index("  - name: clarity") :].replace(

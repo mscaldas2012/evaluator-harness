@@ -4,7 +4,7 @@ from pathlib import Path
 
 import yaml
 
-from evaluator_harness.langfuse_client import LangfuseClient
+from evaluator_harness.langfuse_default_gateway import DefaultLangfuseGateway
 from evaluator_harness.providers.base import ModelResponse
 from evaluator_harness.runner import ExperimentRunner
 from tests.fixtures.fake_provider import FakeModelProvider
@@ -29,12 +29,12 @@ def test_new_configured_candidate_uses_existing_runner_workflow(tmp_path: Path) 
     )
     project_path = tmp_path / "project.yaml"
     project_path.write_text(yaml.safe_dump(project), encoding="utf-8")
-    langfuse = LangfuseClient()
+    langfuse = DefaultLangfuseGateway()
 
     def provider_factory(_config):
         return FakeModelProvider(response=ModelResponse(output="configured output"))
 
-    runner = ExperimentRunner(langfuse_client=langfuse, provider_factory=provider_factory)
+    runner = ExperimentRunner(langfuse_gateway=langfuse, provider_factory=provider_factory)
     baseline = runner.run(project_path, "baseline")
     candidate = runner.run(
         project_path,

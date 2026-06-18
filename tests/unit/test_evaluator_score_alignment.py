@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from evaluator_harness.evaluators import managed_score_name, score_source_mapping
 from evaluator_harness.config import ScoreSource, load_project_config
-from evaluator_harness.langfuse_client import LangfuseClient
+from evaluator_harness.langfuse_default_gateway import DefaultLangfuseGateway
 
 
 def test_score_source_mapping_uses_langfuse_native_sources() -> None:
@@ -24,7 +24,7 @@ def test_evaluator_and_human_review_share_score_config_name() -> None:
 
 def test_sync_score_configs_reuses_single_score_for_judge_and_queue() -> None:
     config = load_project_config("configs/projects/rewrite_quality.yaml")
-    client = LangfuseClient()
+    client = DefaultLangfuseGateway()
 
     results = client.sync_score_configs(config)
     queue = client.create_annotation_queue(

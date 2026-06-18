@@ -12,7 +12,7 @@ from evaluator_harness.config import (
 )
 from evaluator_harness.providers.base import ModelRequest
 from evaluator_harness.providers import create_provider
-from tests.fixtures.fake_langfuse import FakeLangfuseClient
+from tests.fixtures.fake_langfuse import FakeDefaultLangfuseGateway
 from tests.fixtures.fake_provider import FakeModelProvider
 
 
@@ -41,7 +41,7 @@ def test_project_model_accepts_repo_safe_secret_references() -> None:
 
 
 def test_foundation_fakes_record_langfuse_and_provider_calls() -> None:
-    langfuse = FakeLangfuseClient()
+    langfuse = FakeDefaultLangfuseGateway()
     provider = FakeModelProvider(scenario="usage_metadata")
 
     dataset = langfuse.sync_dataset("rewrite-quality/v1", [{"id": "1"}])

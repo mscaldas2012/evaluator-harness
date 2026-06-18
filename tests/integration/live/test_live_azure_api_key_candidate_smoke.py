@@ -4,7 +4,7 @@ import os
 
 import pytest
 
-from evaluator_harness.langfuse_client import LangfuseClient
+from evaluator_harness.langfuse_default_gateway import DefaultLangfuseGateway
 from evaluator_harness.model_output_targeting import MODEL_OUTPUT_ROLE, RUN_ITEM_ROLE
 from evaluator_harness.runner import ExperimentRunner
 from tests.fixtures.live_env import require_live_langfuse
@@ -31,7 +31,7 @@ def require_live_azure_api_key_candidate() -> None:
 def test_live_azure_api_key_candidate_smoke() -> None:
     require_live_langfuse()
     require_live_azure_api_key_candidate()
-    runner = ExperimentRunner(langfuse_client=LangfuseClient.from_env())
+    runner = ExperimentRunner(langfuse_gateway=DefaultLangfuseGateway.from_env())
 
     baseline = runner.run("configs/projects/rewrite_quality.yaml", "baseline")
     result = runner.run(
@@ -42,7 +42,7 @@ def test_live_azure_api_key_candidate_smoke() -> None:
     )
 
     assert result.run_type == "candidate"
-    traces = runner.langfuse_client.traces_for_run(result.run_id)
+    traces = runner.langfuse_gateway.traces_for_run(result.run_id)
     assert traces
     errors = [
         str(trace.get("error") or (trace.get("metadata") or {}).get("error"))

@@ -2,14 +2,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from evaluator_harness.langfuse_client import LangfuseClient
+from evaluator_harness.langfuse_default_gateway import DefaultLangfuseGateway
 from evaluator_harness.providers.base import ModelResponse
 from evaluator_harness.runner import ExperimentRunner
 from tests.fixtures.fake_provider import FakeModelProvider
 
 
 def test_candidate_run_links_metadata_to_compatible_baseline() -> None:
-    langfuse = LangfuseClient()
+    langfuse = DefaultLangfuseGateway()
     baseline_provider = FakeModelProvider(response=ModelResponse(output="baseline output"))
     candidate_provider = FakeModelProvider(
         response=ModelResponse(
@@ -25,7 +25,7 @@ def test_candidate_run_links_metadata_to_compatible_baseline() -> None:
     def provider_factory(config):
         return baseline_provider if config.name == "gpt-4.1-baseline" else candidate_provider
 
-    runner = ExperimentRunner(langfuse_client=langfuse, provider_factory=provider_factory)
+    runner = ExperimentRunner(langfuse_gateway=langfuse, provider_factory=provider_factory)
     baseline = runner.run(Path("configs/projects/rewrite_quality.yaml"), "baseline")
 
     candidate = runner.run(
@@ -56,7 +56,7 @@ def test_candidate_run_links_metadata_to_compatible_baseline() -> None:
 
 
 def test_api_key_candidate_run_preserves_baseline_reference_metadata() -> None:
-    langfuse = LangfuseClient()
+    langfuse = DefaultLangfuseGateway()
     provider = FakeModelProvider(
         response=ModelResponse(
             output="api key candidate output",
@@ -67,7 +67,7 @@ def test_api_key_candidate_run_preserves_baseline_reference_metadata() -> None:
         )
     )
     runner = ExperimentRunner(
-        langfuse_client=langfuse,
+        langfuse_gateway=langfuse,
         provider_factory=lambda _config: provider,
     )
 
@@ -93,10 +93,10 @@ def test_api_key_candidate_run_preserves_baseline_reference_metadata() -> None:
 
 
 def test_prompt_variant_candidate_reuses_existing_baseline_reference() -> None:
-    langfuse = LangfuseClient()
+    langfuse = DefaultLangfuseGateway()
     provider = FakeModelProvider(response=ModelResponse(output="variant output"))
     runner = ExperimentRunner(
-        langfuse_client=langfuse,
+        langfuse_gateway=langfuse,
         provider_factory=lambda _config: provider,
     )
 
@@ -119,14 +119,14 @@ def test_prompt_variant_candidate_reuses_existing_baseline_reference() -> None:
 
 
 def test_prompt_variant_candidate_renders_candidate_prompt_override() -> None:
-    langfuse = LangfuseClient()
+    langfuse = DefaultLangfuseGateway()
     baseline_provider = FakeModelProvider(response=ModelResponse(output="baseline output"))
     candidate_provider = FakeModelProvider(response=ModelResponse(output="candidate output"))
 
     def provider_factory(config):
         return candidate_provider if config.name == "dry-run-prompt-v2" else baseline_provider
 
-    runner = ExperimentRunner(langfuse_client=langfuse, provider_factory=provider_factory)
+    runner = ExperimentRunner(langfuse_gateway=langfuse, provider_factory=provider_factory)
     baseline = runner.run(
         Path("tests/fixtures/projects/valid_prompt_variant_candidate.yaml"),
         "baseline",
@@ -143,14 +143,14 @@ def test_prompt_variant_candidate_renders_candidate_prompt_override() -> None:
 
 
 def test_role_prompt_candidate_override_replaces_full_prompt() -> None:
-    langfuse = LangfuseClient()
+    langfuse = DefaultLangfuseGateway()
     baseline_provider = FakeModelProvider(response=ModelResponse(output="baseline output"))
     candidate_provider = FakeModelProvider(response=ModelResponse(output="candidate output"))
 
     def provider_factory(config):
         return candidate_provider if config.name == "dry-run-role-prompt-v2" else baseline_provider
 
-    runner = ExperimentRunner(langfuse_client=langfuse, provider_factory=provider_factory)
+    runner = ExperimentRunner(langfuse_gateway=langfuse, provider_factory=provider_factory)
     baseline = runner.run(
         Path("tests/fixtures/projects/valid_role_prompt_project.yaml"),
         "baseline",
@@ -174,7 +174,7 @@ def test_role_prompt_candidate_override_replaces_full_prompt() -> None:
 
 
 def test_rewrite_quality_example_runs_same_model_with_prompt_v2_candidate() -> None:
-    langfuse = LangfuseClient()
+    langfuse = DefaultLangfuseGateway()
     baseline_provider = FakeModelProvider(response=ModelResponse(output="baseline output"))
     candidate_provider = FakeModelProvider(response=ModelResponse(output="candidate output"))
 
@@ -183,7 +183,7 @@ def test_rewrite_quality_example_runs_same_model_with_prompt_v2_candidate() -> N
             return candidate_provider
         return baseline_provider
 
-    runner = ExperimentRunner(langfuse_client=langfuse, provider_factory=provider_factory)
+    runner = ExperimentRunner(langfuse_gateway=langfuse, provider_factory=provider_factory)
     baseline = runner.run(Path("configs/projects/rewrite_quality.yaml"), "baseline")
     candidate = runner.run(
         Path("configs/projects/rewrite_quality.yaml"),
@@ -213,9 +213,9 @@ def test_rewrite_quality_example_runs_same_model_with_prompt_v2_candidate() -> N
 
 
 def test_prompt_variant_evaluator_payload_preserves_baseline_output_and_prompt_identity() -> None:
-    langfuse = LangfuseClient()
+    langfuse = DefaultLangfuseGateway()
     runner = ExperimentRunner(
-        langfuse_client=langfuse,
+        langfuse_gateway=langfuse,
         provider_factory=lambda _config: FakeModelProvider(
             response=ModelResponse(output="generated output")
         ),
@@ -243,9 +243,9 @@ def test_prompt_variant_evaluator_payload_preserves_baseline_output_and_prompt_i
 
 
 def test_parameter_variant_evaluator_payload_preserves_parameter_identity() -> None:
-    langfuse = LangfuseClient()
+    langfuse = DefaultLangfuseGateway()
     runner = ExperimentRunner(
-        langfuse_client=langfuse,
+        langfuse_gateway=langfuse,
         provider_factory=lambda _config: FakeModelProvider(
             response=ModelResponse(output="generated output")
         ),

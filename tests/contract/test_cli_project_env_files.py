@@ -7,7 +7,7 @@ from typer.testing import CliRunner
 
 from evaluator_harness.cli import app
 from evaluator_harness.config import LiveSettings
-from evaluator_harness.langfuse_client import LangfuseClient
+from evaluator_harness.langfuse_default_gateway import DefaultLangfuseGateway
 
 
 def _write_project_workspace(tmp_path: Path, *, project_name: str = "project-env-files") -> Path:
@@ -148,9 +148,9 @@ def test_cli_project_command_resolves_project_env_before_credentials(
         settings = LiveSettings.from_env(load_file=False)
         seen.append(settings)
         settings.require_langfuse()
-        return LangfuseClient(settings=settings)
+        return DefaultLangfuseGateway(settings=settings)
 
-    monkeypatch.setattr(LangfuseClient, "from_env", classmethod(fake_from_env))
+    monkeypatch.setattr(DefaultLangfuseGateway, "from_env", classmethod(fake_from_env))
 
     result = CliRunner().invoke(
         app,

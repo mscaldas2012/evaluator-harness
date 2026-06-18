@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from evaluator_harness.config import load_project_config
-from evaluator_harness.langfuse_client import LangfuseClient
+from evaluator_harness.langfuse_default_gateway import DefaultLangfuseGateway
 from evaluator_harness.prompt_sync import (
     discover_prompt_artifacts,
     sync_project_prompts,
@@ -46,7 +46,7 @@ def test_discover_prompt_artifacts_includes_candidate_task_prompt_overrides() ->
 
 
 def test_sync_project_prompts_creates_missing_text_and_chat_versions(tmp_path: Path) -> None:
-    langfuse = LangfuseClient()
+    langfuse = DefaultLangfuseGateway()
 
     result = sync_project_prompts(
         _config(),
@@ -61,7 +61,7 @@ def test_sync_project_prompts_creates_missing_text_and_chat_versions(tmp_path: P
 
 
 def test_sync_project_prompts_reuses_unchanged_versions(tmp_path: Path) -> None:
-    langfuse = LangfuseClient()
+    langfuse = DefaultLangfuseGateway()
     binding_path = tmp_path / "prompt-sync.yaml"
 
     first = sync_project_prompts(_config(), langfuse, binding_path=binding_path)
@@ -75,7 +75,7 @@ def test_sync_project_prompts_reuses_unchanged_versions(tmp_path: Path) -> None:
 def test_sync_project_prompts_conflicts_on_same_version_changed_content(tmp_path: Path) -> None:
     config = _config()
     artifact = discover_prompt_artifacts(config)[0]
-    langfuse = LangfuseClient(
+    langfuse = DefaultLangfuseGateway(
         prompt_versions={
             artifact.managed_name: [
                 {
@@ -103,7 +103,7 @@ def test_sync_project_prompts_conflicts_on_same_version_changed_content(tmp_path
 
 
 def test_dry_run_project_prompts_does_not_create_or_write_bindings(tmp_path: Path) -> None:
-    langfuse = LangfuseClient()
+    langfuse = DefaultLangfuseGateway()
     binding_path = tmp_path / "prompt-sync.yaml"
 
     result = sync_project_prompts(
@@ -122,7 +122,7 @@ def test_dry_run_project_prompts_does_not_create_or_write_bindings(tmp_path: Pat
 def test_dry_run_reports_user_owned_remote_prompt_conflict(tmp_path: Path) -> None:
     config = _config()
     artifact = discover_prompt_artifacts(config)[0]
-    langfuse = LangfuseClient(
+    langfuse = DefaultLangfuseGateway(
         prompt_versions={
             artifact.managed_name: [
                 {

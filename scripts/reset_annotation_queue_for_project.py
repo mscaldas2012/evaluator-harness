@@ -10,10 +10,18 @@ from evaluator_harness.annotation_queues import (
     queue_review_policy_version,
     sync_annotation_queue,
 )
-from evaluator_harness.config import load_project_config, validate_project_config
-from evaluator_harness.evaluator_bindings import load_evaluator_bindings
+from evaluator_harness.config import (
+    ProjectConfig,
+    load_project_config,
+    validate_project_config,
+)
 from evaluator_harness.errors import ConfigError
-from evaluator_harness.langfuse_client import LangfuseClient, ScoreConfigSyncResult
+from evaluator_harness.evaluator_bindings import load_evaluator_bindings
+from evaluator_harness.langfuse_gateways import (
+    LangfuseGateway,
+    build_langfuse_gateway_from_env,
+)
+from evaluator_harness.langfuse_records import ScoreConfigSyncResult
 
 
 @dataclass(frozen=True)
@@ -39,7 +47,11 @@ def build_reset_plan(
     if config.human_review.queue_ownership != "managed_by_harness":
         raise ConfigError("queue reset only applies to managed_by_harness queues")
 
-    store = AnnotationQueueReferenceStore(reference_dir) if reference_dir else AnnotationQueueReferenceStore()
+    store = (
+        AnnotationQueueReferenceStore(reference_dir)
+        if reference_dir
+        else AnnotationQueueReferenceStore()
+    )
     review_policy_version = queue_review_policy_version(config)
     reference_path = store.path_for(
         config.project.name,
@@ -54,7 +66,10 @@ def build_reset_plan(
     names_by_id = score_config_names_by_id(config)
     if existing_reference is not None:
         names_by_id.update(
-            score_config_names_by_reference_order(config, existing_reference.score_config_ids)
+            score_config_names_by_reference_order(
+                config,
+                existing_reference.score_config_ids,
+            )
         )
     return QueueResetPlan(
         project_path=project_path,
@@ -76,13 +91,17 @@ def print_plan(plan: QueueResetPlan) -> None:
         return
     print(f"current-queue-id: {plan.existing_reference.queue_id}")
     print(f"current-queue-name: {plan.existing_reference.queue_name}")
-    print(
-        "current-score-configs: "
-        f"{format_score_config_ids(plan.existing_reference.score_config_ids, plan.score_config_names_by_id)}"
+    score_configs = format_score_config_ids(
+        plan.existing_reference.score_config_ids,
+        plan.score_config_names_by_id,
     )
+    print(f"current-score-configs: {score_configs}")
 
 
-def format_score_config_ids(score_config_ids: list[str], names_by_id: dict[str, str]) -> str:
+def format_score_config_ids(
+    score_config_ids: list[str],
+    names_by_id: dict[str, str],
+) -> str:
     if not score_config_ids:
         return "none"
     return ", ".join(
@@ -93,7 +112,7 @@ def format_score_config_ids(score_config_ids: list[str], names_by_id: dict[str, 
     )
 
 
-def score_config_names_by_id(config: object) -> dict[str, str]:
+def score_config_names_by_id(config: ProjectConfig) -> dict[str, str]:
     names_by_id = {
         str(evaluator.score.langfuse_score_config_id): evaluator.score.name
         for evaluator in config.evaluators
@@ -113,14 +132,18 @@ def score_config_names_by_id(config: object) -> dict[str, str]:
 
 
 def score_config_names_by_reference_order(
-    config: object,
+    config: ProjectConfig,
     score_config_ids: list[str],
 ) -> dict[str, str]:
     if len(score_config_ids) != len(config.evaluators):
         return {}
     return {
         score_config_id: f"{config.project.score_config_prefix}{evaluator.score.name}"
-        for score_config_id, evaluator in zip(score_config_ids, config.evaluators, strict=True)
+        for score_config_id, evaluator in zip(
+            score_config_ids,
+            config.evaluators,
+            strict=True,
+        )
     }
 
 
@@ -131,7 +154,9 @@ def confirm_remote_queue_deleted(plan: QueueResetPlan) -> bool:
         print(f"Queue ID:   {plan.existing_reference.queue_id}")
         print(f"Queue name: {plan.existing_reference.queue_name}")
     print("")
-    response = input("Type 'deleted' after the Langfuse queue is deleted, or anything else to abort: ")
+    response = input(
+        "Type 'deleted' after the queue is deleted, or anything else to abort: "
+    )
     return response.strip().lower() == "deleted"
 
 
@@ -145,17 +170,21 @@ def delete_local_reference(path: Path) -> bool:
 def reset_queue(
     project_path: Path,
     *,
-    client: LangfuseClient | None = None,
+    client: LangfuseGateway | None = None,
     reference_dir: Path | str | None = None,
 ) -> tuple[list[ScoreConfigSyncResult], object]:
     config = load_project_config(project_path)
     validate_project_config(config)
-    langfuse_client = client or LangfuseClient.from_env()
-    store = AnnotationQueueReferenceStore(reference_dir) if reference_dir else AnnotationQueueReferenceStore()
-    score_results = langfuse_client.sync_score_configs(config)
+    langfuse_gateway = client or build_langfuse_gateway_from_env()
+    store = (
+        AnnotationQueueReferenceStore(reference_dir)
+        if reference_dir
+        else AnnotationQueueReferenceStore()
+    )
+    score_results = langfuse_gateway.sync_score_configs(config)
     queue_result = sync_annotation_queue(
         config,
-        langfuse_client,
+        langfuse_gateway,
         score_results,
         store=store,
     )
@@ -178,7 +207,10 @@ def main() -> int:
     parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="Print the reset plan without deleting the local reference or syncing Langfuse.",
+        help=(
+            "Print the reset plan without deleting the local reference or syncing "
+            "Langfuse."
+        ),
     )
     args = parser.parse_args()
 
@@ -213,7 +245,10 @@ def main() -> int:
     print(f"queue: {getattr(queue_result, 'queue_id', None) or 'none'}")
     print(f"name: {getattr(queue_result, 'queue_name', None) or 'none'}")
     print(f"status: {getattr(queue_result, 'status', 'unknown')}")
-    print(f"reference: {getattr(queue_result, 'reference_path', None) or plan.reference_path}")
+    print(
+        "reference: "
+        f"{getattr(queue_result, 'reference_path', None) or plan.reference_path}"
+    )
     return 0
 
 
