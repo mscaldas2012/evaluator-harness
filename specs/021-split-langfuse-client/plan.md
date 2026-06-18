@@ -8,6 +8,8 @@
 
 Refactor the current `LangfuseClient` god object into a compatibility facade backed by focused Langfuse boundaries for in-memory behavior, live SDK behavior, REST-compatible fallback behavior, object normalization, and retry/error handling. The public harness workflows and current callers continue using `LangfuseClient`, while delegated modules take ownership of dataset sync, score configs, prompts, traces, evaluator setup, annotation queues, mapping, and error policy. The acceptance bar is behavior preservation plus measurable quality improvement: `langfuse_client.py` must improve from maintainability `C (0.00)` and the public facade must contain no D-ranked complexity blocks.
 
+Follow-on query ownership work will drain the temporary `langfuse_queries.py` module into focused baseline, prompt, trace, score, and settings modules so the next Radon maintainability hotspot does not become a new mixed-responsibility bucket.
+
 ## Technical Context
 
 **Language/Version**: Python 3.12 project using modern type annotations and Pydantic models.
@@ -72,6 +74,11 @@ src/evaluator_harness/
 |-- langfuse_mappers.py             # Object/dict to internal record normalization
 |-- langfuse_retry.py               # Retry, pagination, and error wrapping helpers
 |-- langfuse_records.py             # Typed records shared across gateways
+|-- langfuse_baselines.py           # Planned owner for baseline lookup query workflows
+|-- langfuse_prompts.py             # Planned owner for prompt version query workflows
+|-- langfuse_traces.py              # Planned owner for trace and run-output query workflows
+|-- langfuse_scores.py              # Planned owner for score retrieval query workflows
+|-- langfuse_settings.py            # Planned owner for Langfuse polling/settings helpers
 |-- annotation_queues.py            # Existing queue orchestration remains compatible
 |-- langfuse_evaluator_setup.py     # Existing evaluator setup consumes facade/boundary
 `-- runner.py                       # Existing workflow caller, minimal changes only
@@ -97,6 +104,8 @@ reports/quality/
 ```
 
 **Structure Decision**: Keep `LangfuseClient` in `langfuse_client.py` as the compatibility facade and extract implementation responsibilities into sibling modules under `src/evaluator_harness/`. This keeps the harness simple, avoids a package-wide relocation, and lets tests cover each responsibility independently.
+
+**Follow-on Query Split Decision**: Treat `langfuse_queries.py` as a temporary extraction bucket, not a final owner. Move query workflows by business responsibility: baseline lookup to `langfuse_baselines.py`, prompt version workflows to `langfuse_prompts.py`, trace/run-output workflows to `langfuse_traces.py`, score retrieval workflows to `langfuse_scores.py`, and environment polling helpers to `langfuse_settings.py`. Keep typed records as data-only objects; do not move workflow behavior onto record classes.
 
 ## Complexity Tracking
 
@@ -190,3 +199,11 @@ The design defines a stable `LangfuseGateway` boundary with typed records for da
    - no D-ranked complexity blocks in the public facade
    - no new Ruff or Pyright diagnostic categories in changed Langfuse-related files
    - updated line count and diagnostic counts documented against the baseline above
+
+## Follow-on Query Split Verification
+
+1. `uv run pytest --no-cov -p no:cacheprovider tests/integration/test_langfuse_client_facade.py tests/unit/test_langfuse_gateways.py tests/unit/test_langfuse_mappers.py`
+2. `uv run ruff check src/evaluator_harness/langfuse_*.py tests/unit/test_langfuse_*.py tests/integration/test_langfuse_client_facade.py --no-cache`
+3. `uv run radon mi src/evaluator_harness/langfuse_*.py -s`
+4. `uv run radon cc src/evaluator_harness/langfuse_*.py -s`
+5. Confirm `langfuse_queries.py` contains no business logic, or delete it after all direct imports are updated.

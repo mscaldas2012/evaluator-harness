@@ -149,6 +149,37 @@
 
 ---
 
+## Phase 7: Follow-on Query Workflow Ownership
+
+**Purpose**: Drain the temporary `langfuse_queries.py` extraction bucket into owner modules that match the corresponding Langfuse workflow areas.
+
+### Tests for Query Workflow Ownership (REQUIRED)
+
+- [ ] T063 [P] [US4] Add baseline query ownership tests for baseline selection, metadata matching, and sort behavior in `tests/unit/test_langfuse_baselines.py`
+- [ ] T064 [P] [US4] Add prompt query ownership tests for prompt version listing, label matching, and prompt creation payloads in `tests/unit/test_langfuse_prompts.py`
+- [ ] T065 [P] [US4] Add trace query ownership tests for trace lookup, run trace merging, dataset-run trace extraction, and output lookup in `tests/unit/test_langfuse_traces.py`
+- [ ] T066 [P] [US4] Add score query ownership tests for score retrieval and trace score normalization in `tests/unit/test_langfuse_scores.py`
+- [ ] T067 [P] [US4] Add Langfuse settings tests for positive float environment parsing and trace polling defaults in `tests/unit/test_langfuse_settings.py`
+
+### Implementation for Query Workflow Ownership
+
+- [ ] T068 [US4] Create `src/evaluator_harness/langfuse_baselines.py` and move baseline lookup workflow functions from `src/evaluator_harness/langfuse_queries.py`
+- [ ] T069 [US4] Create `src/evaluator_harness/langfuse_prompts.py` and move prompt version workflow functions from `src/evaluator_harness/langfuse_queries.py`
+- [ ] T070 [US4] Create `src/evaluator_harness/langfuse_traces.py` and move trace retrieval, run trace merging, and output lookup workflow functions from `src/evaluator_harness/langfuse_queries.py`
+- [ ] T071 [US4] Create `src/evaluator_harness/langfuse_scores.py` and move score retrieval workflow functions from `src/evaluator_harness/langfuse_queries.py`
+- [ ] T072 [US4] Create `src/evaluator_harness/langfuse_settings.py` and move trace polling environment helpers from `src/evaluator_harness/langfuse_queries.py`
+- [ ] T073 [US4] Update imports in `src/evaluator_harness/langfuse_client.py`, `src/evaluator_harness/langfuse_sdk.py`, and related tests to use the new owner modules directly
+- [ ] T074 [US4] Remove `src/evaluator_harness/langfuse_queries.py` or reduce it to a temporary compatibility re-export module with no business logic
+- [ ] T075 [US4] Run focused query ownership tests with `uv run pytest --no-cov -p no:cacheprovider tests/unit/test_langfuse_baselines.py tests/unit/test_langfuse_prompts.py tests/unit/test_langfuse_traces.py tests/unit/test_langfuse_scores.py tests/unit/test_langfuse_settings.py`
+- [ ] T076 [US4] Run facade and gateway regression tests with `uv run pytest --no-cov -p no:cacheprovider tests/integration/test_langfuse_client_facade.py tests/unit/test_langfuse_gateways.py tests/unit/test_langfuse_mappers.py`
+- [ ] T077 [US4] Run query split quality checks with `uv run ruff check src/evaluator_harness/langfuse_*.py tests/unit/test_langfuse_*.py tests/integration/test_langfuse_client_facade.py --no-cache`, `uv run radon mi src/evaluator_harness/langfuse_*.py -s`, and `uv run radon cc src/evaluator_harness/langfuse_*.py -s`
+- [ ] T078 [US4] Update `specs/021-split-langfuse-client/quickstart.md` with query split verification results and current Radon maintainability for the new owner modules
+- [ ] T079 [US4] Run `graphify update .` after query split code changes
+
+**Checkpoint**: Query workflow ownership is complete when `langfuse_queries.py` no longer owns mixed business logic, focused owner-module tests pass, facade behavior is unchanged, and Radon no longer reports `langfuse_queries.py - C (0.00)`.
+
+---
+
 ## Dependencies & Execution Order
 
 ### Phase Dependencies
@@ -159,12 +190,14 @@
 - **Phase 4 US2**: Depends on Phase 3 because quality acceptance must measure the refactored facade.
 - **Phase 5 US3**: Depends on Phase 2 and can proceed alongside parts of US1 after gateway protocols exist, but final parity requires US1 facade behavior.
 - **Phase 6 Polish**: Depends on all user stories selected for implementation.
+- **Phase 7 Query Workflow Ownership**: Depends on Phase 6 rollback commit and the completed facade/gateway split.
 
 ### User Story Dependencies
 
 - **US1 Preserve Langfuse Workflows**: Start after Phase 2. This is the MVP.
 - **US2 Improve Maintainability Hotspots**: Start after US1 delegation is in place.
 - **US3 Keep Tests and Fakes Representative**: Start after Phase 2; finalize after US1 facade delegation is stable.
+- **US4 Split Query Workflows Into Owner Modules**: Start after the initial Langfuse client split is committed so the query split can be reviewed or rolled back independently.
 
 ### Within Each User Story
 
@@ -182,6 +215,8 @@
 - T036-T038 can run in parallel because they target different quality-risk tests.
 - T047-T049 can run in parallel because they cover distinct in-memory/parity surfaces.
 - T059 and T060 can run in parallel during final review.
+- T063-T067 can run in parallel because they create focused tests for separate query workflow owners.
+- T068-T072 can run in parallel after tests exist if imports are coordinated, because each task creates a separate owner module.
 
 ---
 
@@ -232,6 +267,7 @@ Task: "T049 [P] [US3] Add dry-run facade tests proving no live credentials are r
 3. US2 measures and improves quality reports against the documented baseline.
 4. US3 makes in-memory behavior representative and credential-free.
 5. Polish validates non-live tests, live tests, quality reports, and graph updates.
+6. US4 splits the remaining query workflow bucket into baseline, prompt, trace, score, and settings owner modules.
 
 ### Parallel Team Strategy
 

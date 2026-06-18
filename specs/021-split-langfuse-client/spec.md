@@ -65,6 +65,22 @@ As a developer adding or debugging Langfuse behavior, I need the in-memory behav
 
 ---
 
+### User Story 4 - Split Query Workflows Into Owner Modules (Priority: P3)
+
+As a maintainer continuing the Langfuse refactor, I need the temporary `langfuse_queries.py` extraction bucket to be split into owner modules for baselines, prompts, traces, scores, and settings so query workflow changes are localized to the responsible Langfuse area.
+
+**Why this priority**: The public facade improved, but the current quality report still shows `langfuse_queries.py - C (0.00)`. Leaving mixed query workflows in one module recreates the same ownership problem at a smaller scale.
+
+**Independent Test**: Move query workflow functions behind owner modules while preserving facade behavior, then run the focused Langfuse facade/gateway tests and Radon checks for `src/evaluator_harness/langfuse_*.py`.
+
+**Acceptance Scenarios**:
+
+1. **Given** a maintainer needs to change baseline lookup behavior, **When** they inspect the Langfuse modules, **Then** baseline matching, metadata comparison, and baseline sort behavior are owned by a baseline-focused module.
+2. **Given** a maintainer needs to change prompt version, trace retrieval, or score retrieval behavior, **When** they inspect the Langfuse modules, **Then** each workflow is located in a corresponding prompt, trace, or score-focused module rather than in a mixed query bucket.
+3. **Given** existing callers still use `LangfuseClient`, **When** query workflows are moved, **Then** caller behavior and public facade signatures remain unchanged.
+
+---
+
 ### Edge Cases
 
 - Live SDK support may be incomplete for some evaluator, queue, score, prompt, or trace operations and must continue to use the existing REST-compatible fallback behavior.
@@ -73,6 +89,7 @@ As a developer adding or debugging Langfuse behavior, I need the in-memory behav
 - Dataset runs may contain missing metadata, missing baseline references, or no matching traces; current fallback semantics must be preserved.
 - Score config, prompt, evaluator, and annotation queue objects may arrive as SDK objects, dictionaries, or partially populated records; normalization must remain defensive and explicit.
 - Long-running retry or pagination behavior must stay bounded and observable enough for failures to be diagnosed.
+- Temporary compatibility re-exports may be needed while `langfuse_queries.py` is drained; those re-exports must be removed once direct imports are updated.
 
 ## Requirements *(mandatory)*
 
@@ -99,6 +116,8 @@ As a developer adding or debugging Langfuse behavior, I need the in-memory behav
 - **FR-010**: The system MUST regenerate local quality reports after implementation so maintainers can compare the new Langfuse hotspots against the current baseline.
 - **FR-011**: The refactor MUST improve `langfuse_client.py` maintainability from the current `C (0.00)` baseline and remove all D-ranked complexity blocks from the public client facade.
 - **FR-012**: The full live test suite MUST pass before the refactor is accepted.
+- **FR-013**: The system MUST split mixed query workflow functions out of `langfuse_queries.py` into focused baseline, prompt, trace, score, and settings owner modules while preserving facade behavior.
+- **FR-014**: The query split SHOULD eliminate `langfuse_queries.py` as an implementation module or reduce it to a temporary compatibility re-export layer with no business logic.
 
 ### Key Entities *(include if feature involves data)*
 
@@ -109,6 +128,7 @@ As a developer adding or debugging Langfuse behavior, I need the in-memory behav
 - **Fallback Langfuse Behavior**: Behavior that handles live operations not covered by the primary live interface while preserving current compatibility.
 - **Langfuse Record Mapper**: The normalization layer that converts external objects or dictionaries into stable harness records.
 - **Retry and Error Policy**: The rules for retrying, contextualizing, redacting, and surfacing Langfuse operation failures.
+- **Query Workflow Owner Module**: A focused module that owns one Langfuse query workflow area, such as baselines, prompts, traces, scores, or Langfuse polling settings.
 
 ## Success Criteria *(mandatory)*
 
@@ -120,6 +140,7 @@ As a developer adding or debugging Langfuse behavior, I need the in-memory behav
 - **SC-004**: In-memory tests cover the same public Langfuse data shapes used by live-compatible workflows for datasets, runs, traces, scores, prompts, evaluators, and review queues.
 - **SC-005**: Changed Langfuse-related files introduce no new lint or type-checking diagnostic categories compared with the current local quality-report baseline.
 - **SC-006**: The full live test suite passes with the configured live environment before acceptance.
+- **SC-007**: Local Radon maintainability no longer reports `src\evaluator_harness\langfuse_queries.py - C (0.00)` after query workflow ownership is split into focused modules.
 
 ## Assumptions
 
