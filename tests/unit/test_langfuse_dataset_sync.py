@@ -6,8 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from evaluator_harness.config import DatasetKind, DatasetSource
-from evaluator_harness.config import DatasetItem
+from evaluator_harness.config import DatasetItem, DatasetKind, DatasetSource
 from evaluator_harness.errors import LangfuseError
 from evaluator_harness.langfuse_client import DatasetSyncResult, LangfuseClient
 
@@ -27,13 +26,30 @@ def test_sync_dataset_creates_or_updates_dataset_with_items() -> None:
     assert client.datasets["rewrite/v1"][0]["input"] == "Rewrite"
 
 
+def test_sync_dataset_facade_uses_gateway_boundary_without_live_client() -> None:
+    client = LangfuseClient()
+    items = [DatasetItem(item_id="1", input="Rewrite", ground_truth="Expected")]
+
+    result = client.sync_dataset(
+        DatasetSource(kind=DatasetKind.LOCAL_CSV, langfuse_dataset_name="rewrite/v1"),
+        items,
+    )
+
+    assert result.status == "synced"
+    assert client._gateway.owner is client
+    expected_call = (
+        "sync_dataset",
+        {"name": "rewrite/v1", "item_count": 1, "dry_run": False},
+    )
+    assert expected_call in client.calls
+
+
 def test_sync_dataset_can_create_live_items_concurrently(monkeypatch) -> None:
     monkeypatch.setenv("EVALUATOR_HARNESS_DATASET_SYNC_WORKERS", "4")
     sdk = SlowDatasetItemSdk(delay_seconds=0.05)
     client = LangfuseClient(client=sdk)
     items = [
-        DatasetItem(item_id=str(index), input=f"Rewrite {index}")
-        for index in range(8)
+        DatasetItem(item_id=str(index), input=f"Rewrite {index}") for index in range(8)
     ]
 
     result = client.sync_dataset(
@@ -104,7 +120,7 @@ def test_records_live_dataset_run_item_with_stable_dataset_item_id() -> None:
     assert sdk.created_run_items[0]["observation_id"] == "obs-123"
 
 
-def test_records_live_dataset_run_item_with_existing_langfuse_item_id_fallback() -> None:
+def test_records_live_dataset_run_item_with_existing_item_id_fallback() -> None:
     sdk = FakeLangfuseSdk(
         existing_dataset_items=[
             SimpleNamespace(
@@ -137,7 +153,7 @@ def test_records_live_dataset_run_item_with_existing_langfuse_item_id_fallback()
     ]
 
 
-def test_live_baseline_lookup_uses_dataset_run_item_metadata_when_run_metadata_missing() -> None:
+def test_live_baseline_uses_item_metadata_when_run_metadata_missing() -> None:
     fingerprint = SimpleNamespace(
         project_name="rewrite-quality",
         project_version="v1",
@@ -171,7 +187,7 @@ def test_live_baseline_lookup_uses_dataset_run_item_metadata_when_run_metadata_m
     assert reference.baseline_run_id == "baseline-123"
 
 
-def test_live_baseline_lookup_uses_item_metadata_when_run_metadata_is_incomplete() -> None:
+def test_live_baseline_uses_item_metadata_when_run_metadata_incomplete() -> None:
     fingerprint = SimpleNamespace(
         project_name="rewrite-quality",
         project_version="v1",
@@ -592,11 +608,15 @@ class FakeLangfuseSdk:
     def get_dataset_runs(self, **kwargs):
         dataset_name = str(kwargs.get("dataset_name") or "")
         self.requested_dataset_names.append(dataset_name)
-        return SimpleNamespace(data=self.dataset_runs_by_name.get(dataset_name, self.dataset_runs))
+        return SimpleNamespace(
+            data=self.dataset_runs_by_name.get(dataset_name, self.dataset_runs)
+        )
 
     def get_dataset_run(self, **kwargs):
         key = (str(kwargs.get("dataset_name") or ""), str(kwargs.get("run_name") or ""))
-        return SimpleNamespace(items=self.dataset_run_items_by_name.get(key, self.dataset_run_items))
+        return SimpleNamespace(
+            items=self.dataset_run_items_by_name.get(key, self.dataset_run_items)
+        )
 
 
 class FakeDatasetItemsClient:
