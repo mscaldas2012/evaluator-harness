@@ -8,7 +8,10 @@ from pathlib import Path
 from typing import Any
 
 from evaluator_harness.config import LiveSettings, load_project_config
-from evaluator_harness.langfuse_client import LangfuseClient
+from evaluator_harness.langfuse_gateways import (
+    LangfuseGateway,
+    build_langfuse_gateway_from_env,
+)
 
 
 @dataclass(frozen=True)
@@ -87,7 +90,7 @@ def build_rename_archived_plan(
     return plans
 
 
-def fetch_score_configs(client: LangfuseClient) -> list[dict[str, Any]]:
+def fetch_score_configs(client: LangfuseGateway) -> list[dict[str, Any]]:
     api = getattr(client.client, "api", None)
     score_configs_api = getattr(api, "score_configs", None)
     get = getattr(score_configs_api, "get", None)
@@ -106,7 +109,10 @@ def fetch_score_configs(client: LangfuseClient) -> list[dict[str, Any]]:
         page += 1
 
 
-def archive_score_configs(client: LangfuseClient, plans: list[ScoreConfigCleanupPlan]) -> None:
+def archive_score_configs(
+    client: LangfuseGateway,
+    plans: list[ScoreConfigCleanupPlan],
+) -> None:
     api = getattr(client.client, "api", None)
     score_configs_api = getattr(api, "score_configs", None)
     update = getattr(score_configs_api, "update", None)
@@ -117,7 +123,10 @@ def archive_score_configs(client: LangfuseClient, plans: list[ScoreConfigCleanup
             update(config_id, is_archived=True)
 
 
-def rename_score_configs(client: LangfuseClient, plans: list[ScoreConfigRenamePlan]) -> None:
+def rename_score_configs(
+    client: LangfuseGateway,
+    plans: list[ScoreConfigRenamePlan],
+) -> None:
     api = getattr(client.client, "api", None)
     score_configs_api = getattr(api, "score_configs", None)
     update = getattr(score_configs_api, "update", None)
@@ -161,7 +170,7 @@ def main() -> int:
     LiveSettings.from_env().require_langfuse()
     project = load_project_config(Path(args.project))
     prefix = args.prefix or project.project.score_config_prefix
-    client = LangfuseClient.from_env()
+    client = build_langfuse_gateway_from_env()
 
     score_configs = fetch_score_configs(client)
     plans = build_cleanup_plan(score_configs, prefix=prefix, name=args.name)

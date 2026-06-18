@@ -4,13 +4,13 @@ import inspect
 from typing import Any
 
 from evaluator_harness.config import DatasetItem, DatasetKind, DatasetSource
-from evaluator_harness.langfuse_client import (
+from evaluator_harness.langfuse_default_gateway import DefaultLangfuseGateway
+from evaluator_harness.langfuse_in_memory import InMemoryLangfuseGateway
+from evaluator_harness.langfuse_records import (
     AnnotationRoutingResult,
     DatasetSyncResult,
-    LangfuseClient,
     ScoreConfigSyncResult,
 )
-from evaluator_harness.langfuse_in_memory import InMemoryLangfuseGateway
 
 
 class RecordingGateway:
@@ -115,8 +115,8 @@ class RecordingGateway:
         )
 
 
-def test_langfuse_client_preserves_public_constructor_and_workflow_signatures() -> None:
-    constructor = inspect.signature(LangfuseClient)
+def test_default_gateway_preserves_constructor_and_workflow_signatures() -> None:
+    constructor = inspect.signature(DefaultLangfuseGateway)
     assert "client" in constructor.parameters
     assert "settings" in constructor.parameters
     assert "http_transport" in constructor.parameters
@@ -141,11 +141,11 @@ def test_langfuse_client_preserves_public_constructor_and_workflow_signatures() 
         "route_annotation_items",
     ]
     for method_name in workflow_methods:
-        assert callable(getattr(LangfuseClient(), method_name))
+        assert callable(getattr(DefaultLangfuseGateway(), method_name))
 
 
-def test_langfuse_client_facade_delegates_workflows_to_gateway() -> None:
-    client = LangfuseClient()
+def test_langfuse_gateway_facade_delegates_workflows_to_gateway() -> None:
+    client = DefaultLangfuseGateway()
     gateway = RecordingGateway()
     client._gateway = gateway
     source = DatasetSource(
@@ -200,13 +200,13 @@ def test_langfuse_client_facade_delegates_workflows_to_gateway() -> None:
     ]
 
 
-def test_langfuse_client_dry_run_uses_in_memory_gateway_without_credentials(
+def test_langfuse_gateway_dry_run_uses_in_memory_gateway_without_credentials(
     monkeypatch,
 ) -> None:
     monkeypatch.delenv("LANGFUSE_PUBLIC_KEY", raising=False)
     monkeypatch.delenv("LANGFUSE_SECRET_KEY", raising=False)
     monkeypatch.delenv("LANGFUSE_HOST", raising=False)
-    client = LangfuseClient()
+    client = DefaultLangfuseGateway()
     source = DatasetSource(
         kind=DatasetKind.LOCAL_CSV,
         langfuse_dataset_name="rewrite/v1",

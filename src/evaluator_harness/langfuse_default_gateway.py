@@ -28,6 +28,11 @@ from evaluator_harness.langfuse_annotation_ops import (
     live_annotation_queue_object_ids,
     route_annotation_items_workflow,
 )
+from evaluator_harness.langfuse_baselines import (
+    dataset_run_metadata_workflow,
+    lookup_baseline_workflow,
+    lookup_live_baseline_workflow,
+)
 from evaluator_harness.langfuse_dataset import (
     find_dataset_item_id,
     record_dataset_run_item_workflow,
@@ -52,8 +57,8 @@ from evaluator_harness.langfuse_evaluator_ops import (
     update_rest_evaluator,
 )
 from evaluator_harness.langfuse_gateways import (
-    GatewayFactoryInput,
     build_langfuse_gateway,
+    gateway_config_from_connection,
 )
 from evaluator_harness.langfuse_health import check_reachable_workflow
 from evaluator_harness.langfuse_observations import (
@@ -67,25 +72,18 @@ from evaluator_harness.langfuse_observations import (
     update_generation_span_workflow,
     update_trace_span_workflow,
 )
-from evaluator_harness.langfuse_queries import (
-    candidate_dataset_names,
+from evaluator_harness.langfuse_prompts import (
     create_prompt_version_workflow,
-    dataset_run_metadata_workflow,
-    fetch_scores_workflow,
     find_prompt_version_workflow,
     list_prompt_versions_workflow,
     live_create_prompt_version,
-    live_dataset_run_item_traces,
-    live_dataset_run_traces_for_run,
     live_list_prompt_versions,
-    live_scores_for_traces,
-    live_trace_by_id,
-    live_traces_for_run,
-    lookup_baseline_workflow,
-    lookup_live_baseline_workflow,
-    output_for_workflow,
-    trace_by_id_workflow,
-    traces_for_run_workflow,
+)
+from evaluator_harness.langfuse_records import (
+    AnnotationRoutingResult,
+    DatasetSyncResult,
+    ScoreConfigRecord,
+    ScoreConfigSyncResult,
 )
 from evaluator_harness.langfuse_retry import (
     with_logged_langfuse_retries,
@@ -101,37 +99,25 @@ from evaluator_harness.langfuse_score_configs import (
     sync_one_score_config,
     sync_score_configs_workflow,
 )
+from evaluator_harness.langfuse_scores import (
+    fetch_scores_workflow,
+    live_scores_for_traces,
+)
+from evaluator_harness.langfuse_traces import (
+    candidate_dataset_names,
+    live_dataset_run_item_traces,
+    live_dataset_run_traces_for_run,
+    live_trace_by_id,
+    live_traces_for_run,
+    output_for_workflow,
+    trace_by_id_workflow,
+    traces_for_run_workflow,
+)
 from evaluator_harness.progress import ProgressReporter
 
 
-@dataclass(frozen=True)
-class DatasetSyncResult:
-    name: str
-    version: str
-    compatibility_version: str
-    item_count: int
-    status: str
-    rejected_count: int = 0
-
-
-@dataclass(frozen=True)
-class ScoreConfigSyncResult:
-    evaluator_name: str
-    name: str
-    score_config_id: str
-    status: str
-    ownership: str
-
-
-@dataclass(frozen=True)
-class AnnotationRoutingResult:
-    queue_id: str
-    queued_count: int
-    skipped_duplicate_count: int
-
-
 @dataclass
-class LangfuseClient:
+class DefaultLangfuseGateway:
     client: Any | None = None
     reachable: bool = True
     settings: LiveSettings | None = None
@@ -157,7 +143,7 @@ class LangfuseClient:
     def __post_init__(self) -> None:
         self._gateway = build_langfuse_gateway(
             owner=self,
-            config=GatewayFactoryInput(
+            config=gateway_config_from_connection(
                 client=self.client,
                 settings=self.settings,
                 http_transport=self.http_transport,
@@ -166,7 +152,7 @@ class LangfuseClient:
         )
 
     @classmethod
-    def from_env(cls) -> LangfuseClient:
+    def from_env(cls) -> DefaultLangfuseGateway:
         settings = LiveSettings.from_env()
         settings.require_langfuse()
         try:
@@ -310,6 +296,28 @@ class LangfuseClient:
             result_factory=ScoreConfigSyncResult,
             dry_run=dry_run,
         )
+
+    def list_score_configs(self) -> list[ScoreConfigRecord]:
+        records: list[ScoreConfigRecord] = []
+        for value in self.score_configs.values():
+            records.append(
+                ScoreConfigRecord(
+                    id=str(value.get("id")) if value.get("id") is not None else None,
+                    name=str(value.get("name") or ""),
+                    data_type=value.get("data_type") or value.get("dataType"),
+                    min_value=value.get("min_value")
+                    if value.get("min_value") is not None
+                    else value.get("minValue"),
+                    max_value=value.get("max_value")
+                    if value.get("max_value") is not None
+                    else value.get("maxValue"),
+                    categories=value.get("categories"),
+                    description=value.get("description"),
+                    archived=bool(value.get("archived", False)),
+                    metadata=value.get("metadata") or {},
+                )
+            )
+        return records
 
     def list_evaluators(self) -> list[dict[str, Any]]:
         return self._gateway.list_evaluators()
@@ -589,6 +597,15 @@ class LangfuseClient:
             trace_ids=trace_ids,
             progress=progress,
         )
+
+    def scores_for_traces(self, trace_ids: list[str]) -> list[Any]:
+        if self.client is not None:
+            return self._live_scores_for_traces(trace_ids)
+        return [
+            score
+            for trace_id in trace_ids
+            for score in self.scores.get(trace_id, [])
+        ]
 
     def list_prompt_versions(self, name: str | None = None) -> list[dict[str, Any]]:
         return self._gateway.list_prompt_versions(name)

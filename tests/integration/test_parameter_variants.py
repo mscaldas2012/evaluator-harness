@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from evaluator_harness.langfuse_client import LangfuseClient
+from evaluator_harness.langfuse_default_gateway import DefaultLangfuseGateway
 from evaluator_harness.providers.base import ModelResponse
 from evaluator_harness.runner import ExperimentRunner, variant_identity
 from tests.fixtures.fake_provider import FakeModelProvider
@@ -12,12 +12,12 @@ PROJECT_PATH = Path("tests/fixtures/projects/valid_parameter_variants.yaml")
 
 
 def test_candidate_variants_and_repeated_runs_share_baseline_reference() -> None:
-    langfuse = LangfuseClient()
+    langfuse = DefaultLangfuseGateway()
 
     def provider_factory(_config):
         return FakeModelProvider(response=ModelResponse(output="output"))
 
-    runner = ExperimentRunner(langfuse_client=langfuse, provider_factory=provider_factory)
+    runner = ExperimentRunner(langfuse_gateway=langfuse, provider_factory=provider_factory)
     baseline = runner.run(PROJECT_PATH, "baseline")
 
     first = runner.run(
@@ -57,9 +57,9 @@ def test_candidate_variants_and_repeated_runs_share_baseline_reference() -> None
 
 
 def test_repeated_parameter_variant_runs_preserve_stable_variant_identity() -> None:
-    langfuse = LangfuseClient()
+    langfuse = DefaultLangfuseGateway()
     runner = ExperimentRunner(
-        langfuse_client=langfuse,
+        langfuse_gateway=langfuse,
         provider_factory=lambda _config: FakeModelProvider(
             response=ModelResponse(output="output")
         ),

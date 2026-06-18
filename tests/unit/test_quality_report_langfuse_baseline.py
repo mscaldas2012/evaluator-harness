@@ -25,15 +25,15 @@ PUBLIC_FACADE_METHODS = {
 }
 
 
-def test_langfuse_client_public_facade_has_no_d_ranked_blocks() -> None:
-    source = Path("src/evaluator_harness/langfuse_client.py").read_text(
+def test_langfuse_gateway_public_facade_has_no_d_ranked_blocks() -> None:
+    source = Path("src/evaluator_harness/langfuse_default_gateway.py").read_text(
         encoding="utf-8"
     )
     blocks = cc_visit(source)
     facade_methods = [
         block
         for block in blocks
-        if getattr(block, "classname", None) == "LangfuseClient"
+        if getattr(block, "classname", None) == "DefaultLangfuseGateway"
         and block.name in PUBLIC_FACADE_METHODS
     ]
 

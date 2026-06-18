@@ -32,3 +32,4 @@
 ## Notes
 
 - The quality-report baseline is intentionally referenced because TD-GRAPH-001 is a tech-debt item whose value is measured through local maintainability, complexity, lint, and type-checking reports.
+- The scope was updated after the initial facade split: the active requirement is now to migrate internal callers away from `LangfuseClient` and use the Langfuse gateway boundary directly across project workflows.

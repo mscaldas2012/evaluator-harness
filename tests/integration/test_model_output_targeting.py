@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from evaluator_harness.langfuse_client import LangfuseClient
+from evaluator_harness.langfuse_default_gateway import DefaultLangfuseGateway
 from evaluator_harness.model_output_targeting import (
     MODEL_OUTPUT_ROLE,
     RUN_ITEM_ROLE,
@@ -81,7 +81,7 @@ def _final_observation_snapshots(client: FakeLiveClient) -> list[dict[str, Any]]
 
 def test_manual_generation_provider_marks_only_generation_as_model_output() -> None:
     live_client = FakeLiveClient()
-    langfuse = LangfuseClient(client=live_client)
+    langfuse = DefaultLangfuseGateway(client=live_client)
 
     def provider_factory(config: Any) -> OpenAICompatibleProvider:
         return OpenAICompatibleProvider(
@@ -90,7 +90,7 @@ def test_manual_generation_provider_marks_only_generation_as_model_output() -> N
         )
 
     runner = ExperimentRunner(
-        langfuse_client=langfuse,
+        langfuse_gateway=langfuse,
         provider_factory=provider_factory,
     )
 
@@ -114,9 +114,9 @@ def test_manual_generation_provider_marks_only_generation_as_model_output() -> N
 
 def test_non_generation_provider_marks_parent_span_as_single_model_output() -> None:
     live_client = FakeLiveClient()
-    langfuse = LangfuseClient(client=live_client)
+    langfuse = DefaultLangfuseGateway(client=live_client)
     runner = ExperimentRunner(
-        langfuse_client=langfuse,
+        langfuse_gateway=langfuse,
         provider_factory=lambda _config: FakeModelProvider(
             response=ModelResponse(output="baseline output")
         ),

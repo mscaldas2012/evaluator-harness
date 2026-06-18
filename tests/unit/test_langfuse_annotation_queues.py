@@ -2,11 +2,11 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from evaluator_harness.langfuse_client import LangfuseClient
+from evaluator_harness.langfuse_default_gateway import DefaultLangfuseGateway
 
 
 def test_fake_langfuse_creates_and_lists_annotation_queue() -> None:
-    client = LangfuseClient()
+    client = DefaultLangfuseGateway()
 
     created = client.create_annotation_queue(
         name="EH_rewrite-quality_v1_review_default",
@@ -20,7 +20,7 @@ def test_fake_langfuse_creates_and_lists_annotation_queue() -> None:
 
 
 def test_fake_langfuse_retrieves_annotation_queue() -> None:
-    client = LangfuseClient()
+    client = DefaultLangfuseGateway()
     created = client.create_annotation_queue(
         name="EH_rewrite-quality_v1_review_default",
         score_config_ids=["score-config-1"],
@@ -31,7 +31,7 @@ def test_fake_langfuse_retrieves_annotation_queue() -> None:
 
 
 def test_route_annotation_items_records_trace_object_ids() -> None:
-    client = LangfuseClient()
+    client = DefaultLangfuseGateway()
     payload = {"trace_id": "trace-1", "item_id": "1", "run_id": "run-1"}
 
     result = client.route_annotation_items("queue-1", [payload])
@@ -52,7 +52,7 @@ def test_route_annotation_items_skips_existing_live_queue_item() -> None:
         def create_queue_item(self, *args, **kwargs):
             raise AssertionError("duplicate live queue item should not be created")
 
-    client = LangfuseClient(
+    client = DefaultLangfuseGateway(
         client=SimpleNamespace(
             api=SimpleNamespace(annotation_queues=FakeAnnotationQueuesApi())
         )
@@ -79,7 +79,7 @@ def test_route_annotation_items_creates_new_live_queue_item_once() -> None:
             return SimpleNamespace(id="item-1", object_id=kwargs["object_id"])
 
     api = FakeAnnotationQueuesApi()
-    client = LangfuseClient(
+    client = DefaultLangfuseGateway(
         client=SimpleNamespace(api=SimpleNamespace(annotation_queues=api))
     )
     payload = {"trace_id": "trace-1", "item_id": "1", "run_id": "run-1"}
@@ -92,7 +92,7 @@ def test_route_annotation_items_creates_new_live_queue_item_once() -> None:
 
 
 def test_annotation_queue_object_ids_reads_fake_queue_items() -> None:
-    client = LangfuseClient()
+    client = DefaultLangfuseGateway()
     client.annotation_queue_items.append(
         {
             "queue_id": "queue-1",

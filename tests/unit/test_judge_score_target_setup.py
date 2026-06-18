@@ -4,7 +4,7 @@ import pytest
 
 from evaluator_harness.config import ScoreSource, load_project_config
 from evaluator_harness.errors import ConfigError
-from evaluator_harness.langfuse_client import ScoreConfigSyncResult
+from evaluator_harness.langfuse_default_gateway import ScoreConfigSyncResult
 from evaluator_harness.langfuse_evaluator_setup import resolve_score_target
 
 

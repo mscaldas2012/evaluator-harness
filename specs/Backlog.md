@@ -14,14 +14,20 @@ not owned by a single active feature spec.
     behavior into `InMemoryLangfuseGateway`, `LangfuseSdkGateway`,
     `LangfuseRestGateway`, and mapper/helper modules.
 
-- **TD-GRAPH-002: Surface live Langfuse persistence and lookup failures**
+- **TD-GRAPH-002: Surface live Langfuse partial persistence and lookup failures**
   - Source: Graphify review of `src/evaluator_harness/langfuse_client.py`.
-  - Problem: Several live paths convert SDK/API errors into `None` or silent
-    returns, especially dataset run item recording, dataset item lookup, and
-    baseline lookup. Runs can appear successful while Langfuse linkage is
-    incomplete.
+  - Current status: Still relevant after TD-GRAPH-001. The Langfuse client
+    split moved the affected behavior out of the facade and into focused owner
+    modules, which makes this debt smaller and easier to address.
+  - Problem: Several live paths still convert SDK/API errors into `None`,
+    `{}`, or `[]`, especially baseline lookup, dataset run metadata lookup,
+    dataset item lookup, dataset run item recording, trace lookup, and score
+    retrieval. Runs can appear successful while Langfuse linkage is incomplete.
   - Improvement: Return typed partial-success results or structured warnings,
-    and only suppress explicitly expected not-found cases.
+    distinguish expected not-found cases from lookup/persistence failures, and
+    only suppress explicitly expected not-found cases.
+  - Likely modules: `langfuse_baselines.py`, `langfuse_dataset.py`,
+    `langfuse_traces.py`, and `langfuse_scores.py`.
 
 - **TD-GRAPH-003: Extract shared run-item execution from `ExperimentRunner`**
   - Source: Graphify review of `src/evaluator_harness/runner.py`.

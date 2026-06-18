@@ -1,15 +1,16 @@
-# Contract: Langfuse Boundary
+# Contract: Langfuse Gateway Boundary
 
 ## Purpose
 
-The Langfuse boundary defines the internal contract between the retained `LangfuseClient` facade and the extracted Langfuse behavior modules. It is not a new user-facing API. Existing CLI commands, project YAML, and callers continue to use the facade.
+The Langfuse gateway boundary is the active internal contract for Langfuse-backed workflows. Existing CLI commands and project YAML remain user-compatible, but internal project code should use gateway-backed operations instead of the deprecated `LangfuseClient` facade.
 
 ## Compatibility Rules
 
-- Current public `LangfuseClient` methods remain callable by existing harness modules and scripts.
-- Callers do not choose SDK, REST, or in-memory implementations directly.
-- The facade returns the same user-facing data shapes and errors currently expected by tests and workflows.
-- External Langfuse SDK objects and dictionaries are not consumed directly by downstream harness workflow code.
+- CLI command names, project YAML semantics, dataset behavior, run behavior, exports, review routing, and Langfuse metadata remain compatible for users.
+- Active internal workflows do not construct or depend on `LangfuseClient`.
+- Callers use the gateway factory, gateway protocol, concrete gateways, or focused owner modules.
+- External Langfuse SDK objects and dictionaries are normalized before downstream workflow code consumes them.
+- Any remaining `LangfuseClient` symbol is explicitly deprecated and contains no workflow logic.
 
 ## Boundary Responsibilities
 
@@ -32,7 +33,7 @@ Each boundary operation must return one of:
 
 - a typed internal record,
 - a collection of typed internal records,
-- a compatibility value that the current facade already returns,
+- a compatibility value that current CLI/workflow behavior already returns,
 - or a `LangfuseError` with sanitized operation context.
 
 Returned records must satisfy these rules:
@@ -45,13 +46,15 @@ Returned records must satisfy these rules:
 
 ## Implementation Roles
 
-- **Facade**: compatibility methods, workflow-level orchestration, dependency selection.
-- **Gateway protocol**: operation shape used by the facade.
+- **Gateway protocol**: operation shape used by active workflows.
+- **Gateway factory**: selects in-memory, SDK-backed, or fallback-capable live behavior from runtime settings.
 - **In-memory gateway**: deterministic local state implementing the same operation shape.
 - **SDK gateway**: live SDK-backed behavior for supported capabilities.
 - **REST fallback gateway**: explicit fallback for live capability gaps.
+- **Owner modules**: workflow orchestration grouped by Langfuse responsibility.
 - **Mappers**: external object/dictionary normalization.
 - **Retry policy**: retry-after parsing, bounded retries, error wrapping, and redaction.
+- **Legacy client**: deprecated non-runtime shim or removal target.
 
 ## Error Contract
 
@@ -69,10 +72,11 @@ Failures that currently raise `LangfuseError` must continue to raise `LangfuseEr
 
 The implementation must provide tests that verify:
 
-- facade compatibility for existing callers,
+- active workflows no longer depend on `LangfuseClient`,
+- gateway-backed workflows preserve current user-facing behavior,
 - in-memory and live-compatible paths return the same public record shapes,
 - mapper behavior for SDK objects, dictionaries, partial objects, and missing optional fields,
 - fallback behavior for SDK capability gaps,
 - retry and redaction behavior for representative live failures,
-- regenerated quality reports meet the specified Langfuse facade quality bar.
-
+- source search confirms no active internal runtime imports of the legacy client,
+- regenerated quality reports meet the specified Langfuse gateway quality bar.

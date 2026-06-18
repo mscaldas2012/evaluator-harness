@@ -6,7 +6,7 @@ from evaluator_harness.annotation_queues import (
     AnnotationQueueReference,
     AnnotationQueueReferenceStore,
 )
-from evaluator_harness.langfuse_client import LangfuseClient
+from evaluator_harness.langfuse_default_gateway import DefaultLangfuseGateway
 from scripts.reset_annotation_queue_for_project import (
     build_reset_plan,
     delete_local_reference,
@@ -85,7 +85,7 @@ def test_score_config_names_by_reference_order_uses_project_evaluator_order() ->
 
 def test_reset_queue_syncs_scores_and_recreates_reference(tmp_path: Path) -> None:
     reference_dir = tmp_path / "queue-references"
-    client = LangfuseClient()
+    client = DefaultLangfuseGateway()
 
     score_results, queue_result = reset_queue(
         Path("tests/fixtures/projects/managed_annotation_queue.yaml"),

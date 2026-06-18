@@ -8,29 +8,33 @@
 
 **Input**: User description: "implement backlog item TD-GRAPH-001. Review the quality reports by ruff, pyright and randon-* so that we can implement a good solution for langufse_client that will improve randon scores. Make sure you use good Design Patterns and delegate functionality appropriately"
 
+**Scope Update**: User description: "update the current specification to go ahead and deprecate langfuse_client completely and use the new langfuse_gateway and its classes across the project"
+
 ## Clarifications
 
 ### Session 2026-06-18
 
-- Q: What quality-report threshold should define success for the Langfuse client refactor? -> A: Improve `langfuse_client.py` maintainability from `C (0.00)` and remove all D-ranked complexity blocks from the facade.
-- Q: Should existing callers migrate to new focused boundaries or keep using the current public facade? -> A: Keep the existing `LangfuseClient` public facade and move responsibilities behind it.
+- Q: What quality-report threshold should define success for the Langfuse client refactor? -> A: Improve `langfuse_client.py` maintainability from `C (0.00)` and remove all D-ranked complexity blocks from the facade. Superseded by the scope update: `langfuse_client.py` should no longer be an active runtime workflow hotspot.
+- Q: Should existing callers migrate to new focused boundaries or keep using the current public facade? -> A: Superseded. Existing internal callers should now migrate to the Langfuse gateway boundary and focused owner modules instead of keeping `LangfuseClient` as the public facade.
 - Q: What live-test scope is required before accepting this refactor? -> A: The full live test suite must pass before acceptance.
+- Scope update: The original facade-preservation decision is superseded. Internal project callers should migrate from `LangfuseClient` to the Langfuse gateway boundary and concrete gateway classes. `LangfuseClient` should no longer be an active runtime facade for project workflows.
 
 ## User Scenarios & Testing *(mandatory)*
 
-### User Story 1 - Preserve Langfuse Workflows Behind Clear Boundaries (Priority: P1)
+### User Story 1 - Preserve Langfuse Workflows Through Gateway Boundaries (Priority: P1)
 
-As a harness maintainer, I need Langfuse dataset, run, score, prompt, evaluator, annotation queue, and trace behavior to remain available through the existing harness workflows while the current oversized client is split into focused responsibilities behind the existing public facade.
+As a harness maintainer, I need Langfuse dataset, run, score, prompt, evaluator, annotation queue, and trace behavior to remain available through the existing harness workflows while current callers move from the oversized client facade to the shared Langfuse gateway boundary.
 
-**Why this priority**: The refactor only has value if existing users keep the same CLI, configuration, and runtime behavior while maintainers gain safer boundaries for future changes.
+**Why this priority**: The refactor only has value if users keep the same CLI, configuration, and runtime behavior while maintainers eliminate the legacy facade as an active dependency.
 
-**Independent Test**: Run the existing non-live test suite, targeted Langfuse workflow tests, and the full live test suite against the refactored code without changing project YAML or command-line usage.
+**Independent Test**: Run the existing non-live test suite, targeted Langfuse workflow tests, and the full live test suite against gateway-backed workflows without changing project YAML or command-line usage.
 
 **Acceptance Scenarios**:
 
-1. **Given** an existing project configuration, **When** a user validates, syncs datasets, syncs score configs, records runs, exports results, or routes review items, **Then** the user-facing behavior and persisted Langfuse metadata match the pre-refactor behavior.
+1. **Given** an existing project configuration, **When** a user validates, syncs datasets, syncs score configs, records runs, exports results, or routes review items, **Then** the user-facing behavior and persisted Langfuse metadata match the pre-refactor behavior without requiring `LangfuseClient` as the runtime entry point.
 2. **Given** live Langfuse access is unavailable, **When** tests or dry-run workflows use the in-memory behavior, **Then** they complete without requiring live credentials or network access.
 3. **Given** a Langfuse capability is only available through a fallback path, **When** the workflow needs that capability, **Then** the system uses the appropriate fallback while preserving current error messages and redaction behavior.
+4. **Given** maintainers inspect production source, **When** they search for internal runtime imports, **Then** project workflows depend on the gateway boundary or focused modules rather than `LangfuseClient`.
 
 ---
 
@@ -44,7 +48,7 @@ As a maintainer reviewing local quality reports, I need the Langfuse client resp
 
 **Acceptance Scenarios**:
 
-1. **Given** the refactor is complete, **When** local complexity and maintainability reports are regenerated, **Then** the public client facade no longer contains the current high-risk behavior clusters for object mapping, dataset sync, baseline lookup, prompt version lookup, trace retrieval, score loading, evaluator payload shaping, and queue conversion.
+1. **Given** the refactor is complete, **When** local complexity and maintainability reports are regenerated, **Then** no active runtime client facade contains the current high-risk behavior clusters for object mapping, dataset sync, baseline lookup, prompt version lookup, trace retrieval, score loading, evaluator payload shaping, and queue conversion.
 2. **Given** a maintainer needs to change one Langfuse responsibility, **When** they inspect the module layout, **Then** they can identify a focused location for that responsibility without reading unrelated fake-state, SDK, REST, retry, and mapping code.
 3. **Given** static analysis is run on changed files, **When** diagnostics are reviewed, **Then** the refactor introduces no new lint or type-checking categories in those files.
 
@@ -67,17 +71,17 @@ As a developer adding or debugging Langfuse behavior, I need the in-memory behav
 
 ### User Story 4 - Split Query Workflows Into Owner Modules (Priority: P3)
 
-As a maintainer continuing the Langfuse refactor, I need the temporary `langfuse_queries.py` extraction bucket to be split into owner modules for baselines, prompts, traces, scores, and settings so query workflow changes are localized to the responsible Langfuse area.
+As a maintainer continuing the Langfuse refactor, I need mixed query workflow ownership to live in focused modules for baselines, prompts, traces, scores, and settings so query workflow changes are localized to the responsible Langfuse area.
 
-**Why this priority**: The public facade improved, but the current quality report still shows `langfuse_queries.py - C (0.00)`. Leaving mixed query workflows in one module recreates the same ownership problem at a smaller scale.
+**Why this priority**: The public facade split improved the original hotspot, but mixed query workflow buckets recreate the same ownership problem at a smaller scale.
 
-**Independent Test**: Move query workflow functions behind owner modules while preserving facade behavior, then run the focused Langfuse facade/gateway tests and Radon checks for `src/evaluator_harness/langfuse_*.py`.
+**Independent Test**: Move query workflow functions behind owner modules while preserving gateway-backed workflow behavior, then run the focused Langfuse gateway tests and Radon checks for `src/evaluator_harness/langfuse_*.py`.
 
 **Acceptance Scenarios**:
 
 1. **Given** a maintainer needs to change baseline lookup behavior, **When** they inspect the Langfuse modules, **Then** baseline matching, metadata comparison, and baseline sort behavior are owned by a baseline-focused module.
 2. **Given** a maintainer needs to change prompt version, trace retrieval, or score retrieval behavior, **When** they inspect the Langfuse modules, **Then** each workflow is located in a corresponding prompt, trace, or score-focused module rather than in a mixed query bucket.
-3. **Given** existing callers still use `LangfuseClient`, **When** query workflows are moved, **Then** caller behavior and public facade signatures remain unchanged.
+3. **Given** project callers have migrated to the gateway boundary, **When** query workflows are moved, **Then** caller behavior remains unchanged and no active workflow imports the legacy client facade.
 
 ---
 
@@ -89,7 +93,8 @@ As a maintainer continuing the Langfuse refactor, I need the temporary `langfuse
 - Dataset runs may contain missing metadata, missing baseline references, or no matching traces; current fallback semantics must be preserved.
 - Score config, prompt, evaluator, and annotation queue objects may arrive as SDK objects, dictionaries, or partially populated records; normalization must remain defensive and explicit.
 - Long-running retry or pagination behavior must stay bounded and observable enough for failures to be diagnosed.
-- Temporary compatibility re-exports may be needed while `langfuse_queries.py` is drained; those re-exports must be removed once direct imports are updated.
+- Temporary compatibility re-exports are not a target end state; once direct imports are updated, mixed query modules should be removed from active implementation.
+- Legacy `LangfuseClient` imports may exist in downstream or external code; this feature only guarantees migration of this repository's active workflows and tests unless a separate public-API compatibility requirement is added.
 
 ## Requirements *(mandatory)*
 
@@ -106,23 +111,26 @@ As a maintainer continuing the Langfuse refactor, I need the temporary `langfuse
 
 - **FR-001**: The system MUST keep the existing public harness workflows and CLI commands compatible for Langfuse-backed validation, sync, run, export, and review operations.
 - **FR-002**: The system MUST separate Langfuse responsibilities into focused boundaries for in-memory behavior, live service interaction, fallback service interaction, object normalization, retry handling, and public workflow orchestration.
-- **FR-003**: The existing `LangfuseClient` public facade MUST remain the compatibility layer for current callers and MUST hide whether a workflow uses in-memory behavior, SDK-backed behavior, or REST-compatible fallback behavior.
+- **FR-003**: Active project callers MUST migrate from `LangfuseClient` to the Langfuse gateway boundary, gateway factory, focused workflow modules, or concrete gateway classes as appropriate.
 - **FR-004**: The system MUST preserve current in-memory behavior for tests, dry runs, and local development without live credentials.
 - **FR-005**: The system MUST normalize external Langfuse objects into stable internal records before downstream harness code consumes them.
 - **FR-006**: The system MUST preserve existing error semantics, contextual operation names, and secret redaction for Langfuse failures.
-- **FR-007**: The system MUST reduce the concentration of unrelated responsibilities in the current Langfuse client facade so that dataset sync, trace retrieval, score handling, prompt/version lookup, evaluator setup, annotation queues, and object mapping can be maintained independently.
+- **FR-007**: The system MUST remove active workflow responsibility from the current Langfuse client facade so that dataset sync, trace retrieval, score handling, prompt/version lookup, evaluator setup, annotation queues, and object mapping are maintained independently.
 - **FR-008**: The system MUST add or update tests that prove the shared Langfuse boundary behaves consistently for in-memory and live-compatible workflows.
 - **FR-009**: The system MUST introduce no new lint or type-checking diagnostic categories in changed files and SHOULD reduce existing type uncertainty around optional values and external object attributes in Langfuse-related code.
 - **FR-010**: The system MUST regenerate local quality reports after implementation so maintainers can compare the new Langfuse hotspots against the current baseline.
-- **FR-011**: The refactor MUST improve `langfuse_client.py` maintainability from the current `C (0.00)` baseline and remove all D-ranked complexity blocks from the public client facade.
+- **FR-011**: The refactor MUST eliminate `langfuse_client.py` as an active maintainability hotspot by removing it from internal runtime usage or reducing it to a non-runtime deprecation surface with no workflow logic.
 - **FR-012**: The full live test suite MUST pass before the refactor is accepted.
-- **FR-013**: The system MUST split mixed query workflow functions out of `langfuse_queries.py` into focused baseline, prompt, trace, score, and settings owner modules while preserving facade behavior.
-- **FR-014**: The query split SHOULD eliminate `langfuse_queries.py` as an implementation module or reduce it to a temporary compatibility re-export layer with no business logic.
+- **FR-013**: The system MUST split mixed query workflow functions into focused baseline, prompt, trace, score, and settings owner modules while preserving gateway-backed workflow behavior.
+- **FR-014**: The query split MUST eliminate mixed query modules as active implementation modules once direct imports are updated.
+- **FR-015**: Internal source and test code MUST have no active dependency on `LangfuseClient` for Langfuse workflow execution once migration is complete.
+- **FR-016**: If any legacy `LangfuseClient` symbol remains, it MUST be explicitly documented as deprecated and MUST NOT contain dataset, run, score, prompt, evaluator, annotation queue, trace, retry, or mapping workflow logic.
 
 ### Key Entities *(include if feature involves data)*
 
-- **Langfuse Client Facade**: The stable entry point used by the rest of the harness for Langfuse-backed workflows.
-- **Langfuse Boundary**: The contract that defines dataset, run, trace, score, prompt, evaluator, and annotation queue operations without exposing the backing implementation.
+- **Legacy Langfuse Client Facade**: The deprecated former entry point that must no longer be used by active project workflows.
+- **Langfuse Gateway Boundary**: The contract that defines dataset, run, trace, score, prompt, evaluator, and annotation queue operations without exposing the backing implementation.
+- **Langfuse Gateway Factory**: The construction path that selects in-memory, live, and fallback-capable gateway behavior for project workflows.
 - **In-Memory Langfuse Behavior**: Deterministic local behavior used by tests, dry runs, and developer workflows without live credentials.
 - **Live Langfuse Behavior**: Behavior that communicates with Langfuse through supported live service capabilities.
 - **Fallback Langfuse Behavior**: Behavior that handles live operations not covered by the primary live interface while preserving current compatibility.
@@ -134,17 +142,19 @@ As a maintainer continuing the Langfuse refactor, I need the temporary `langfuse
 
 ### Measurable Outcomes
 
-- **SC-001**: Existing non-live tests pass without requiring changes to project YAML, CLI commands, user-facing workflow names, or current `LangfuseClient` caller usage.
-- **SC-002**: Local quality reports show `langfuse_client.py` maintainability improved from `C (0.00)` and no D-ranked complexity blocks remaining in the public client facade.
+- **SC-001**: Existing non-live tests pass without requiring changes to project YAML, CLI commands, or user-facing workflow names after project callers migrate away from `LangfuseClient`.
+- **SC-002**: Local quality reports show no active `langfuse_client.py` workflow hotspot, and internal source search shows no runtime workflow imports of `LangfuseClient`.
 - **SC-003**: Maintainers can identify the owner module for dataset sync, trace retrieval, score handling, prompt/version lookup, evaluator setup, annotation queues, object mapping, and retry/error policy from module names and public boundaries alone.
 - **SC-004**: In-memory tests cover the same public Langfuse data shapes used by live-compatible workflows for datasets, runs, traces, scores, prompts, evaluators, and review queues.
 - **SC-005**: Changed Langfuse-related files introduce no new lint or type-checking diagnostic categories compared with the current local quality-report baseline.
 - **SC-006**: The full live test suite passes with the configured live environment before acceptance.
-- **SC-007**: Local Radon maintainability no longer reports `src\evaluator_harness\langfuse_queries.py - C (0.00)` after query workflow ownership is split into focused modules.
+- **SC-007**: Local Radon maintainability confirms query workflow ownership is split into focused modules and no mixed query module remains as an active implementation hotspot.
+- **SC-008**: A source and test search confirms `LangfuseClient` is absent from active project workflow code, except for explicit deprecation tests or documentation if a compatibility shim remains.
 
 ## Assumptions
 
 - The current quality-report baseline is the set of local reports under `reports/quality/`, including Ruff, Pyright, and Radon output.
 - This work is a behavior-preserving architectural refactor, not a request to add new Langfuse features or change existing CLI behavior.
-- The refactor will proceed behind the existing `LangfuseClient` public facade so callers outside the Langfuse integration do not need broad changes.
+- The updated scope supersedes the earlier facade-preservation approach. Internal project callers will migrate to gateway-backed workflows even if that requires broader internal changes.
+- External code that imports `LangfuseClient` is not guaranteed by this feature unless a separate compatibility requirement is added.
 - Live tests depend on valid external credentials and service availability and are required for acceptance; non-live tests must remain deterministic and credential-free.

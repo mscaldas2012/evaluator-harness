@@ -8,7 +8,7 @@ import pytest
 from evaluator_harness.annotation_queues import AnnotationQueueReferenceStore, sync_annotation_queue
 from evaluator_harness.config import load_project_config
 from evaluator_harness.errors import ConfigError
-from evaluator_harness.langfuse_client import LangfuseClient, ScoreConfigSyncResult
+from evaluator_harness.langfuse_default_gateway import DefaultLangfuseGateway, ScoreConfigSyncResult
 
 
 def _store() -> AnnotationQueueReferenceStore:
@@ -19,7 +19,7 @@ def _store() -> AnnotationQueueReferenceStore:
 
 def test_user_owned_queue_sync_does_not_create_or_store_reference() -> None:
     config = load_project_config("tests/fixtures/projects/user_owned_annotation_queue.yaml")
-    client = LangfuseClient()
+    client = DefaultLangfuseGateway()
     client.annotation_queues["queue-user-owned-1"] = {
         "id": "queue-user-owned-1",
         "name": "shared-review-queue",
@@ -38,12 +38,12 @@ def test_user_owned_queue_sync_fails_when_queue_missing() -> None:
     config = load_project_config("tests/fixtures/projects/user_owned_annotation_queue.yaml")
 
     with pytest.raises(ConfigError, match="Annotation queue not found"):
-        sync_annotation_queue(config, LangfuseClient(), [], store=_store())
+        sync_annotation_queue(config, DefaultLangfuseGateway(), [], store=_store())
 
 
 def test_user_owned_queue_does_not_need_score_config_results() -> None:
     config = load_project_config("tests/fixtures/projects/user_owned_annotation_queue.yaml")
-    client = LangfuseClient()
+    client = DefaultLangfuseGateway()
     client.annotation_queues["queue-user-owned-1"] = {"id": "queue-user-owned-1"}
 
     result = sync_annotation_queue(

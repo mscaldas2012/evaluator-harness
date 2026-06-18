@@ -8,11 +8,11 @@ import pytest
 
 from evaluator_harness.config import DatasetItem, DatasetKind, DatasetSource
 from evaluator_harness.errors import LangfuseError
-from evaluator_harness.langfuse_client import DatasetSyncResult, LangfuseClient
+from evaluator_harness.langfuse_default_gateway import DatasetSyncResult, DefaultLangfuseGateway
 
 
 def test_sync_dataset_creates_or_updates_dataset_with_items() -> None:
-    client = LangfuseClient()
+    client = DefaultLangfuseGateway()
     items = [DatasetItem(item_id="1", input="Rewrite", ground_truth="Expected")]
 
     result = client.sync_dataset(
@@ -27,7 +27,7 @@ def test_sync_dataset_creates_or_updates_dataset_with_items() -> None:
 
 
 def test_sync_dataset_facade_uses_gateway_boundary_without_live_client() -> None:
-    client = LangfuseClient()
+    client = DefaultLangfuseGateway()
     items = [DatasetItem(item_id="1", input="Rewrite", ground_truth="Expected")]
 
     result = client.sync_dataset(
@@ -47,7 +47,7 @@ def test_sync_dataset_facade_uses_gateway_boundary_without_live_client() -> None
 def test_sync_dataset_can_create_live_items_concurrently(monkeypatch) -> None:
     monkeypatch.setenv("EVALUATOR_HARNESS_DATASET_SYNC_WORKERS", "4")
     sdk = SlowDatasetItemSdk(delay_seconds=0.05)
-    client = LangfuseClient(client=sdk)
+    client = DefaultLangfuseGateway(client=sdk)
     items = [
         DatasetItem(item_id=str(index), input=f"Rewrite {index}") for index in range(8)
     ]
@@ -63,7 +63,7 @@ def test_sync_dataset_can_create_live_items_concurrently(monkeypatch) -> None:
 
 
 def test_sync_dataset_dry_run_reports_plan_without_creating_items() -> None:
-    client = LangfuseClient()
+    client = DefaultLangfuseGateway()
     items = [DatasetItem(item_id="1", input="Rewrite", ground_truth="Expected")]
 
     result = client.sync_dataset(
@@ -78,7 +78,7 @@ def test_sync_dataset_dry_run_reports_plan_without_creating_items() -> None:
 
 
 def test_sync_dataset_resolves_langfuse_dataset_without_local_items() -> None:
-    client = LangfuseClient()
+    client = DefaultLangfuseGateway()
 
     result = client.sync_dataset(
         DatasetSource(kind=DatasetKind.LANGFUSE, langfuse_dataset_name="remote/v1"),
@@ -90,7 +90,7 @@ def test_sync_dataset_resolves_langfuse_dataset_without_local_items() -> None:
 
 
 def test_langfuse_unreachable_fails_fast() -> None:
-    client = LangfuseClient(reachable=False)
+    client = DefaultLangfuseGateway(reachable=False)
 
     with pytest.raises(LangfuseError, match="unreachable"):
         client.check_reachable(operation="sync-dataset", dataset_item_id="1")
@@ -98,7 +98,7 @@ def test_langfuse_unreachable_fails_fast() -> None:
 
 def test_records_live_dataset_run_item_with_stable_dataset_item_id() -> None:
     sdk = FakeLangfuseSdk()
-    client = LangfuseClient(client=sdk)
+    client = DefaultLangfuseGateway(client=sdk)
     dataset_sync = client.sync_dataset(
         DatasetSource(kind=DatasetKind.LOCAL_CSV, langfuse_dataset_name="rewrite/v1"),
         [DatasetItem(item_id="1", input="Rewrite")],
@@ -130,7 +130,7 @@ def test_records_live_dataset_run_item_with_existing_item_id_fallback() -> None:
         ],
         fail_run_item_ids={"rewrite/v1:1"},
     )
-    client = LangfuseClient(client=sdk)
+    client = DefaultLangfuseGateway(client=sdk)
     dataset_sync = DatasetSyncResult(
         name="rewrite/v1",
         version="latest",
@@ -176,7 +176,7 @@ def test_live_baseline_uses_item_metadata_when_run_metadata_missing() -> None:
             SimpleNamespace(metadata=metadata),
         ],
     )
-    client = LangfuseClient(client=sdk)
+    client = DefaultLangfuseGateway(client=sdk)
 
     reference = client.lookup_baseline(
         selector="latest-compatible",
@@ -213,7 +213,7 @@ def test_live_baseline_uses_item_metadata_when_run_metadata_incomplete() -> None
         ],
         dataset_run_items=[SimpleNamespace(metadata=item_metadata)],
     )
-    client = LangfuseClient(client=sdk)
+    client = DefaultLangfuseGateway(client=sdk)
 
     reference = client.lookup_baseline(
         selector="baseline-123",
@@ -248,7 +248,7 @@ def test_live_baseline_lookup_matches_dataset_compatibility_version_metadata() -
             SimpleNamespace(name="baseline-123", metadata=metadata),
         ],
     )
-    client = LangfuseClient(client=sdk)
+    client = DefaultLangfuseGateway(client=sdk)
 
     reference = client.lookup_baseline(
         selector="baseline-123",
@@ -289,7 +289,7 @@ def test_live_baseline_lookup_latest_compatible_uses_newest_created_at() -> None
             SimpleNamespace(name="baseline-old", metadata=oldest_metadata),
         ],
     )
-    client = LangfuseClient(client=sdk)
+    client = DefaultLangfuseGateway(client=sdk)
 
     reference = client.lookup_baseline(
         selector="latest-compatible",
@@ -315,7 +315,7 @@ def test_live_traces_for_run_falls_back_to_dataset_run_metadata() -> None:
             SimpleNamespace(name="candidate-123", metadata=metadata),
         ],
     )
-    client = LangfuseClient(client=sdk)
+    client = DefaultLangfuseGateway(client=sdk)
 
     traces = client.traces_for_run("candidate-123")
 
@@ -340,7 +340,7 @@ def test_live_traces_for_run_uses_project_dataset_name_for_fallback() -> None:
             "dfe/v1": [SimpleNamespace(name="candidate-dfe", metadata=metadata)],
         },
     )
-    client = LangfuseClient(client=sdk)
+    client = DefaultLangfuseGateway(client=sdk)
 
     traces = client.traces_for_run("candidate-dfe", dataset_names=["dfe/v1"])
 
@@ -366,7 +366,7 @@ def test_live_traces_for_run_fallback_reads_dataset_run_item_metadata() -> None:
             ("dfe/v1", "candidate-dfe"): [SimpleNamespace(metadata=metadata)],
         },
     )
-    client = LangfuseClient(client=sdk)
+    client = DefaultLangfuseGateway(client=sdk)
 
     traces = client.traces_for_run("candidate-dfe", dataset_names=["dfe/v1"])
 
@@ -401,7 +401,7 @@ def test_live_traces_for_run_prefers_all_dataset_run_items_over_run_metadata() -
             ],
         },
     )
-    client = LangfuseClient(client=sdk)
+    client = DefaultLangfuseGateway(client=sdk)
 
     traces = client.traces_for_run("baseline-dfe", dataset_names=["dfe/v1"])
 
@@ -445,7 +445,7 @@ def test_live_traces_for_run_merges_partial_trace_api_with_dataset_run_items() -
             ],
         },
     )
-    client = LangfuseClient(client=sdk)
+    client = DefaultLangfuseGateway(client=sdk)
 
     traces = client.traces_for_run("baseline-dfe", dataset_names=["dfe/v1"])
 
@@ -493,7 +493,7 @@ def test_live_traces_for_run_fetches_traces_from_dataset_run_item_ids() -> None:
             for index in range(1, 13)
         },
     )
-    client = LangfuseClient(client=sdk)
+    client = DefaultLangfuseGateway(client=sdk)
 
     traces = client.traces_for_run("baseline-dfe", dataset_names=["dfe/v1"])
 
@@ -538,7 +538,7 @@ def test_traces_for_run_polls_until_expected_count_is_visible() -> None:
         return SimpleNamespace(items=first_items if calls == 1 else second_items)
 
     sdk.get_dataset_run = delayed_items
-    client = LangfuseClient(client=sdk)
+    client = DefaultLangfuseGateway(client=sdk)
     client.retry_sleep = lambda _delay: None
 
     traces = client.traces_for_run(

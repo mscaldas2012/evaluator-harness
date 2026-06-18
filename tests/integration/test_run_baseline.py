@@ -6,14 +6,14 @@ import pytest
 
 from evaluator_harness.errors import ConfigError
 from evaluator_harness.annotation_queues import AnnotationQueueReferenceStore
-from evaluator_harness.langfuse_client import LangfuseClient
+from evaluator_harness.langfuse_default_gateway import DefaultLangfuseGateway
 from evaluator_harness.providers.base import ModelResponse
 from evaluator_harness.runner import ExperimentRunner
 from tests.fixtures.fake_provider import FakeModelProvider
 
 
 def test_run_baseline_records_traces_and_reference() -> None:
-    langfuse = LangfuseClient()
+    langfuse = DefaultLangfuseGateway()
     provider = FakeModelProvider(
         response=ModelResponse(
             output="baseline output",
@@ -24,7 +24,7 @@ def test_run_baseline_records_traces_and_reference() -> None:
         )
     )
     runner = ExperimentRunner(
-        langfuse_client=langfuse,
+        langfuse_gateway=langfuse,
         provider_factory=lambda _config: provider,
     )
 
@@ -43,10 +43,10 @@ def test_run_baseline_records_traces_and_reference() -> None:
 
 
 def test_run_baseline_can_skip_automatic_review_selection() -> None:
-    langfuse = LangfuseClient()
+    langfuse = DefaultLangfuseGateway()
     provider = FakeModelProvider(response=ModelResponse(output="baseline output"))
     runner = ExperimentRunner(
-        langfuse_client=langfuse,
+        langfuse_gateway=langfuse,
         provider_factory=lambda _config: provider,
     )
 
@@ -62,10 +62,10 @@ def test_run_baseline_can_skip_automatic_review_selection() -> None:
 
 
 def test_run_baseline_can_skip_sync_calls() -> None:
-    langfuse = LangfuseClient()
+    langfuse = DefaultLangfuseGateway()
     provider = FakeModelProvider(response=ModelResponse(output="baseline output"))
     runner = ExperimentRunner(
-        langfuse_client=langfuse,
+        langfuse_gateway=langfuse,
         provider_factory=lambda _config: provider,
     )
 
@@ -84,10 +84,10 @@ def test_run_baseline_can_skip_sync_calls() -> None:
 
 
 def test_run_baseline_skip_sync_applies_to_automatic_review_selection(tmp_path) -> None:
-    langfuse = LangfuseClient()
+    langfuse = DefaultLangfuseGateway()
     provider = FakeModelProvider(response=ModelResponse(output="baseline output"))
     runner = ExperimentRunner(
-        langfuse_client=langfuse,
+        langfuse_gateway=langfuse,
         provider_factory=lambda _config: provider,
     )
     runner.annotation_queue_store = AnnotationQueueReferenceStore(tmp_path)
@@ -110,7 +110,7 @@ def test_run_baseline_skip_sync_applies_to_automatic_review_selection(tmp_path) 
 def test_role_based_baseline_passes_ordered_messages_to_provider() -> None:
     provider = FakeModelProvider()
     runner = ExperimentRunner(
-        langfuse_client=LangfuseClient(),
+        langfuse_gateway=DefaultLangfuseGateway(),
         provider_factory=lambda _config: provider,
     )
 
@@ -129,7 +129,7 @@ def test_role_based_baseline_passes_ordered_messages_to_provider() -> None:
 def test_unsupported_role_provider_fails_before_generate() -> None:
     provider = FakeModelProvider()
     runner = ExperimentRunner(
-        langfuse_client=LangfuseClient(),
+        langfuse_gateway=DefaultLangfuseGateway(),
         provider_factory=lambda _config: provider,
     )
 
@@ -143,10 +143,10 @@ def test_unsupported_role_provider_fails_before_generate() -> None:
 
 
 def test_run_baseline_records_failed_call_context() -> None:
-    langfuse = LangfuseClient()
+    langfuse = DefaultLangfuseGateway()
     provider = FakeModelProvider(scenario="timeout")
     runner = ExperimentRunner(
-        langfuse_client=langfuse,
+        langfuse_gateway=langfuse,
         provider_factory=lambda _config: provider,
     )
 

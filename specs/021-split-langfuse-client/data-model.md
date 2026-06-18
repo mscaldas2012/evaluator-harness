@@ -1,28 +1,27 @@
 # Data Model: Split Langfuse Client
 
-## Langfuse Client Facade
+## Legacy Langfuse Client Facade
 
-**Purpose**: Stable public entry point used by existing harness workflows.
+**Purpose**: Deprecated former entry point for Langfuse workflows.
 
 **Fields/State**:
 
-- `gateway`: selected Langfuse boundary implementation.
-- `settings`: current live/in-memory configuration and credentials metadata.
-- `progress_reporter`: existing progress surface.
+- No active workflow state in the target architecture.
+- If retained, only minimal compatibility metadata needed to direct users to gateway-backed workflows.
 
 **Relationships**:
 
-- Delegates workflow operations to `LangfuseGateway`.
-- Does not expose whether the backing implementation is in-memory, SDK-backed, or REST-compatible.
+- Must not be used by active internal project workflows.
+- Must not own dataset, run, trace, score, prompt, evaluator, annotation queue, retry, REST fallback, or mapping behavior.
 
 **Validation Rules**:
 
-- Must preserve current public method names and caller expectations.
-- Must not require project YAML or CLI changes.
+- Internal source and tests must not depend on it for workflow execution.
+- Any remaining symbol must be documented as deprecated.
 
 ## Langfuse Gateway
 
-**Purpose**: Boundary for Langfuse dataset, run, trace, score, prompt, evaluator, and annotation queue operations.
+**Purpose**: Active internal boundary for Langfuse dataset, run, trace, score, prompt, evaluator, baseline, and annotation queue operations.
 
 **Operations**:
 
@@ -38,15 +37,38 @@
 **Relationships**:
 
 - Implemented by in-memory, SDK-backed, and fallback-capable live behavior.
-- Uses mapper functions to produce stable records.
-- Uses retry/error policy for live operations.
+- Constructed through gateway factory inputs derived from existing project/runtime settings.
+- Used directly or through focused owner modules by active project workflows.
 
 **Validation Rules**:
 
 - Must return stable internal records or raise explicit harness errors.
 - Must keep secret values out of errors and records intended for logs.
+- Must preserve dry-run and live-compatible behavior.
 
-## In-Memory Langfuse Behavior
+## Gateway Construction Context
+
+**Purpose**: Carries the runtime values needed to construct the correct Langfuse gateway without relying on `LangfuseClient`.
+
+**Fields/State**:
+
+- Live settings and credentials metadata.
+- Optional SDK client handle.
+- Optional REST fallback inputs.
+- In-memory/test-mode selection signals.
+- Progress reporter where applicable.
+
+**Relationships**:
+
+- Created by runner/CLI orchestration or helper modules.
+- Passed to the gateway factory.
+
+**Validation Rules**:
+
+- Must not require project YAML changes.
+- Must select in-memory behavior without live credentials for tests and dry runs.
+
+## In-Memory Langfuse Gateway
 
 **Purpose**: Deterministic local implementation for tests, dry runs, and developer workflows without live credentials.
 
@@ -68,10 +90,9 @@
 **Validation Rules**:
 
 - Must be deterministic.
-- Must not require live credentials.
 - Must expose the same internal record shapes as live-compatible behavior.
 
-## Live Langfuse Behavior
+## SDK Langfuse Gateway
 
 **Purpose**: SDK-backed implementation for supported live Langfuse capabilities.
 
@@ -80,6 +101,7 @@
 - SDK client handle.
 - Live settings needed for host, credentials, and workspace access.
 - Retry policy.
+- REST fallback gateway for SDK gaps.
 
 **Relationships**:
 
@@ -114,7 +136,7 @@
 
 ## Langfuse Records
 
-**Purpose**: Typed internal records consumed by the facade and downstream harness modules.
+**Purpose**: Typed internal records consumed by gateways, owner modules, and downstream harness modules.
 
 **Record Types**:
 
@@ -133,35 +155,39 @@
 
 - Identifiers required by downstream code must be non-null before records are returned.
 - Optional external fields must have explicit defaults.
-- External dictionaries and SDK objects must be normalized before use by workflow code.
+- External dictionaries and SDK objects must be normalized before workflow code consumes them.
 
-## Retry and Error Policy
+## Focused Owner Modules
 
-**Purpose**: Shared behavior for bounded retry, retry-after parsing, contextual operation naming, and secret redaction.
+**Purpose**: Own workflow orchestration by Langfuse responsibility without centralizing behavior in a facade.
 
-**Fields/State**:
+**Owner Areas**:
 
-- Retry attempts.
-- Retry interval and backoff rules.
-- Retryable status/error classification.
-- Operation name.
+- Dataset sync and run item recording.
+- Score config synchronization.
+- Prompt version lookup and creation.
+- Trace retrieval and output lookup.
+- Score retrieval.
+- Baseline lookup.
+- Evaluator operations.
+- Annotation queue operations.
+- Observation/span operations.
+- Retry and redaction policy.
 
 **Relationships**:
 
-- Used by SDK and REST-compatible live behavior.
-- Raises `LangfuseError` with sanitized context.
+- Use the gateway boundary and typed records.
+- Are called by runner, CLI support modules, scripts, and tests.
 
 **Validation Rules**:
 
-- Must not retry indefinitely.
-- Must preserve current operation-specific error messages where tests assert them.
-- Must not include secret values in output.
+- Must not import or depend on `LangfuseClient`.
+- Must keep behavior local to their responsibility area.
 
 ## State Transitions
 
-- **Facade construction**: settings determine whether in-memory or live-compatible behavior is selected.
-- **Live operation**: facade delegates to gateway, gateway applies retry/error policy, external objects are normalized into internal records, facade returns compatibility output.
-- **Fallback operation**: live gateway detects an unsupported SDK capability and delegates to REST-compatible behavior.
+- **Gateway construction**: runtime settings determine whether in-memory or live-compatible behavior is selected.
+- **Live operation**: caller delegates to gateway or owner module, gateway applies retry/error policy, external objects are normalized into records, caller receives compatibility output.
+- **Fallback operation**: live gateway detects unsupported SDK capability and delegates to REST-compatible behavior.
 - **Failure**: retry policy classifies the failure, retries if allowed, then raises sanitized `LangfuseError` with operation context.
-- **Quality acceptance**: reports are regenerated after implementation and compared with the current baseline.
-
+- **Legacy deprecation**: internal callers migrate away from `LangfuseClient`; any remaining symbol is removed or retained only as documented non-runtime compatibility.

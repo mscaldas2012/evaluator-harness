@@ -2,23 +2,23 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from evaluator_harness.langfuse_client import LangfuseClient
+from evaluator_harness.langfuse_default_gateway import DefaultLangfuseGateway
 from evaluator_harness.providers.base import ModelResponse
 from evaluator_harness.runner import ExperimentRunner
 from tests.fixtures.fake_provider import FakeModelProvider
 
 
 def test_dry_run_candidate_reuses_langfuse_baseline_across_runner_instances() -> None:
-    langfuse = LangfuseClient()
+    langfuse = DefaultLangfuseGateway()
     baseline_runner = ExperimentRunner(
-        langfuse_client=langfuse,
+        langfuse_gateway=langfuse,
         provider_factory=lambda _config: FakeModelProvider(
             response=ModelResponse(output="baseline output")
         ),
     )
     baseline = baseline_runner.run(Path("configs/projects/rewrite_quality.yaml"), "baseline")
 
-    candidate_runner = ExperimentRunner(langfuse_client=langfuse)
+    candidate_runner = ExperimentRunner(langfuse_gateway=langfuse)
     candidate = candidate_runner.run(
         Path("configs/projects/rewrite_quality.yaml"),
         "candidate",
@@ -34,9 +34,9 @@ def test_dry_run_candidate_reuses_langfuse_baseline_across_runner_instances() ->
 
 
 def test_candidate_partial_failures_record_successful_and_failed_items() -> None:
-    langfuse = LangfuseClient()
+    langfuse = DefaultLangfuseGateway()
     baseline_runner = ExperimentRunner(
-        langfuse_client=langfuse,
+        langfuse_gateway=langfuse,
         provider_factory=lambda _config: FakeModelProvider(
             response=ModelResponse(output="baseline output")
         ),
@@ -50,7 +50,7 @@ def test_candidate_partial_failures_record_successful_and_failed_items() -> None
             return ModelResponse(output="candidate output")
 
     runner = ExperimentRunner(
-        langfuse_client=langfuse,
+        langfuse_gateway=langfuse,
         provider_factory=lambda _config: PartialProvider(),
     )
     candidate = runner.run(

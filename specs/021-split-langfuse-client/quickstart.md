@@ -54,15 +54,64 @@ Final Phase 5/6 verification snapshot:
 - Quality report regenerated under `reports/quality/`; import-linter and Radon gates passed, while repo-wide Ruff, Ruff format, Pyright, pytest coverage save, and coverage summary remain failing gates
 - `graphify update .` completed after code changes and refreshed `graphify-out/`
 
+Final Phase 7 query split verification snapshot:
+
+- Focused owner-module query tests passed: `17 passed`
+- Facade/gateway regression tests passed: `19 passed`
+- Phase 7 touched-file Ruff check passed
+- Exact broad query split Ruff command still fails on pre-existing findings in `langfuse_evaluator_setup.py`, `tests/unit/test_langfuse_evaluator_rest.py`, and `tests/unit/test_langfuse_trace_ids.py`
+- `src\evaluator_harness\langfuse_queries.py` was removed after all source and test imports moved to focused owner modules
+- New owner module Radon maintainability:
+  - `src\evaluator_harness\langfuse_baselines.py - A (27.24)`
+  - `src\evaluator_harness\langfuse_prompts.py - A (35.24)`
+  - `src\evaluator_harness\langfuse_scores.py - A (46.35)`
+  - `src\evaluator_harness\langfuse_settings.py - A (65.47)`
+  - `src\evaluator_harness\langfuse_traces.py - A (23.76)`
+- New owner module Radon complexity has no D-ranked blocks; highest remaining query workflow blocks are C-ranked in baseline and trace workflows
+
+Final Phase 8 legacy client removal snapshot:
+
+- `src\evaluator_harness\langfuse_client.py` was removed.
+- The default concrete gateway/state holder is now `src\evaluator_harness\langfuse_default_gateway.py`.
+- Active source, tests, and scripts no longer contain `LangfuseClient`, `langfuse_client`, or `test_langfuse_client_facade`.
+- Boundary search passed with no matches:
+  `rg "LangfuseClient|langfuse_client|test_langfuse_client_facade" src tests scripts`
+- Boundary and runtime gateway tests passed: `5 passed`.
+- Broad non-live suite passed: `537 passed, 9 deselected`.
+- Migration-scoped Ruff passed for `langfuse_default_gateway.py`, gateway modules, boundary tests, quality baseline test, and default gateway integration test.
+- Radon maintainability reports `src\evaluator_harness\langfuse_default_gateway.py - A (26.86)`.
+- Live suite selected 9 tests: `1 passed`, `8 failed` because Langfuse HTTP calls were refused with `[WinError 10061]`.
+- `graphify update .` completed after runtime migration changes.
+
+Final direct gateway dependency snapshot:
+
+- `ExperimentRunner` depends on the `LangfuseGateway` protocol and receives a gateway instance through constructor injection.
+- Gateway construction is centralized in `src\evaluator_harness\langfuse_gateways.py` through `build_default_langfuse_gateway()` and `build_langfuse_gateway_from_env()`.
+- `DefaultLangfuseGateway` remains the concrete in-memory/live state owner, but it is no longer exposed as a runtime facade dependency for project workflows.
+- Active source, tests, and scripts no longer contain `LangfuseRuntime`, `langfuse_runtime`, `LangfuseClient`, or `langfuse_client`.
+- Boundary search passed with no matches:
+  `rg "LangfuseRuntime|langfuse_runtime|LangfuseClient|langfuse_client" src tests scripts`
+- Focused gateway migration regression suite passed: `80 passed`.
+- Focused Ruff checks passed for migrated gateway files and touched runner/script imports.
+
 ## Implementation Checkpoints
 
-1. Keep `LangfuseClient` as the public compatibility facade.
-2. Extract mapper behavior into focused normalization functions with tests.
-3. Extract in-memory behavior behind the same boundary as live behavior.
-4. Extract SDK-backed live behavior and REST-compatible fallback behavior.
-5. Extract retry/error handling so live operations use one redaction policy.
-6. Update facade methods to delegate to the new focused modules.
-7. Preserve current CLI, YAML, and caller behavior.
+1. Do not keep a `LangfuseClient` symbol or `langfuse_client.py` module in active source.
+2. Route active project workflows through the Langfuse gateway boundary, gateway factory, concrete gateways, and focused owner modules.
+3. Preserve current CLI, YAML, dataset, run, export, review, and Langfuse metadata behavior.
+4. Preserve deterministic in-memory behavior for tests and dry runs without live credentials.
+5. Preserve SDK-backed live behavior and REST-compatible fallback behavior.
+6. Preserve retry/error handling and secret redaction.
+7. Keep Langfuse query business logic in focused owner modules; `langfuse_queries.py` is no longer part of the implementation.
+8. Use `LangfuseGateway` as the active project dependency; concrete gateway classes remain behind gateway builders.
+
+## Verify Legacy Client Migration
+
+```powershell
+rg "LangfuseRuntime|langfuse_runtime|LangfuseClient|langfuse_client" src tests scripts
+```
+
+Expected result: no matches in active source, tests, or scripts.
 
 ## Verify Non-Live Behavior
 
@@ -86,6 +135,6 @@ uv run python scripts/quality_report.py
 
 Acceptance checks:
 
-- `langfuse_client.py` maintainability improves from `C (0.00)`.
-- No D-ranked complexity blocks remain in the public client facade.
+- `langfuse_client.py` is removed.
+- Internal project workflows use the gateway boundary and focused owner modules.
 - Changed Langfuse-related files introduce no new Ruff or Pyright diagnostic categories.

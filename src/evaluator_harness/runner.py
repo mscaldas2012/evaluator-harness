@@ -3,20 +3,13 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
-from collections.abc import Callable
 from uuid import uuid4
 
-from evaluator_harness.baseline_registry import (
-    BaselineFingerprint,
-    BaselineRegistry,
-    build_baseline_fingerprint,
-    fingerprint_metadata,
-)
-from evaluator_harness.certificates import configure_tls_truststore
 from evaluator_harness.annotation_queues import (
     AnnotationQueueReferenceStore,
     AnnotationQueueSyncResult,
@@ -24,28 +17,40 @@ from evaluator_harness.annotation_queues import (
     resolve_annotation_queue,
     sync_annotation_queue,
 )
+from evaluator_harness.baseline_registry import (
+    BaselineFingerprint,
+    BaselineRegistry,
+    build_baseline_fingerprint,
+    fingerprint_metadata,
+)
+from evaluator_harness.certificates import configure_tls_truststore
+from evaluator_harness.comparison_reports import (
+    ComparisonReportOutput,
+    create_comparison_reports,
+)
 from evaluator_harness.config import (
     BaselineReference,
     DatasetItem,
     DatasetKind,
-    load_env_file,
-    load_layered_env_files,
     ModelConfig,
     ProjectConfig,
-    project_env_file_path,
+    load_env_file,
+    load_layered_env_files,
     load_project_config,
+    project_env_file_path,
     scenario_metadata,
     validate_project_config,
 )
 from evaluator_harness.dataset_loader import dataset_compatibility_version, load_dataset
 from evaluator_harness.errors import ConfigError, HarnessError
+from evaluator_harness.evaluator_bindings import load_evaluator_bindings
 from evaluator_harness.evaluators import (
     evaluator_score_summary,
     evaluator_target_summary,
     export_evaluator_setup,
     render_judge_prompts,
 )
-from evaluator_harness.evaluator_bindings import load_evaluator_bindings
+from evaluator_harness.excel_reports import WorkbookOutput
 from evaluator_harness.exports import ExportResult, export_summary
 from evaluator_harness.langfuse_evaluator_setup import (
     EvaluatorSetupResult,
@@ -53,10 +58,14 @@ from evaluator_harness.langfuse_evaluator_setup import (
     audit_judge_evaluator_setup,
     plan_judge_evaluator_setup,
 )
-from evaluator_harness.langfuse_client import (
+from evaluator_harness.langfuse_gateways import (
+    LangfuseGateway,
+    build_default_langfuse_gateway,
+    build_langfuse_gateway_from_env,
+)
+from evaluator_harness.langfuse_records import (
     AnnotationRoutingResult,
     DatasetSyncResult,
-    LangfuseClient,
     ScoreConfigSyncResult,
 )
 from evaluator_harness.model_output_targeting import (
@@ -64,38 +73,34 @@ from evaluator_harness.model_output_targeting import (
     RUN_ITEM_ROLE,
     diagnose_model_output_targeting,
     final_output_metadata,
-    parent_observation_metadata,
     metadata_with_observation_role,
-)
-from evaluator_harness.providers import create_provider
-from evaluator_harness.providers import provider_tracing_metadata
-from evaluator_harness.providers.base import (
-    ModelProvider,
-    ModelRequest,
-    validate_provider_roles,
+    parent_observation_metadata,
 )
 from evaluator_harness.progress import NullProgressReporter, ProgressReporter
-from evaluator_harness.prompts import (
-    RenderedPrompt,
-    parse_prompt_file,
-    prompt_identity as prompt_file_identity,
-    render_prompt,
-)
 from evaluator_harness.prompt_sync import (
     PromptSyncReport,
     prompt_provenance_metadata,
     sync_project_prompts,
+)
+from evaluator_harness.prompts import (
+    RenderedPrompt,
+    parse_prompt_file,
+    render_prompt,
+)
+from evaluator_harness.prompts import (
+    prompt_identity as prompt_file_identity,
+)
+from evaluator_harness.providers import create_provider, provider_tracing_metadata
+from evaluator_harness.providers.base import (
+    ModelProvider,
+    ModelRequest,
+    validate_provider_roles,
 )
 from evaluator_harness.review_selection import (
     ReviewCandidate,
     SampleStrategy,
     select_review_items,
 )
-from evaluator_harness.comparison_reports import (
-    ComparisonReportOutput,
-    create_comparison_reports,
-)
-from evaluator_harness.excel_reports import WorkbookOutput
 from evaluator_harness.session_identity import (
     SessionIdentityInputs,
     item_comparison_session_id,
@@ -180,15 +185,15 @@ class ExperimentRunner:
     def __init__(
         self,
         *,
-        langfuse_client: LangfuseClient | None = None,
+        langfuse_gateway: LangfuseGateway | None = None,
         provider_factory: Any | None = None,
         baseline_registry: BaselineRegistry | None = None,
         progress: ProgressReporter | None = None,
     ) -> None:
         configure_tls_truststore()
         load_env_file()
-        self._langfuse_client_provided = langfuse_client is not None
-        self.langfuse_client = langfuse_client or LangfuseClient()
+        self._langfuse_gateway_provided = langfuse_gateway is not None
+        self.langfuse_gateway = langfuse_gateway or build_default_langfuse_gateway()
         self.provider_factory = provider_factory or create_provider
         self.baseline_registry = baseline_registry or BaselineRegistry()
         self.annotation_queue_store = AnnotationQueueReferenceStore()
@@ -201,10 +206,10 @@ class ExperimentRunner:
             project_env_file=project_env_file_path(config.project.name),
         )
         if (
-            not self._langfuse_client_provided
+            not self._langfuse_gateway_provided
             and os.getenv("EVALUATOR_HARNESS_LIVE") in {"1", "true", "TRUE", "yes"}
         ):
-            self.langfuse_client = LangfuseClient.from_env()
+            self.langfuse_gateway = build_langfuse_gateway_from_env()
         return config
 
     def validate_project(self, project_path: Path) -> ValidationResult:
@@ -243,7 +248,7 @@ class ExperimentRunner:
         config = self._load_project_config(project_path)
         validate_project_config(config)
         items = self._validate_dataset(config)
-        return self.langfuse_client.sync_dataset(
+        return self.langfuse_gateway.sync_dataset(
             config.dataset,
             items,
             dry_run=dry_run,
@@ -258,7 +263,7 @@ class ExperimentRunner:
     ) -> list[ScoreConfigSyncResult]:
         config = self._load_project_config(project_path)
         validate_project_config(config)
-        return self.langfuse_client.sync_score_configs(
+        return self.langfuse_gateway.sync_score_configs(
             config,
             progress=self.progress,
             dry_run=dry_run,
@@ -294,7 +299,7 @@ class ExperimentRunner:
         validate_project_config(config)
         return sync_project_prompts(
             config,
-            self.langfuse_client,
+            self.langfuse_gateway,
             dry_run=dry_run,
             progress=self.progress,
         )
@@ -352,7 +357,7 @@ class ExperimentRunner:
         effective_score_results = (
             score_results
             if score_results is not None
-            else self.langfuse_client.sync_score_configs(
+            else self.langfuse_gateway.sync_score_configs(
                 config,
                 progress=self.progress,
                 dry_run=dry_run,
@@ -365,7 +370,7 @@ class ExperimentRunner:
         if audit:
             return audit_judge_evaluator_setup(
                 config,
-                self.langfuse_client,
+                self.langfuse_gateway,
                 effective_score_results,
                 bindings=bindings,
                 progress=self.progress,
@@ -373,14 +378,14 @@ class ExperimentRunner:
         if dry_run:
             return plan_judge_evaluator_setup(
                 config,
-                self.langfuse_client,
+                self.langfuse_gateway,
                 effective_score_results,
                 bindings=bindings,
                 progress=self.progress,
             )
         return apply_judge_evaluator_setup(
             config,
-            self.langfuse_client,
+            self.langfuse_gateway,
             effective_score_results,
             progress=self.progress,
         )
@@ -397,7 +402,7 @@ class ExperimentRunner:
         effective_score_results = (
             score_results
             if score_results is not None
-            else self.langfuse_client.sync_score_configs(
+            else self.langfuse_gateway.sync_score_configs(
                 config,
                 progress=self.progress,
                 dry_run=dry_run,
@@ -407,7 +412,7 @@ class ExperimentRunner:
         )
         return sync_annotation_queue(
             config,
-            self.langfuse_client,
+            self.langfuse_gateway,
             effective_score_results,
             store=self.annotation_queue_store,
             dry_run=dry_run,
@@ -426,12 +431,12 @@ class ExperimentRunner:
         if skip_sync:
             dataset_sync = self._skip_sync_dataset_result(config, items)
         else:
-            dataset_sync = self.langfuse_client.sync_dataset(
+            dataset_sync = self.langfuse_gateway.sync_dataset(
                 config.dataset,
                 items,
                 progress=self.progress,
             )
-            self.langfuse_client.sync_score_configs(config, progress=self.progress)
+            self.langfuse_gateway.sync_score_configs(config, progress=self.progress)
         if mode == "baseline":
             result = self._run_baseline(config, items, dataset_sync)
         else:
@@ -507,7 +512,7 @@ class ExperimentRunner:
                 reasons={},
             )
         score_results = (
-            self.langfuse_client.sync_score_configs(config, progress=self.progress)
+            self.langfuse_gateway.sync_score_configs(config, progress=self.progress)
             if (
                 config.human_review.queue_ownership == "managed_by_harness"
                 and not skip_sync
@@ -520,7 +525,7 @@ class ExperimentRunner:
                 if skip_sync
                 else resolve_annotation_queue(
                     config,
-                    self.langfuse_client,
+                    self.langfuse_gateway,
                     score_results,
                     store=self.annotation_queue_store,
                 )
@@ -537,7 +542,7 @@ class ExperimentRunner:
             if name
         ]
         with self.progress.task("Fetching review traces", total=None):
-            traces = self.langfuse_client.traces_for_run(
+            traces = self.langfuse_gateway.traces_for_run(
                 run_id,
                 dataset_names=dataset_names or None,
             )
@@ -546,7 +551,7 @@ class ExperimentRunner:
             for trace in traces
             if trace.get("trace_id") is not None
         ]
-        scores = self.langfuse_client.fetch_scores(
+        scores = self.langfuse_gateway.fetch_scores(
             run_id,
             trace_ids=trace_ids,
             progress=self.progress,
@@ -556,7 +561,7 @@ class ExperimentRunner:
             for trace in traces
         ]
         with self.progress.task("Checking existing review items", total=None):
-            existing_review_trace_ids = self.langfuse_client.annotation_queue_object_ids(
+            existing_review_trace_ids = self.langfuse_gateway.annotation_queue_object_ids(
                 queue.queue_id
             )
         unqueued_candidates = [
@@ -589,11 +594,11 @@ class ExperimentRunner:
         with self.progress.task("Building review payloads", total=len(selections)) as task:
             for selection in selections:
                 payloads.append(
-                    self.langfuse_client.build_annotation_queue_payload(config, selection)
+                    self.langfuse_gateway.build_annotation_queue_payload(config, selection)
                 )
                 task.advance()
         with self.progress.task("Routing review items", total=None):
-            routing: AnnotationRoutingResult = self.langfuse_client.route_annotation_items(
+            routing: AnnotationRoutingResult = self.langfuse_gateway.route_annotation_items(
                 queue.queue_id,
                 payloads,
             )
@@ -682,7 +687,7 @@ class ExperimentRunner:
             if name
         ]
         with self.progress.task("Fetching traces", total=None):
-            traces = self.langfuse_client.traces_for_run(
+            traces = self.langfuse_gateway.traces_for_run(
                 run_id,
                 dataset_names=dataset_names or None,
                 expected_count=expected_count,
@@ -692,7 +697,7 @@ class ExperimentRunner:
             for trace in traces
             if trace.get("trace_id") is not None
         ]
-        scores = self.langfuse_client.fetch_scores(
+        scores = self.langfuse_gateway.fetch_scores(
             run_id,
             trace_ids=trace_ids,
             progress=self.progress,
@@ -867,7 +872,7 @@ class ExperimentRunner:
     ) -> Any:
         if not self._uses_manual_generation_observation(provider):
             return provider.generate(request)
-        with self.langfuse_client.generation_span(
+        with self.langfuse_gateway.generation_span(
             name="OpenAI-generation",
             input=prompt,
             metadata=final_output_metadata(request.metadata),
@@ -876,7 +881,7 @@ class ExperimentRunner:
             session_id=str(request.metadata.get("item_comparison_session_id") or ""),
         ) as generation_observation:
             response = provider.generate(request)
-            self.langfuse_client.update_generation_span(
+            self.langfuse_gateway.update_generation_span(
                 generation_observation,
                 response,
             )
@@ -885,7 +890,7 @@ class ExperimentRunner:
     def _uses_manual_generation_observation(self, provider: ModelProvider) -> bool:
         return bool(
             getattr(provider, "uses_manual_langfuse_generation", False)
-            and self.langfuse_client.supports_observation_spans()
+            and self.langfuse_gateway.supports_observation_spans()
         )
 
     def _run_baseline(
@@ -910,7 +915,7 @@ class ExperimentRunner:
             **fingerprint_metadata(fingerprint),
         )
 
-        self.langfuse_client.create_run(
+        self.langfuse_gateway.create_run(
             run_id=run_id,
             run_name=run_name,
             run_type="baseline",
@@ -927,7 +932,7 @@ class ExperimentRunner:
         failed = 0
         baseline_prompt_ref = config.task_prompt
         for item in self._progress_items("Running baseline items", items):
-            trace_id = self.langfuse_client.create_trace_id(f"{run_id}:{item.item_id}")
+            trace_id = self.langfuse_gateway.create_trace_id(f"{run_id}:{item.item_id}")
             trace_name = self._trace_name(config, run_type="baseline", item=item)
             rendered_prompt = self._render_prompt_payload(baseline_prompt_ref, item)
             prompt = rendered_prompt.display_text
@@ -958,14 +963,14 @@ class ExperimentRunner:
                 rendered_prompt=rendered_prompt,
             )
             parent_metadata = parent_observation_metadata(request.metadata)
-            with self.langfuse_client.trace_span(
+            with self.langfuse_gateway.trace_span(
                 trace_id=trace_id,
                 name=trace_name,
                 input=item.input,
                 metadata=parent_metadata,
                 session_id=session_id,
             ) as parent_observation:
-                parent_observation_id = self.langfuse_client.observation_id(
+                parent_observation_id = self.langfuse_gateway.observation_id(
                     parent_observation
                 )
                 if parent_observation_id:
@@ -1001,10 +1006,10 @@ class ExperimentRunner:
                         session_id=session_id,
                         session_inputs=session_inputs,
                     )
-                    if self.langfuse_client.update_trace_span(parent_observation, trace):
+                    if self.langfuse_gateway.update_trace_span(parent_observation, trace):
                         trace["_live_observation_logged"] = True
-                    self.langfuse_client.log_trace(trace)
-                    self.langfuse_client.record_dataset_run_item(
+                    self.langfuse_gateway.log_trace(trace)
+                    self.langfuse_gateway.record_dataset_run_item(
                         dataset_sync=dataset_sync,
                         item_id=item.item_id,
                         run_name=run_id,
@@ -1012,7 +1017,7 @@ class ExperimentRunner:
                         observation_id=parent_observation_id,
                         metadata=trace["metadata"],
                     )
-                    self.langfuse_client.enqueue_baseline_evaluator_payload(
+                    self.langfuse_gateway.enqueue_baseline_evaluator_payload(
                         {
                             "run_id": run_id,
                             "trace_id": trace_id,
@@ -1053,10 +1058,10 @@ class ExperimentRunner:
                         session_id=session_id,
                         session_inputs=session_inputs,
                     )
-                    if self.langfuse_client.update_trace_span(parent_observation, trace):
+                    if self.langfuse_gateway.update_trace_span(parent_observation, trace):
                         trace["_live_observation_logged"] = True
-                    self.langfuse_client.log_trace(trace)
-                    self.langfuse_client.record_dataset_run_item(
+                    self.langfuse_gateway.log_trace(trace)
+                    self.langfuse_gateway.record_dataset_run_item(
                         dataset_sync=dataset_sync,
                         item_id=item.item_id,
                         run_name=run_id,
@@ -1066,7 +1071,7 @@ class ExperimentRunner:
                     )
 
         self.baseline_registry.record(run_id, fingerprint, reference)
-        self.langfuse_client.record_baseline_reference(run_id, reference)
+        self.langfuse_gateway.record_baseline_reference(run_id, reference)
         targeting = self._diagnose_run_model_output_targeting(
             run_id=run_id,
             completed_count=completed,
@@ -1096,7 +1101,7 @@ class ExperimentRunner:
             dataset_name=dataset_sync.name,
             dataset_version=dataset_sync.compatibility_version,
         )
-        baseline_reference = self.langfuse_client.lookup_baseline(
+        baseline_reference = self.langfuse_gateway.lookup_baseline(
             selector=baseline_selector,
             fingerprint=fingerprint,
         )
@@ -1111,7 +1116,7 @@ class ExperimentRunner:
             else:
                 baseline_reference = (
                     self.baseline_registry.reference_for(baseline_run_id)
-                    or self.langfuse_client.baseline_references.get(baseline_run_id)
+                    or self.langfuse_gateway.baseline_references.get(baseline_run_id)
                 )
         baseline_run_id = (
             baseline_reference.baseline_run_id
@@ -1130,7 +1135,7 @@ class ExperimentRunner:
         candidate_parameter_identity = parameter_identity(candidate)
         candidate_generation_parameter_hash = generation_parameter_hash(candidate)
         candidate_variant_identity = variant_identity(config, candidate)
-        self.langfuse_client.create_run(
+        self.langfuse_gateway.create_run(
             run_id=run_id,
             run_name=run_name,
             run_type="candidate",
@@ -1155,7 +1160,7 @@ class ExperimentRunner:
         failed = 0
         candidate_prompt_ref = candidate.task_prompt or config.task_prompt
         for item in self._progress_items("Running candidate items", items):
-            trace_id = self.langfuse_client.create_trace_id(f"{run_id}:{item.item_id}")
+            trace_id = self.langfuse_gateway.create_trace_id(f"{run_id}:{item.item_id}")
             trace_name = self._trace_name(
                 config,
                 run_type="candidate",
@@ -1194,14 +1199,14 @@ class ExperimentRunner:
                 rendered_prompt=rendered_prompt,
             )
             parent_metadata = parent_observation_metadata(request.metadata)
-            with self.langfuse_client.trace_span(
+            with self.langfuse_gateway.trace_span(
                 trace_id=trace_id,
                 name=trace_name,
                 input=item.input,
                 metadata=parent_metadata,
                 session_id=session_id,
             ) as parent_observation:
-                parent_observation_id = self.langfuse_client.observation_id(
+                parent_observation_id = self.langfuse_gateway.observation_id(
                     parent_observation
                 )
                 if parent_observation_id:
@@ -1240,10 +1245,10 @@ class ExperimentRunner:
                         session_id=session_id,
                         session_inputs=session_inputs,
                     )
-                    if self.langfuse_client.update_trace_span(parent_observation, trace):
+                    if self.langfuse_gateway.update_trace_span(parent_observation, trace):
                         trace["_live_observation_logged"] = True
-                    self.langfuse_client.log_trace(trace)
-                    self.langfuse_client.record_dataset_run_item(
+                    self.langfuse_gateway.log_trace(trace)
+                    self.langfuse_gateway.record_dataset_run_item(
                         dataset_sync=dataset_sync,
                         item_id=item.item_id,
                         run_name=run_id,
@@ -1251,14 +1256,14 @@ class ExperimentRunner:
                         observation_id=parent_observation_id,
                         metadata=trace["metadata"],
                     )
-                    self.langfuse_client.enqueue_candidate_evaluator_payload(
+                    self.langfuse_gateway.enqueue_candidate_evaluator_payload(
                         {
                             "run_id": run_id,
                             "trace_id": trace_id,
                             "item_id": item.item_id,
                             "input": item.input,
                             "output": response.output,
-                            "baseline_output": self.langfuse_client.output_for(
+                            "baseline_output": self.langfuse_gateway.output_for(
                                 run_id=baseline_run_id,
                                 item_id=item.item_id,
                             ),
@@ -1298,10 +1303,10 @@ class ExperimentRunner:
                         session_id=session_id,
                         session_inputs=session_inputs,
                     )
-                    if self.langfuse_client.update_trace_span(parent_observation, trace):
+                    if self.langfuse_gateway.update_trace_span(parent_observation, trace):
                         trace["_live_observation_logged"] = True
-                    self.langfuse_client.log_trace(trace)
-                    self.langfuse_client.record_dataset_run_item(
+                    self.langfuse_gateway.log_trace(trace)
+                    self.langfuse_gateway.record_dataset_run_item(
                         dataset_sync=dataset_sync,
                         item_id=item.item_id,
                         run_name=run_id,
@@ -1543,7 +1548,7 @@ class ExperimentRunner:
         run_id: str,
         completed_count: int,
     ):
-        if self.langfuse_client.supports_observation_spans():
+        if self.langfuse_gateway.supports_observation_spans():
             from evaluator_harness.model_output_targeting import (
                 ModelOutputTargetingDiagnostic,
             )
@@ -1567,7 +1572,7 @@ class ExperimentRunner:
                     str((trace.get("metadata") or {}).get("observation_role") or RUN_ITEM_ROLE),
                 ),
             }
-            for trace in self.langfuse_client.traces_for_run(run_id)
+            for trace in self.langfuse_gateway.traces_for_run(run_id)
         ]
         return diagnose_model_output_targeting(
             observations,

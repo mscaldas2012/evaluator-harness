@@ -4,13 +4,13 @@ from pathlib import Path
 from uuid import uuid4
 
 from evaluator_harness.annotation_queues import AnnotationQueueReferenceStore
-from evaluator_harness.langfuse_client import LangfuseClient
+from evaluator_harness.langfuse_default_gateway import DefaultLangfuseGateway
 from evaluator_harness.runner import ExperimentRunner
 
 
 def test_sync_annotation_queue_is_idempotent_with_fake_langfuse() -> None:
-    client = LangfuseClient()
-    runner = ExperimentRunner(langfuse_client=client)
+    client = DefaultLangfuseGateway()
+    runner = ExperimentRunner(langfuse_gateway=client)
     runner.annotation_queue_store = AnnotationQueueReferenceStore(
         Path(".evaluator-harness/test-artifacts") / uuid4().hex / "queue-references"
     )

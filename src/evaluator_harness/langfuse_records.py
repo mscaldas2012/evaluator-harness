@@ -16,6 +16,16 @@ class DatasetRecord:
 
 
 @dataclass(frozen=True)
+class DatasetSyncResult:
+    name: str
+    version: str
+    compatibility_version: str
+    item_count: int
+    status: str
+    rejected_count: int = 0
+
+
+@dataclass(frozen=True)
 class DatasetItemRecord:
     id: str
     dataset_name: str
@@ -73,6 +83,15 @@ class ScoreConfigRecord:
 
 
 @dataclass(frozen=True)
+class ScoreConfigSyncResult:
+    evaluator_name: str
+    name: str
+    score_config_id: str
+    status: str
+    ownership: str
+
+
+@dataclass(frozen=True)
 class PromptRecord:
     name: str
     version: int | None = None
@@ -108,6 +127,13 @@ class AnnotationQueueRecord:
     object_type: str | None = None
     status: str | None = None
     metadata: JsonDict = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class AnnotationRoutingResult:
+    queue_id: str
+    queued_count: int
+    skipped_duplicate_count: int
 
 
 @dataclass(frozen=True)

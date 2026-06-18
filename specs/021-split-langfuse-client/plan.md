@@ -6,9 +6,9 @@
 
 ## Summary
 
-Refactor the current `LangfuseClient` god object into a compatibility facade backed by focused Langfuse boundaries for in-memory behavior, live SDK behavior, REST-compatible fallback behavior, object normalization, and retry/error handling. The public harness workflows and current callers continue using `LangfuseClient`, while delegated modules take ownership of dataset sync, score configs, prompts, traces, evaluator setup, annotation queues, mapping, and error policy. The acceptance bar is behavior preservation plus measurable quality improvement: `langfuse_client.py` must improve from maintainability `C (0.00)` and the public facade must contain no D-ranked complexity blocks.
+Complete the Langfuse architecture migration by deprecating `LangfuseClient` as an active runtime facade and moving internal project workflows to the Langfuse gateway boundary, gateway factory, concrete gateway classes, and focused owner modules. Existing CLI commands, project YAML, run behavior, Langfuse metadata, dry-run behavior, and live fallback behavior must remain compatible for users, while active internal source and tests stop depending on `LangfuseClient` for workflow execution.
 
-Follow-on query ownership work will drain the temporary `langfuse_queries.py` module into focused baseline, prompt, trace, score, and settings modules so the next Radon maintainability hotspot does not become a new mixed-responsibility bucket.
+The previous phase split the original god object into focused modules. This plan updates the end state: `LangfuseClient` may remain only as a documented non-runtime compatibility shim, or it may be removed if no supported internal or external contract requires it.
 
 ## Technical Context
 
@@ -20,7 +20,7 @@ Follow-on query ownership work will drain the temporary `langfuse_queries.py` mo
 
 **Storage**: Langfuse remains the system of record. Local state remains limited to filesystem project config, datasets, prompts, generated reports, and existing annotation queue binding files.
 
-**Testing**: `pytest` for unit, contract, integration, and live tests. Quality verification uses the local quality report script for Ruff, Pyright, Radon, Vulture, Import Linter, and coverage reporting.
+**Testing**: `pytest` for unit, contract, integration, and live tests. Quality verification uses focused Ruff/Radon checks plus the local quality report script where practical.
 
 **Target Platform**: Local developer machines running the Python CLI; live validation requires configured Langfuse credentials and reachable external services.
 
@@ -28,22 +28,22 @@ Follow-on query ownership work will drain the temporary `langfuse_queries.py` mo
 
 **Performance Goals**: Preserve current workflow behavior and avoid additional live API calls beyond existing SDK/REST fallback needs. Retry and pagination behavior must remain bounded.
 
-**Constraints**: Keep current CLI/project YAML compatibility, keep `LangfuseClient` as the public facade, avoid new services or long-lived local stores, preserve secret redaction, and pass the full live test suite before acceptance.
+**Constraints**: Keep current CLI/project YAML compatibility, avoid new services or long-lived local stores, preserve secret redaction, keep in-memory tests credential-free, and pass the full live test suite before final acceptance when live service access is available.
 
-**Scale/Scope**: One architectural refactor centered on `src/evaluator_harness/langfuse_client.py` and extracted Langfuse support modules. Existing callers should need minimal or no changes outside focused test updates.
+**Scale/Scope**: One architectural migration across Langfuse integration callers. Expected touch points include `runner.py`, `annotation_queues.py`, `prompt_sync.py`, `langfuse_evaluator_setup.py`, cleanup scripts, contract tests, integration tests, and Langfuse gateway tests.
 
 ## Constitution Check
 
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
 
-- **Langfuse-first**: PASS. The refactor preserves Langfuse as the system of record and keeps Langfuse-native traces, scores, prompts, evaluators, annotation queues, and comparisons. REST fallback is retained only for documented SDK capability gaps already present in current behavior.
-- **Thin harness scope**: PASS. The design remains a local Python CLI/library refactor with small modules and no services, orchestration framework, or custom platform.
-- **Dataset simplicity**: PASS. Existing CSV dataset semantics, including the `input` column default, are preserved.
-- **Reproducibility metadata**: PASS. The facade must preserve current provider, model, prompt, evaluator, token, latency, dataset, baseline, run, and config metadata logging.
-- **Baseline-centric workflow**: PASS. Baseline lookup/reuse behavior remains part of the Langfuse boundary and current comparison semantics are preserved.
-- **Minimal local state**: PASS. No new local database, queue, cache, or service is introduced. Existing filesystem artifacts remain the only local state.
-- **Human review awareness**: PASS. Annotation queue routing and review handles remain Langfuse-backed and visible for human review.
-- **Local-first execution**: PASS. Development, tests, and reports continue through `uv run ...` commands.
+- **Langfuse-first**: PASS. The migration preserves Langfuse as the system of record and keeps traces, scores, prompts, evaluators, annotation queues, baselines, and comparisons Langfuse-backed.
+- **Thin harness scope**: PASS. The design uses explicit Python modules and gateway classes already present in the codebase. It does not introduce services, orchestration frameworks, or dependency injection frameworks.
+- **Dataset simplicity**: PASS. Dataset shape and project YAML semantics remain unchanged.
+- **Reproducibility metadata**: PASS. The gateway boundary must preserve provider, model, prompt, evaluator, token, latency, dataset, baseline, run, and config metadata logging.
+- **Baseline-centric workflow**: PASS. Baseline lookup/reuse remains part of focused Langfuse owner modules and the gateway-backed workflow.
+- **Minimal local state**: PASS. No new durable local state is introduced.
+- **Human review awareness**: PASS. Annotation queue behavior remains Langfuse-backed and visible for human review.
+- **Local-first execution**: PASS. Verification remains through `uv run ...` commands.
 
 ## Project Structure
 
@@ -66,46 +66,54 @@ specs/021-split-langfuse-client/
 
 ```text
 src/evaluator_harness/
-|-- langfuse_client.py              # Compatibility facade retained for callers
 |-- langfuse_gateways.py            # Boundary protocols and gateway factory
 |-- langfuse_in_memory.py           # Deterministic test/dry-run gateway
-|-- langfuse_sdk.py                 # SDK-backed live operations
+|-- langfuse_sdk.py                 # SDK-backed live gateway
 |-- langfuse_rest.py                # REST-compatible fallback operations
-|-- langfuse_mappers.py             # Object/dict to internal record normalization
-|-- langfuse_retry.py               # Retry, pagination, and error wrapping helpers
 |-- langfuse_records.py             # Typed records shared across gateways
-|-- langfuse_baselines.py           # Planned owner for baseline lookup query workflows
-|-- langfuse_prompts.py             # Planned owner for prompt version query workflows
-|-- langfuse_traces.py              # Planned owner for trace and run-output query workflows
-|-- langfuse_scores.py              # Planned owner for score retrieval query workflows
-|-- langfuse_settings.py            # Planned owner for Langfuse polling/settings helpers
-|-- annotation_queues.py            # Existing queue orchestration remains compatible
-|-- langfuse_evaluator_setup.py     # Existing evaluator setup consumes facade/boundary
-`-- runner.py                       # Existing workflow caller, minimal changes only
+|-- langfuse_mappers.py             # Object/dict normalization
+|-- langfuse_retry.py               # Retry, pagination, and error wrapping helpers
+|-- langfuse_dataset.py             # Dataset sync and run item operations
+|-- langfuse_score_configs.py       # Score config sync operations
+|-- langfuse_observations.py        # Trace/span/run observation operations
+|-- langfuse_annotation_ops.py      # Annotation queue operations
+|-- langfuse_evaluator_ops.py       # Evaluator operations
+|-- langfuse_baselines.py           # Baseline lookup workflows
+|-- langfuse_prompts.py             # Prompt version workflows
+|-- langfuse_traces.py              # Trace and run-output workflows
+|-- langfuse_scores.py              # Score retrieval workflows
+|-- langfuse_settings.py            # Langfuse polling/settings helpers
+|-- langfuse_default_gateway.py     # Default concrete gateway/state holder behind builders
+|-- annotation_queues.py            # Migrate from client facade to gateway-backed calls
+|-- prompt_sync.py                  # Migrate from client facade to gateway-backed calls
+|-- langfuse_evaluator_setup.py     # Migrate from client facade to gateway-backed calls
+`-- runner.py                       # Migrate from client facade to gateway-backed calls
+
+scripts/
+|-- cleanup_duplicate_score_configs.py
+|-- cleanup_invalid_annotation_queue_items.py
+`-- reset_annotation_queue_for_project.py
 
 tests/
 |-- unit/
 |   |-- test_langfuse_gateways.py
 |   |-- test_langfuse_in_memory.py
 |   |-- test_langfuse_mappers.py
-|   `-- test_langfuse_retry.py
+|   |-- test_langfuse_retry.py
+|   |-- test_langfuse_baselines.py
+|   |-- test_langfuse_prompts.py
+|   |-- test_langfuse_scores.py
+|   |-- test_langfuse_settings.py
+|   `-- test_langfuse_traces.py
 |-- integration/
-|   |-- test_langfuse_client_facade.py
+|   |-- test_langfuse_default_gateway.py # default gateway integration tests
 |   `-- live/
 |       `-- existing live smoke tests
 `-- contract/
     `-- existing CLI/project contract tests
-
-reports/quality/
-|-- ruff-check.txt
-|-- pyright.txt
-|-- radon-complexity.txt
-`-- radon-maintainability.txt
 ```
 
-**Structure Decision**: Keep `LangfuseClient` in `langfuse_client.py` as the compatibility facade and extract implementation responsibilities into sibling modules under `src/evaluator_harness/`. This keeps the harness simple, avoids a package-wide relocation, and lets tests cover each responsibility independently.
-
-**Follow-on Query Split Decision**: Treat `langfuse_queries.py` as a temporary extraction bucket, not a final owner. Move query workflows by business responsibility: baseline lookup to `langfuse_baselines.py`, prompt version workflows to `langfuse_prompts.py`, trace/run-output workflows to `langfuse_traces.py`, score retrieval workflows to `langfuse_scores.py`, and environment polling helpers to `langfuse_settings.py`. Keep typed records as data-only objects; do not move workflow behavior onto record classes.
+**Structure Decision**: Use the existing Langfuse gateway and owner modules as the active internal integration surface. Migrate project workflows to a small gateway construction context rather than preserving the legacy client facade as the runtime entry point.
 
 ## Complexity Tracking
 
@@ -117,25 +125,29 @@ No constitution violations are introduced.
 
 ## Phase 0: Research Summary
 
-See [research.md](research.md). Main decisions:
+See [research.md](research.md). Updated decisions:
 
-- Use a facade plus protocol-backed gateway strategy rather than migrating callers to new APIs.
-- Use typed internal records and mapper functions to reduce Pyright uncertainty from SDK objects and dictionaries.
-- Keep SDK and REST behavior separate so fallback capability gaps are explicit.
-- Use targeted extraction based on current Radon hotspots before broader cleanup.
+- Deprecate `LangfuseClient` as an active runtime facade.
+- Use `LangfuseGateway` and focused owner modules as the internal integration surface.
+- Keep CLI/YAML/user behavior stable while allowing internal caller churn.
+- Keep any legacy `LangfuseClient` symbol as a documented shim only if needed for compatibility; otherwise remove it.
 
-## Current `langfuse_client.py` Quality Baseline
+## Current Quality Baseline
 
 Baseline source files:
 
-- `src/evaluator_harness/langfuse_client.py`
+- `src/evaluator_harness/langfuse_client.py` (removed in Phase 8)
+- `src/evaluator_harness/langfuse_default_gateway.py`
+- `src/evaluator_harness/langfuse_*.py`
 - `reports/quality/ruff-check.txt`
 - `reports/quality/pyright.txt`
 - `reports/quality/radon-complexity.txt`
 - `reports/quality/radon-maintainability.txt`
 
-| Measure | Current Baseline |
-|---------|------------------|
+Original `langfuse_client.py` baseline:
+
+| Measure | Original Baseline |
+|---------|-------------------|
 | Physical lines | 2,400 |
 | Radon maintainability | `C (0.00)` |
 | Radon D-ranked complexity blocks | 2 |
@@ -143,67 +155,48 @@ Baseline source files:
 | Ruff diagnostics in file | 56 total: `E501` 54, `I001` 2 |
 | Pyright errors in file | 10 |
 
-Top Radon complexity hotspots in the current file:
+Current post-split direction:
 
-| Rank | Symbol | Grade |
-|------|--------|-------|
-| 1 | `_object_to_evaluator_dict` | `D (22)` |
-| 2 | `LangfuseClient.sync_dataset` | `D (22)` |
-| 3 | `LangfuseClient._lookup_live_baseline` | `C (20)` |
-| 4 | `_object_to_score_dict` | `C (19)` |
-| 5 | `_object_to_score_config_dict` | `C (17)` |
-| 6 | `LangfuseClient._load_live_score_configs_by_name` | `C (16)` |
-| 7 | `LangfuseClient._live_list_prompt_versions` | `C (16)` |
-| 8 | `_rest_evaluation_rule_update_payload` | `C (15)` |
-| 9 | `LangfuseClient.traces_for_run` | `C (15)` |
-
-Pyright error themes in the current file:
-
-- Optional call safety.
-- Nullable IDs passed where non-null strings are required.
-- Dictionary value type mismatch.
-- Nullable dictionary returns.
-- Unknown context-manager protocol for object-typed spans.
-- Unknown or nullable values passed into integer conversion.
+- `langfuse_client.py` has been removed in favor of direct `LangfuseGateway` dependencies and `langfuse_default_gateway.py` as the default concrete state holder.
+- `langfuse_queries.py` has been removed after owner-module extraction.
+- Gateway and owner modules become the quality surface for future Langfuse work.
 
 ## Phase 1: Design Summary
 
 See [data-model.md](data-model.md) and [contracts/langfuse-boundary.md](contracts/langfuse-boundary.md).
 
-The design defines a stable `LangfuseGateway` boundary with typed records for datasets, runs, traces, scores, prompts, evaluators, annotation queues, and operation failures. The facade delegates to:
+The design defines:
 
-- in-memory gateway for deterministic tests and dry runs,
-- SDK gateway for primary live behavior,
-- REST fallback gateway for live operations not exposed by the SDK,
-- mappers for defensive object normalization,
-- retry/error policy helpers for bounded live operation handling.
+- a `LangfuseGateway` boundary for dataset, run, trace, score, prompt, evaluator, annotation queue, baseline, and metadata operations,
+- a gateway factory for selecting in-memory, SDK-backed, and fallback-capable live behavior,
+- focused owner modules for workflow orchestration and normalization,
+- a migration path for `runner.py`, CLI support modules, scripts, and tests to stop constructing or depending on `LangfuseClient`.
 
 ## Post-Design Constitution Check
 
 - **Langfuse-first**: PASS. No local replacement for Langfuse features is planned.
-- **Thin harness scope**: PASS. The design uses explicit Python modules and protocols, not a framework or service.
+- **Thin harness scope**: PASS. The design uses explicit Python modules and a small gateway boundary, not a framework or service.
 - **Dataset simplicity**: PASS. Dataset shape is unchanged.
-- **Reproducibility metadata**: PASS. Current metadata contract is preserved through typed records and facade compatibility.
-- **Baseline-centric workflow**: PASS. Baseline lookup remains a boundary operation.
+- **Reproducibility metadata**: PASS. Current metadata contract is preserved through gateway-backed workflows.
+- **Baseline-centric workflow**: PASS. Baseline lookup remains a Langfuse workflow.
 - **Minimal local state**: PASS. No new durable local state is introduced.
 - **Human review awareness**: PASS. Annotation queue behavior remains in scope and Langfuse-backed.
 - **Local-first execution**: PASS. Verification commands remain local `uv run ...` commands.
 
 ## Verification Plan
 
-1. `uv run pytest -p no:cacheprovider`
-2. `uv run pytest --no-cov -p no:cacheprovider -m live -vv` with live credentials configured
-3. `uv run python scripts/quality_report.py`
-4. Confirm regenerated reports show:
-   - `langfuse_client.py` maintainability improved from `C (0.00)`
-   - no D-ranked complexity blocks in the public facade
-   - no new Ruff or Pyright diagnostic categories in changed Langfuse-related files
-   - updated line count and diagnostic counts documented against the baseline above
-
-## Follow-on Query Split Verification
-
-1. `uv run pytest --no-cov -p no:cacheprovider tests/integration/test_langfuse_client_facade.py tests/unit/test_langfuse_gateways.py tests/unit/test_langfuse_mappers.py`
-2. `uv run ruff check src/evaluator_harness/langfuse_*.py tests/unit/test_langfuse_*.py tests/integration/test_langfuse_client_facade.py --no-cache`
-3. `uv run radon mi src/evaluator_harness/langfuse_*.py -s`
-4. `uv run radon cc src/evaluator_harness/langfuse_*.py -s`
-5. Confirm `langfuse_queries.py` contains no business logic, or delete it after all direct imports are updated.
+1. Search for active legacy client usage:
+   `rg "LangfuseClient|langfuse_client" src tests scripts`
+2. Run gateway and owner-module tests:
+   `uv run pytest --no-cov -p no:cacheprovider tests/unit/test_langfuse_gateways.py tests/unit/test_langfuse_in_memory.py tests/unit/test_langfuse_mappers.py tests/unit/test_langfuse_retry.py tests/unit/test_langfuse_baselines.py tests/unit/test_langfuse_prompts.py tests/unit/test_langfuse_traces.py tests/unit/test_langfuse_scores.py tests/unit/test_langfuse_settings.py`
+3. Run migrated workflow regression tests:
+   `uv run pytest --no-cov -p no:cacheprovider tests/unit/test_langfuse_dataset_sync.py tests/unit/test_langfuse_score_config_sync.py tests/unit/test_langfuse_evaluator_rest.py tests/integration/test_select_review.py`
+4. Run broader non-live tests:
+   `uv run pytest --no-cov -p no:cacheprovider -m "not live"`
+5. Run live tests when credentials and service availability are present:
+   `uv run pytest --no-cov -p no:cacheprovider -m live -vv`
+6. Run focused quality checks:
+   `uv run ruff check src/evaluator_harness/langfuse_*.py tests/unit/test_langfuse_*.py --no-cache`
+   `uv run radon mi src/evaluator_harness -s`
+   `uv run radon cc src/evaluator_harness -s`
+7. Run `graphify update .` after code changes.
