@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from evaluator_harness.langfuse_client import LangfuseClient
+from evaluator_harness.langfuse_default_gateway import DefaultLangfuseGateway
 from evaluator_harness.providers.base import ModelResponse
 from evaluator_harness.runner import ExperimentRunner
 from tests.fixtures.fake_provider import FakeModelProvider
@@ -11,16 +11,16 @@ from tests.fixtures.fake_provider import FakeModelProvider
 PROJECT = Path("configs/projects/rewrite_quality.yaml")
 
 
-def _runner(langfuse: LangfuseClient, output: str = "output") -> ExperimentRunner:
+def _runner(langfuse: DefaultLangfuseGateway, output: str = "output") -> ExperimentRunner:
     return ExperimentRunner(
-        langfuse_client=langfuse,
+        langfuse_gateway=langfuse,
         provider_factory=lambda _config: FakeModelProvider(
             response=ModelResponse(output=output)
         ),
     )
 
 
-def _traces_by_item(langfuse: LangfuseClient, run_id: str) -> dict[str, dict]:
+def _traces_by_item(langfuse: DefaultLangfuseGateway, run_id: str) -> dict[str, dict]:
     return {
         str(trace["metadata"]["dataset_item_id"]): trace
         for trace in langfuse.traces_for_run(run_id)
@@ -28,7 +28,7 @@ def _traces_by_item(langfuse: LangfuseClient, run_id: str) -> dict[str, dict]:
 
 
 def test_baseline_traces_contain_official_and_metadata_session_ids() -> None:
-    langfuse = LangfuseClient()
+    langfuse = DefaultLangfuseGateway()
     baseline = _runner(langfuse, "baseline output").run(
         PROJECT,
         "baseline",
@@ -45,7 +45,7 @@ def test_baseline_traces_contain_official_and_metadata_session_ids() -> None:
 
 
 def test_baseline_and_candidate_same_item_share_session_id() -> None:
-    langfuse = LangfuseClient()
+    langfuse = DefaultLangfuseGateway()
     runner = _runner(langfuse, "baseline output")
     baseline = runner.run(PROJECT, "baseline", select_human_review=False)
     candidate = runner.run(
@@ -68,7 +68,7 @@ def test_baseline_and_candidate_same_item_share_session_id() -> None:
 
 
 def test_different_dataset_items_do_not_share_session_id() -> None:
-    langfuse = LangfuseClient()
+    langfuse = DefaultLangfuseGateway()
     baseline = _runner(langfuse, "baseline output").run(
         PROJECT,
         "baseline",
@@ -84,7 +84,7 @@ def test_different_dataset_items_do_not_share_session_id() -> None:
 
 
 def test_multiple_candidates_against_same_baseline_reuse_item_sessions() -> None:
-    langfuse = LangfuseClient()
+    langfuse = DefaultLangfuseGateway()
     runner = _runner(langfuse, "baseline output")
     baseline = runner.run(PROJECT, "baseline", select_human_review=False)
     first = runner.run(
@@ -112,7 +112,7 @@ def test_multiple_candidates_against_same_baseline_reuse_item_sessions() -> None
 
 
 def test_review_candidate_traces_retain_item_comparison_session_id() -> None:
-    langfuse = LangfuseClient()
+    langfuse = DefaultLangfuseGateway()
     runner = _runner(langfuse, "baseline output")
     baseline = runner.run(PROJECT, "baseline", select_human_review=False)
     candidate = runner.run(
@@ -130,7 +130,7 @@ def test_review_candidate_traces_retain_item_comparison_session_id() -> None:
 
 
 def test_review_selection_reasons_do_not_depend_on_session_metadata() -> None:
-    langfuse = LangfuseClient()
+    langfuse = DefaultLangfuseGateway()
     runner = _runner(langfuse, "baseline output")
     baseline = runner.run(PROJECT, "baseline", select_human_review=False)
     candidate = runner.run(

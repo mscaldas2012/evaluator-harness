@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from evaluator_harness.config import load_project_config
 from evaluator_harness.evaluator_bindings import EvaluatorBindingStore
-from evaluator_harness.langfuse_client import LangfuseClient, ScoreConfigSyncResult
+from evaluator_harness.langfuse_default_gateway import DefaultLangfuseGateway, ScoreConfigSyncResult
 from evaluator_harness.langfuse_evaluator_setup import (
     BackfillStatus,
     EvaluatorOperation,
@@ -27,7 +27,7 @@ def test_planner_creates_missing_managed_evaluator() -> None:
 
     result = plan_judge_evaluator_setup(
         config,
-        LangfuseClient(),
+        DefaultLangfuseGateway(),
         [_score_result()],
         bindings=EvaluatorBindingStore(),
     )
@@ -47,7 +47,7 @@ def test_planner_blocks_create_when_score_config_id_is_missing() -> None:
 
     result = plan_judge_evaluator_setup(
         config,
-        LangfuseClient(),
+        DefaultLangfuseGateway(),
         [
             ScoreConfigSyncResult(
                 evaluator_name="clarity",
@@ -226,7 +226,7 @@ def test_backfill_request_blocks_when_unsupported() -> None:
 
     result = plan_judge_evaluator_setup(
         config,
-        LangfuseClient(),
+        DefaultLangfuseGateway(),
         [_score_result()],
         bindings=EvaluatorBindingStore(),
     )
@@ -240,7 +240,7 @@ def test_broad_filter_blocks_setup() -> None:
 
     result = plan_judge_evaluator_setup(
         config,
-        LangfuseClient(),
+        DefaultLangfuseGateway(),
         [_score_result()],
         bindings=EvaluatorBindingStore(),
         validate_config=False,

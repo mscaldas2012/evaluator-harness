@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from evaluator_harness.langfuse_client import LangfuseClient
+from evaluator_harness.langfuse_default_gateway import DefaultLangfuseGateway
 from evaluator_harness.runner import ExperimentRunner
 
 
 def test_select_review_routes_configured_queue_items() -> None:
-    langfuse = LangfuseClient()
+    langfuse = DefaultLangfuseGateway()
     langfuse.traces.extend(
         [
             {
@@ -45,7 +45,7 @@ def test_select_review_routes_configured_queue_items() -> None:
     )
     langfuse.scores["candidate-1"] = [{"trace_id": "trace-2", "score": 0.2, "confidence": 0.4}]
 
-    result = ExperimentRunner(langfuse_client=langfuse).select_review(
+    result = ExperimentRunner(langfuse_gateway=langfuse).select_review(
         Path("configs/projects/rewrite_quality.yaml"),
         "candidate-1",
     )
@@ -57,7 +57,7 @@ def test_select_review_routes_configured_queue_items() -> None:
 
 
 def test_select_review_uses_live_trace_lookup_across_runner_instances() -> None:
-    langfuse = LangfuseClient()
+    langfuse = DefaultLangfuseGateway()
     langfuse.traces.append(
         {
             "trace_id": "trace-1",
@@ -73,9 +73,9 @@ def test_select_review_uses_live_trace_lookup_across_runner_instances() -> None:
             },
         }
     )
-    fresh_client = LangfuseClient(client=FakeTraceApi(langfuse.traces))
+    fresh_client = DefaultLangfuseGateway(client=FakeTraceApi(langfuse.traces))
 
-    result = ExperimentRunner(langfuse_client=fresh_client).select_review(
+    result = ExperimentRunner(langfuse_gateway=fresh_client).select_review(
         Path("configs/projects/rewrite_quality.yaml"),
         "candidate-1",
     )
@@ -87,7 +87,7 @@ def test_select_review_uses_live_trace_lookup_across_runner_instances() -> None:
 def test_select_review_uses_project_dataset_name_for_live_dataset_run_lookup() -> None:
     langfuse = DatasetScopedTraceClient()
 
-    result = ExperimentRunner(langfuse_client=langfuse).select_review(
+    result = ExperimentRunner(langfuse_gateway=langfuse).select_review(
         Path("configs/projects/rewrite_quality.yaml"),
         "candidate-1",
     )
@@ -98,7 +98,7 @@ def test_select_review_uses_project_dataset_name_for_live_dataset_run_lookup() -
 
 
 def test_select_review_samples_only_unqueued_items() -> None:
-    langfuse = LangfuseClient()
+    langfuse = DefaultLangfuseGateway()
     for index in range(1, 4):
         langfuse.traces.append(
             {
@@ -121,7 +121,7 @@ def test_select_review_samples_only_unqueued_items() -> None:
         ]
     )
 
-    result = ExperimentRunner(langfuse_client=langfuse).select_review(
+    result = ExperimentRunner(langfuse_gateway=langfuse).select_review(
         Path("configs/projects/rewrite_quality.yaml"),
         "candidate-1",
         sample_strategy="random",
@@ -133,7 +133,7 @@ def test_select_review_samples_only_unqueued_items() -> None:
 
 
 def test_select_review_returns_zero_when_all_items_already_queued() -> None:
-    langfuse = LangfuseClient()
+    langfuse = DefaultLangfuseGateway()
     for index in range(1, 4):
         trace_id = f"trace-{index}"
         langfuse.traces.append(
@@ -154,7 +154,7 @@ def test_select_review_returns_zero_when_all_items_already_queued() -> None:
             {"queue_id": "annotation-queue-1", "object_id": trace_id}
         )
 
-    result = ExperimentRunner(langfuse_client=langfuse).select_review(
+    result = ExperimentRunner(langfuse_gateway=langfuse).select_review(
         Path("configs/projects/rewrite_quality.yaml"),
         "candidate-1",
         sample_strategy="random",
@@ -214,7 +214,7 @@ class FakeScoreConfigsApi:
         raise AssertionError("score config should be reused")
 
 
-class DatasetScopedTraceClient(LangfuseClient):
+class DatasetScopedTraceClient(DefaultLangfuseGateway):
     def __init__(self) -> None:
         super().__init__()
         self.requested_dataset_names: list[str] | None = None

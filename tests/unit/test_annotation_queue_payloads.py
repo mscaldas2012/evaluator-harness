@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 from evaluator_harness.config import load_project_config
-from evaluator_harness.langfuse_client import LangfuseClient
+from evaluator_harness.langfuse_default_gateway import DefaultLangfuseGateway
 from evaluator_harness.review_selection import ReviewCandidate, select_review_items
 
 
 def test_builds_candidate_annotation_payload_without_provider_identity_for_blind_evaluator() -> None:
     config = load_project_config("configs/projects/rewrite_quality.yaml")
-    client = LangfuseClient()
+    client = DefaultLangfuseGateway()
     trace = {
         "trace_id": "trace-candidate",
         "run_id": "candidate-1",
@@ -67,7 +67,7 @@ def test_builds_candidate_annotation_payload_without_provider_identity_for_blind
 
 def test_builds_baseline_annotation_payload_with_optional_ground_truth() -> None:
     config = load_project_config("configs/projects/rewrite_quality.yaml")
-    client = LangfuseClient()
+    client = DefaultLangfuseGateway()
     trace = {
         "trace_id": "trace-baseline",
         "run_id": "baseline-1",
@@ -88,7 +88,7 @@ def test_builds_baseline_annotation_payload_with_optional_ground_truth() -> None
 
 
 def test_annotation_queue_routing_skips_duplicate_items() -> None:
-    client = LangfuseClient()
+    client = DefaultLangfuseGateway()
     payload = {"trace_id": "trace-1", "item_id": "1", "run_id": "run-1"}
 
     result = client.route_annotation_items("queue-1", [payload, payload])

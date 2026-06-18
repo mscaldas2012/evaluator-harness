@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from evaluator_harness.config import load_project_config
-from evaluator_harness.langfuse_client import LangfuseClient
+from evaluator_harness.langfuse_default_gateway import DefaultLangfuseGateway
 from evaluator_harness.prompt_sync import (
     discover_prompt_artifacts,
     prompt_provenance_metadata,
@@ -15,7 +15,7 @@ from tests.fixtures.fake_provider import FakeModelProvider
 
 
 def test_validate_project_does_not_require_prompt_bindings() -> None:
-    runner = ExperimentRunner(langfuse_client=LangfuseClient())
+    runner = ExperimentRunner(langfuse_gateway=DefaultLangfuseGateway())
 
     result = runner.validate_project(Path("tests/fixtures/projects/valid_prompt_sync.yaml"))
 
@@ -37,7 +37,7 @@ def test_prompt_provenance_metadata_contains_local_identity_without_binding(tmp_
 
 def test_prompt_provenance_metadata_includes_matching_langfuse_reference(tmp_path: Path) -> None:
     config = load_project_config("tests/fixtures/projects/valid_prompt_sync.yaml")
-    langfuse = LangfuseClient()
+    langfuse = DefaultLangfuseGateway()
     binding_path = tmp_path / "prompt-sync.yaml"
 
     sync_project_prompts(config, langfuse, binding_path=binding_path)
@@ -48,12 +48,12 @@ def test_prompt_provenance_metadata_includes_matching_langfuse_reference(tmp_pat
 
 
 def test_remote_prompt_content_never_replaces_local_prompt_content() -> None:
-    langfuse = LangfuseClient()
+    langfuse = DefaultLangfuseGateway()
     provider = FakeModelProvider(
         response=ModelResponse(output="baseline output"),
     )
     runner = ExperimentRunner(
-        langfuse_client=langfuse,
+        langfuse_gateway=langfuse,
         provider_factory=lambda _config: provider,
     )
 
@@ -64,10 +64,10 @@ def test_remote_prompt_content_never_replaces_local_prompt_content() -> None:
 
 
 def test_run_trace_metadata_includes_local_prompt_provenance() -> None:
-    langfuse = LangfuseClient()
+    langfuse = DefaultLangfuseGateway()
     provider = FakeModelProvider(response=ModelResponse(output="baseline output"))
     runner = ExperimentRunner(
-        langfuse_client=langfuse,
+        langfuse_gateway=langfuse,
         provider_factory=lambda _config: provider,
     )
 

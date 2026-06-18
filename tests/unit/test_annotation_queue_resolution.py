@@ -9,7 +9,7 @@ from evaluator_harness.annotation_queues import (
     sync_annotation_queue,
 )
 from evaluator_harness.config import load_project_config
-from evaluator_harness.langfuse_client import LangfuseClient, ScoreConfigSyncResult
+from evaluator_harness.langfuse_default_gateway import DefaultLangfuseGateway, ScoreConfigSyncResult
 
 
 def _store() -> AnnotationQueueReferenceStore:
@@ -32,7 +32,7 @@ def _score_results() -> list[ScoreConfigSyncResult]:
 
 def test_resolve_annotation_queue_uses_environment_override(monkeypatch) -> None:
     config = load_project_config("tests/fixtures/projects/managed_annotation_queue.yaml")
-    client = LangfuseClient()
+    client = DefaultLangfuseGateway()
     client.annotation_queues["queue-env"] = {"id": "queue-env", "name": "env-queue"}
     monkeypatch.setenv("LANGFUSE_ANNOTATION_QUEUE_ID", "queue-env")
 
@@ -44,7 +44,7 @@ def test_resolve_annotation_queue_uses_environment_override(monkeypatch) -> None
 
 def test_resolve_annotation_queue_uses_local_managed_reference(monkeypatch) -> None:
     config = load_project_config("tests/fixtures/projects/managed_annotation_queue.yaml")
-    client = LangfuseClient()
+    client = DefaultLangfuseGateway()
     store = _store()
     monkeypatch.delenv("LANGFUSE_ANNOTATION_QUEUE_ID", raising=False)
     created = sync_annotation_queue(config, client, _score_results(), store=store)

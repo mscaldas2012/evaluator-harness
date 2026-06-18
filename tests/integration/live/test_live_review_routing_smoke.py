@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from evaluator_harness.langfuse_client import LangfuseClient
+from evaluator_harness.langfuse_default_gateway import DefaultLangfuseGateway
 from evaluator_harness.providers.base import ModelResponse
 from evaluator_harness.runner import ExperimentRunner
 from tests.fixtures.fake_provider import FakeModelProvider
@@ -14,7 +14,7 @@ from tests.fixtures.live_env import require_live_langfuse
 @pytest.mark.live
 def test_live_review_routing_smoke() -> None:
     require_live_langfuse()
-    langfuse = LangfuseClient.from_env()
+    langfuse = DefaultLangfuseGateway.from_env()
     project_path = Path(".evaluator-harness") / "rewrite_quality_live_review.yaml"
     project_path.parent.mkdir(parents=True, exist_ok=True)
     project_path.write_text(
@@ -22,7 +22,7 @@ def test_live_review_routing_smoke() -> None:
         encoding="utf-8",
     )
     runner = ExperimentRunner(
-        langfuse_client=langfuse,
+        langfuse_gateway=langfuse,
         provider_factory=lambda _config: FakeModelProvider(
             response=ModelResponse(output="baseline output for review smoke")
         ),

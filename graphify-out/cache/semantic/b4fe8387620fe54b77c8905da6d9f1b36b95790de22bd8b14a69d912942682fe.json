@@ -1,0 +1,1 @@
+{"nodes": [{"id": "agentskills_speckitgitvalidate", "label": "speckit.git.validate", "file_type": "concept", "source_file": ".specify/extensions/git/commands/speckit.git.validate.md", "source_location": null, "source_url": null, "captured_at": null, "author": "spec-kit-core", "contributor": null}], "edges": [], "hyperedges": []}

@@ -3,13 +3,13 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from evaluator_harness.config import EvaluatorSourceType, ProjectConfig
 from evaluator_harness.errors import ConfigError
@@ -237,7 +237,7 @@ def _is_duplicate_prompt_artifact(
 
 def sync_project_prompts(
     config: ProjectConfig,
-    langfuse_client: Any,
+    langfuse_gateway: Any,
     *,
     dry_run: bool = False,
     progress: ProgressReporter | None = None,
@@ -257,7 +257,7 @@ def sync_project_prompts(
             try:
                 status = _sync_one_prompt(
                     artifact,
-                    langfuse_client,
+                    langfuse_gateway,
                     store=store,
                     dry_run=dry_run,
                 )
@@ -368,12 +368,12 @@ def save_prompt_bindings(path: Path | str, store: PromptBindingStore) -> None:
 
 def _sync_one_prompt(
     artifact: PromptArtifact,
-    langfuse_client: Any,
+    langfuse_gateway: Any,
     *,
     store: PromptBindingStore,
     dry_run: bool,
 ) -> PromptSyncStatus:
-    existing = langfuse_client.find_prompt_version(
+    existing = langfuse_gateway.find_prompt_version(
         artifact.managed_name,
         label=artifact.artifact_version,
     )
@@ -419,7 +419,7 @@ def _sync_one_prompt(
             content_identity=artifact.content_identity,
             message="Prompt version would be created.",
         )
-    created = langfuse_client.create_prompt_version(artifact.langfuse_prompt_payload())
+    created = langfuse_gateway.create_prompt_version(artifact.langfuse_prompt_payload())
     return PromptSyncStatus(
         artifact=artifact,
         operation="create",

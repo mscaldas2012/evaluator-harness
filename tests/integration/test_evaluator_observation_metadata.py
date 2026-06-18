@@ -1,14 +1,14 @@
 from __future__ import annotations
 
-from evaluator_harness.langfuse_client import LangfuseClient
+from evaluator_harness.langfuse_default_gateway import DefaultLangfuseGateway
 from evaluator_harness.runner import ExperimentRunner
 from tests.fixtures.fake_provider import FakeModelProvider
 
 
 def test_baseline_and_candidate_traces_include_model_output_filter_metadata() -> None:
-    client = LangfuseClient()
+    client = DefaultLangfuseGateway()
     runner = ExperimentRunner(
-        langfuse_client=client,
+        langfuse_gateway=client,
         provider_factory=lambda _config: FakeModelProvider(),
     )
 
@@ -34,9 +34,9 @@ def test_baseline_and_candidate_traces_include_model_output_filter_metadata() ->
 
 
 def test_api_key_candidate_trace_metadata_is_evaluator_filterable() -> None:
-    client = LangfuseClient()
+    client = DefaultLangfuseGateway()
     runner = ExperimentRunner(
-        langfuse_client=client,
+        langfuse_gateway=client,
         provider_factory=lambda _config: FakeModelProvider(),
     )
 
@@ -68,9 +68,9 @@ def test_api_key_candidate_trace_metadata_is_evaluator_filterable() -> None:
 
 
 def test_prompt_variant_trace_metadata_includes_baseline_and_candidate_prompt_identity() -> None:
-    client = LangfuseClient()
+    client = DefaultLangfuseGateway()
     runner = ExperimentRunner(
-        langfuse_client=client,
+        langfuse_gateway=client,
         provider_factory=lambda _config: FakeModelProvider(),
     )
 
@@ -95,9 +95,9 @@ def test_prompt_variant_trace_metadata_includes_baseline_and_candidate_prompt_id
 
 
 def test_role_prompt_trace_metadata_includes_shape_roles_and_variables() -> None:
-    client = LangfuseClient()
+    client = DefaultLangfuseGateway()
     runner = ExperimentRunner(
-        langfuse_client=client,
+        langfuse_gateway=client,
         provider_factory=lambda _config: FakeModelProvider(),
     )
 
@@ -116,9 +116,9 @@ def test_role_prompt_trace_metadata_includes_shape_roles_and_variables() -> None
 
 
 def test_parameter_variant_trace_metadata_includes_parameter_identity() -> None:
-    client = LangfuseClient()
+    client = DefaultLangfuseGateway()
     runner = ExperimentRunner(
-        langfuse_client=client,
+        langfuse_gateway=client,
         provider_factory=lambda _config: FakeModelProvider(),
     )
 
@@ -141,9 +141,9 @@ def test_parameter_variant_trace_metadata_includes_parameter_identity() -> None:
 
 
 def test_mixed_variant_trace_metadata_remains_evaluator_filterable() -> None:
-    client = LangfuseClient()
+    client = DefaultLangfuseGateway()
     runner = ExperimentRunner(
-        langfuse_client=client,
+        langfuse_gateway=client,
         provider_factory=lambda _config: FakeModelProvider(),
     )
 

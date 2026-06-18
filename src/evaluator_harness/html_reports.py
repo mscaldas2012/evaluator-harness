@@ -396,7 +396,7 @@ def _score_chart(
     colors = ["#0f766e", "#d45d4c", "#315c80", "#9a6b1f", "#6f5aa8", "#2f855a"]
     parts = [
         f'<svg class="score-chart" viewBox="0 0 {width} {height}" role="img" aria-label="Average evaluator scores by run">',
-        '<line class="axis" x1="150" y1="28" x2="150" y2="{0}" />'.format(height - 44),
+        f'<line class="axis" x1="150" y1="28" x2="150" y2="{height - 44}" />',
     ]
     for index in range(6):
         x = left + chart_width * index / 5

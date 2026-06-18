@@ -24,12 +24,15 @@ from evaluator_harness.evaluator_bindings import (
     save_evaluator_bindings,
     validate_binding_path,
 )
-from evaluator_harness.evaluators import build_filter_profile, load_judge_prompt
-from evaluator_harness.evaluators import prompt_placeholders
-from evaluator_harness.langfuse_client import LangfuseClient, ScoreConfigSyncResult
-from evaluator_harness.prompt_sync import prompt_provenance_metadata
+from evaluator_harness.evaluators import (
+    build_filter_profile,
+    load_judge_prompt,
+    prompt_placeholders,
+)
+from evaluator_harness.langfuse_gateways import LangfuseGateway
+from evaluator_harness.langfuse_records import ScoreConfigSyncResult
 from evaluator_harness.progress import NullProgressReporter, ProgressReporter
-
+from evaluator_harness.prompt_sync import prompt_provenance_metadata
 
 MANAGED_NAME_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
 SCORE_SOURCE_TERMS = ("_eval", "_annotation", "_human", "_llm_judge")
@@ -252,7 +255,7 @@ def _filters_compatible(expected: dict[str, Any], remote: dict[str, Any]) -> boo
 
 def plan_judge_evaluator_setup(
     config: ProjectConfig,
-    client: LangfuseClient,
+    client: LangfuseGateway,
     score_results: list[ScoreConfigSyncResult],
     *,
     bindings: EvaluatorBindingStore | None = None,
@@ -286,7 +289,7 @@ def plan_judge_evaluator_setup(
 
 def apply_judge_evaluator_setup(
     config: ProjectConfig,
-    client: LangfuseClient,
+    client: LangfuseGateway,
     score_results: list[ScoreConfigSyncResult],
     *,
     progress: ProgressReporter | None = None,
@@ -343,7 +346,7 @@ def apply_judge_evaluator_setup(
 
 def audit_judge_evaluator_setup(
     config: ProjectConfig,
-    client: LangfuseClient,
+    client: LangfuseGateway,
     score_results: list[ScoreConfigSyncResult],
     *,
     bindings: EvaluatorBindingStore | None = None,
@@ -363,7 +366,7 @@ def audit_judge_evaluator_setup(
 def _plan_one(
     config: ProjectConfig,
     evaluator: EvaluatorDefinition,
-    client: LangfuseClient,
+    client: LangfuseGateway,
     score_results: list[ScoreConfigSyncResult],
     bindings: EvaluatorBindingStore,
 ) -> EvaluatorSetupPlan:
@@ -561,6 +564,9 @@ def _blocked_plan(
         prompt=_prompt_text(evaluator),
         prompt_version=evaluator.prompt_version,
         output_definition=_output_definition(evaluator),
+        judge_model=evaluator.judge_model or config.judge_setup.default_judge_model,
+        llm_connection=evaluator.llm_connection
+        or config.judge_setup.default_llm_connection,
         sampling_percent=effective_sampling_percent(config, evaluator),
         backfill_status=backfill_status,
         binding_status="not-applicable",
@@ -569,7 +575,7 @@ def _blocked_plan(
 
 
 def _find_remote(
-    client: LangfuseClient,
+    client: LangfuseGateway,
     display_name: str,
     binding: EvaluatorBindingRecord | None,
 ) -> dict[str, Any] | None:
@@ -643,7 +649,7 @@ def _backfill_status(
     config: ProjectConfig,
     evaluator: EvaluatorDefinition,
     target: str,
-    client: LangfuseClient,
+    client: LangfuseGateway,
 ) -> BackfillStatus:
     requested = evaluator.historical_backfill or config.judge_setup.historical_backfill
     if requested != HistoricalBackfillPolicy.ENABLED:
@@ -655,7 +661,7 @@ def _backfill_status(
 
 def _superseded_inactivation_plans(
     config: ProjectConfig,
-    client: LangfuseClient,
+    client: LangfuseGateway,
     bindings: EvaluatorBindingStore,
     active_plans: list[EvaluatorSetupPlan],
 ) -> list[EvaluatorSetupPlan]:

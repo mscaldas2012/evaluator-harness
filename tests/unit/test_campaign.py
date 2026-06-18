@@ -6,7 +6,6 @@ from evaluator_harness.config import load_project_config
 from evaluator_harness.errors import RuntimeDependencyError
 from evaluator_harness.exports import ExportResult
 from evaluator_harness.runner import (
-    CampaignRunResult,
     ExperimentRunner,
     RunResult,
     campaign_candidate_selections,

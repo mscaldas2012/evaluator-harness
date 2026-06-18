@@ -4,13 +4,13 @@ from pathlib import Path
 from uuid import uuid4
 
 from evaluator_harness.annotation_queues import AnnotationQueueReferenceStore
-from evaluator_harness.langfuse_client import LangfuseClient
+from evaluator_harness.langfuse_default_gateway import DefaultLangfuseGateway
 from evaluator_harness.runner import ExperimentRunner
 
 
 def test_select_review_routes_to_environment_override(monkeypatch) -> None:
     monkeypatch.setenv("LANGFUSE_ANNOTATION_QUEUE_ID", "queue-env")
-    langfuse = LangfuseClient()
+    langfuse = DefaultLangfuseGateway()
     langfuse.annotation_queues["queue-env"] = {"id": "queue-env", "name": "env"}
     langfuse.traces.append(
         {
@@ -21,7 +21,7 @@ def test_select_review_routes_to_environment_override(monkeypatch) -> None:
             "metadata": {"dataset_item_id": "1", "dataset_name": "rewrite-quality/v1"},
         }
     )
-    runner = ExperimentRunner(langfuse_client=langfuse)
+    runner = ExperimentRunner(langfuse_gateway=langfuse)
     runner.annotation_queue_store = AnnotationQueueReferenceStore(
         Path(".evaluator-harness/test-artifacts") / uuid4().hex / "queue-references"
     )

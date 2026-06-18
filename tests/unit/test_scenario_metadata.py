@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from evaluator_harness.config import ConfigError, load_project_config
-from evaluator_harness.langfuse_client import LangfuseClient
+from evaluator_harness.langfuse_default_gateway import DefaultLangfuseGateway
 from evaluator_harness.runner import ExperimentRunner
 from tests.fixtures.fake_provider import FakeModelProvider
 
@@ -30,10 +30,10 @@ def test_rejects_incomplete_scenario_identity() -> None:
 
 
 def test_baseline_trace_and_request_metadata_include_scenario_fields() -> None:
-    langfuse = LangfuseClient()
+    langfuse = DefaultLangfuseGateway()
     provider = FakeModelProvider()
     runner = ExperimentRunner(
-        langfuse_client=langfuse,
+        langfuse_gateway=langfuse,
         provider_factory=lambda _config: provider,
     )
 
@@ -50,10 +50,10 @@ def test_baseline_trace_and_request_metadata_include_scenario_fields() -> None:
 
 
 def test_candidate_trace_metadata_include_scenario_fields() -> None:
-    langfuse = LangfuseClient()
+    langfuse = DefaultLangfuseGateway()
     provider = FakeModelProvider()
     runner = ExperimentRunner(
-        langfuse_client=langfuse,
+        langfuse_gateway=langfuse,
         provider_factory=lambda _config: provider,
     )
     baseline_result = runner.run(SCENARIO_PROJECT, "baseline", select_human_review=False)
@@ -78,9 +78,9 @@ def test_candidate_trace_metadata_include_scenario_fields() -> None:
 
 
 def test_run_metadata_include_scenario_fields() -> None:
-    langfuse = LangfuseClient()
+    langfuse = DefaultLangfuseGateway()
     runner = ExperimentRunner(
-        langfuse_client=langfuse,
+        langfuse_gateway=langfuse,
         provider_factory=lambda _config: FakeModelProvider(),
     )
 
@@ -93,9 +93,9 @@ def test_run_metadata_include_scenario_fields() -> None:
 
 
 def test_non_scenario_project_traces_do_not_require_scenario_fields() -> None:
-    langfuse = LangfuseClient()
+    langfuse = DefaultLangfuseGateway()
     runner = ExperimentRunner(
-        langfuse_client=langfuse,
+        langfuse_gateway=langfuse,
         provider_factory=lambda _config: FakeModelProvider(),
     )
 

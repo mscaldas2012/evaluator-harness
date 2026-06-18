@@ -4,7 +4,7 @@ from pathlib import Path
 
 from evaluator_harness.config import load_project_config, validate_project_config
 from evaluator_harness.evaluators import managed_score_name
-from evaluator_harness.langfuse_client import LangfuseClient
+from evaluator_harness.langfuse_default_gateway import DefaultLangfuseGateway
 from evaluator_harness.runner import ExperimentRunner
 from tests.fixtures.config_refs import assert_same_evaluation_config
 
@@ -83,7 +83,7 @@ def test_dfe_scenario_score_config_names_fit_langfuse_limit() -> None:
 
 
 def test_dfe_judge_setup_carries_langfuse_model_provider_and_model() -> None:
-    runner = ExperimentRunner(langfuse_client=LangfuseClient())
+    runner = ExperimentRunner(langfuse_gateway=DefaultLangfuseGateway())
 
     result = runner.sync_judge_evaluators(
         Path("configs/projects/dfe-general-public.yaml"),

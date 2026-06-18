@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from evaluator_harness.langfuse_client import LangfuseClient
+from evaluator_harness.langfuse_default_gateway import DefaultLangfuseGateway
 
 
-def fake_evaluator_client_with_managed_clarity() -> LangfuseClient:
-    client = LangfuseClient()
+def fake_evaluator_client_with_managed_clarity() -> DefaultLangfuseGateway:
+    client = DefaultLangfuseGateway()
     client.evaluators["eval-1"] = {
         "id": "eval-1",
         "display_name": "EH_rewrite-quality_v1_judge_clarity_v1_custom_observation",

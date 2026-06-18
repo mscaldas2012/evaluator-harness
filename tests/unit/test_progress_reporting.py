@@ -4,7 +4,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from evaluator_harness.config import load_project_config
-from evaluator_harness.langfuse_client import LangfuseClient
+from evaluator_harness.langfuse_default_gateway import DefaultLangfuseGateway
 from evaluator_harness.runner import ExperimentRunner
 from tests.fixtures.fake_provider import FakeModelProvider
 
@@ -39,7 +39,7 @@ class RecordingTask:
 def test_run_baseline_reports_progress_for_dataset_items() -> None:
     progress = RecordingProgress()
     runner = ExperimentRunner(
-        langfuse_client=LangfuseClient(),
+        langfuse_gateway=DefaultLangfuseGateway(),
         provider_factory=lambda _config: FakeModelProvider(),
         progress=progress,
     )
@@ -55,7 +55,7 @@ def test_score_config_sync_reports_progress_for_evaluators() -> None:
     progress = RecordingProgress()
     config = load_project_config(Path("configs/projects/rewrite_quality.yaml"))
 
-    LangfuseClient().sync_score_configs(config, progress=progress)
+    DefaultLangfuseGateway().sync_score_configs(config, progress=progress)
 
     assert ("start", "Syncing score configs", 1) in progress.events
     assert progress.events.count(("advance", "Syncing score configs", 1)) == 1
@@ -65,9 +65,9 @@ def test_score_config_sync_reports_progress_for_evaluators() -> None:
 def test_dataset_sync_reports_progress_for_local_items() -> None:
     progress = RecordingProgress()
     config = load_project_config(Path("configs/projects/rewrite_quality.yaml"))
-    items = ExperimentRunner(langfuse_client=LangfuseClient())._validate_dataset(config)
+    items = ExperimentRunner(langfuse_gateway=DefaultLangfuseGateway())._validate_dataset(config)
 
-    LangfuseClient().sync_dataset(config.dataset, items, progress=progress)
+    DefaultLangfuseGateway().sync_dataset(config.dataset, items, progress=progress)
 
     assert ("start", "Syncing dataset items", 2) in progress.events
     assert progress.events.count(("advance", "Syncing dataset items", 1)) == 2
@@ -76,7 +76,7 @@ def test_dataset_sync_reports_progress_for_local_items() -> None:
 
 def test_select_review_reports_progress_for_live_steps() -> None:
     progress = RecordingProgress()
-    client = LangfuseClient()
+    client = DefaultLangfuseGateway()
     client.traces.extend(
         [
             {
@@ -100,7 +100,7 @@ def test_select_review_reports_progress_for_live_steps() -> None:
             },
         ]
     )
-    runner = ExperimentRunner(langfuse_client=client, progress=progress)
+    runner = ExperimentRunner(langfuse_gateway=client, progress=progress)
 
     runner.select_review(Path("configs/projects/rewrite_quality.yaml"), "candidate-1")
 
@@ -115,8 +115,8 @@ def test_select_review_reports_progress_for_live_steps() -> None:
 
 def test_judge_evaluator_apply_reports_progress_for_plans(tmp_path: Path) -> None:
     progress = RecordingProgress()
-    client = LangfuseClient()
-    runner = ExperimentRunner(langfuse_client=client, progress=progress)
+    client = DefaultLangfuseGateway()
+    runner = ExperimentRunner(langfuse_gateway=client, progress=progress)
     project = tmp_path / "project.yaml"
     binding = tmp_path / "bindings.yaml"
     text = Path("tests/fixtures/projects/valid_rewrite_quality.yaml").read_text(
