@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import re
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
@@ -144,7 +145,7 @@ def now_utc() -> str:
 def sync_annotation_queue(
     config: ProjectConfig,
     langfuse_client: object,
-    score_config_results: list[object],
+    score_config_results: Sequence[object],
     *,
     store: AnnotationQueueReferenceStore | None = None,
     dry_run: bool = False,
@@ -291,7 +292,7 @@ def sync_annotation_queue(
 def resolve_annotation_queue(
     config: ProjectConfig,
     langfuse_client: object,
-    score_config_results: list[object],
+    score_config_results: Sequence[object],
     *,
     store: AnnotationQueueReferenceStore | None = None,
 ) -> AnnotationQueueSyncResult:
@@ -371,7 +372,7 @@ def _dry_run_annotation_queue(
     review_version: str,
     queue_name: str,
     langfuse_client: object,
-    score_config_results: list[object],
+    score_config_results: Sequence[object],
     existing_reference: AnnotationQueueReference | None,
 ) -> AnnotationQueueSyncResult:
     desired_ids = {
@@ -486,7 +487,7 @@ def _align_queue_score_configs(
     langfuse_client: object,
     *,
     queue_score_ids: list[str],
-    score_config_results: list[object],
+    score_config_results: Sequence[object],
 ) -> None:
     desired_ids = [
         str(getattr(result, "score_config_id"))

@@ -5,7 +5,6 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-import evaluator_harness.cli as cli
 from evaluator_harness.cli import app
 from evaluator_harness.config import LiveSettings
 from evaluator_harness.langfuse_client import LangfuseClient
@@ -114,7 +113,12 @@ def test_cli_project_command_resolves_project_env_before_credentials(
 ) -> None:
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("EVALUATOR_HARNESS_LIVE", "1")
-    for name in ("LANGFUSE_PUBLIC_KEY", "LANGFUSE_SECRET_KEY", "LANGFUSE_HOST"):
+    for name in (
+        "LANGFUSE_PUBLIC_KEY",
+        "LANGFUSE_SECRET_KEY",
+        "LANGFUSE_HOST",
+        "LANGFUSE_BASE_URL",
+    ):
         monkeypatch.delenv(name, raising=False)
     project_path = _write_project_workspace(tmp_path)
     workspace = Path.cwd()
@@ -165,7 +169,12 @@ def test_cli_missing_credentials_report_names_not_values(
 ) -> None:
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("EVALUATOR_HARNESS_LIVE", "1")
-    for name in ("LANGFUSE_PUBLIC_KEY", "LANGFUSE_SECRET_KEY", "LANGFUSE_HOST"):
+    for name in (
+        "LANGFUSE_PUBLIC_KEY",
+        "LANGFUSE_SECRET_KEY",
+        "LANGFUSE_HOST",
+        "LANGFUSE_BASE_URL",
+    ):
         monkeypatch.delenv(name, raising=False)
     project_path = _write_project_workspace(tmp_path)
     (Path.cwd() / ".env.project-env-files").write_text(

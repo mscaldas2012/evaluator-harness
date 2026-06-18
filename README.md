@@ -146,10 +146,22 @@ uv run python run_experiment.py run `
   --candidate azure-mistral-large-3 `
   --baseline latest-compatible `
   --confirm-mixed-variant
+
+uv run python run_experiment.py comparison-report `
+  --project rewrite-quality `
+  --baseline <baseline-run-id> `
+  --format html
+
+uv run python run_experiment.py campaign `
+  --project configs/projects/rewrite_quality.yaml `
+  --report-format both
 ```
 
 Use Langfuse to run evaluators, inspect scores, compare baseline and candidate
-runs, and review selected items in Human Annotation Queues.
+runs, and review selected items in Human Annotation Queues. For local artifacts,
+`comparison-report` can create Excel, HTML, or both from existing CSV exports;
+campaign mode uses `--report-format excel|html|both` for the final comparison
+artifact and defaults to Excel for compatibility.
 
 ### Shared Evaluation Configs And Scenarios
 
@@ -382,6 +394,18 @@ Azure OpenAI, OpenAI, or Ollama credentials.
 ```powershell
 uv run pytest
 ```
+
+For local code quality reporting, run Ruff, Pyright, Import Linter, Radon, pytest
+coverage, and Vulture together:
+
+```powershell
+uv run python scripts/quality_report.py
+```
+
+The report command writes tool output, JUnit XML, coverage XML, a coverage
+summary, and HTML coverage files under `reports/quality/`. Vulture findings are
+reported as warning-only because dynamic CLI and fixture code can produce false
+positives.
 
 Opt-in live smoke tests hit configured Langfuse and Azure OpenAI resources:
 

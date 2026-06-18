@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from evaluator_harness.config import load_project_config
-from evaluator_harness.errors import ProviderError, RuntimeDependencyError
+from evaluator_harness.errors import ProviderError
 from evaluator_harness.providers.base import ModelRequest
 from evaluator_harness.providers.openai_compatible import OpenAICompatibleProvider
 from evaluator_harness.prompts import RenderedPrompt, RenderedPromptMessage

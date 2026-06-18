@@ -5,13 +5,13 @@ bindings:
   evaluator_version: v1
   source_type: custom
   target: observation
-  langfuse_evaluator_id: cmq6o3iuz005oad0cqmuthd0u
+  langfuse_evaluator_id: cmq9l5why004dad0duhe22p43
   langfuse_display_name: eh_gso_citation_mentions_check
-  score_config_id: 98d950dd-d239-4601-93f4-659c25575dff
+  score_config_id: 23510814-f7be-4ddc-b416-a108c30e9fbd
   score_config_name: eh_gso_citation_mentions_check
   judge_model: gpt-5.4-mini
   llm_connection: Azure (Peraton)
   sampling_percent: 100
   historical_backfill: false
   active: true
-  last_synced_at: '2026-06-09T13:20:23.115087+00:00'
+  last_synced_at: '2026-06-11T14:21:33.855521+00:00'

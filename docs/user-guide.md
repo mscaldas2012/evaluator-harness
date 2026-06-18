@@ -658,7 +658,7 @@ does not call dataset or score-config sync. If automatic human review uses a
 managed queue, a prior queue reference must already exist; otherwise run
 `sync-annotation-queue` or run once without `--skip-sync`.
 
-### CSV and Excel Reports
+### CSV, Excel, and HTML Reports
 
 Baseline and candidate runs export a CSV report automatically after completion
 under the project report folder:
@@ -681,8 +681,39 @@ uv run python run_experiment.py run `
   --no-report
 ```
 
-After the baseline and candidate CSV files exist, create a comparison workbook
-from a baseline run ID:
+After the baseline and candidate CSV files exist, create a comparison report
+from a baseline run ID. The unified `comparison-report` command can write
+Excel, HTML, or both:
+
+```powershell
+uv run python run_experiment.py comparison-report `
+  --project rewrite-quality `
+  --baseline baseline-7140f0ce98a9 `
+  --format html
+```
+
+With `--project`, the command scans `reports/<project-name>/` and writes
+`reports/<project-name>/<baseline-run-id>-comparison.<extension>` by default.
+Use `--format excel`, `--format html`, or `--format both`. Use `--reports-dir`,
+`--output`, and `--output-dir` when you need a custom location:
+
+```powershell
+uv run python run_experiment.py comparison-report `
+  --baseline baseline-7140f0ce98a9 `
+  --reports-dir reports/rewrite-quality `
+  --format both `
+  --output-dir reports/rewrite-quality/review `
+  --overwrite
+```
+
+`--output` is intended for a single generated artifact. Use `--output-dir` for
+`--format both` so the command can create one `.xlsx` and one `.html` file.
+
+The HTML report is self-contained and browser-shareable. It includes a run
+summary, source data preview, pivot-style score table, inline score chart, and
+clear warning/no-score states without external CSS, fonts, scripts, or CDNs.
+
+The existing Excel-only command remains supported:
 
 ```powershell
 uv run python run_experiment.py excel-report `
@@ -690,9 +721,8 @@ uv run python run_experiment.py excel-report `
   --baseline baseline-7140f0ce98a9
 ```
 
-With `--project`, the command scans `reports/<project-name>/` and writes
-`reports/<project-name>/<baseline-run-id>-comparison.xlsx` by default. Use
-`--reports-dir` and `--output` when you need a custom location:
+Use `--reports-dir` and `--output` with `excel-report` when you need a custom
+workbook location:
 
 ```powershell
 uv run python run_experiment.py excel-report `
@@ -703,10 +733,10 @@ uv run python run_experiment.py excel-report `
 
 The command finds the baseline CSV where `run_id` matches `--baseline`, then
 adds every candidate CSV in the selected reports directory whose
-`baseline_run_id` matches that same baseline run ID. The workbook contains
-`Run Summary` first, then
-`Combined Data`, `Score Data`, a native Excel `Score Pivot`, and a clustered
-column `Score Chart` when numeric `score_*` columns are present.
+`baseline_run_id` matches that same baseline run ID. Excel workbooks contain
+`Run Summary` first, then `Combined Data`, `Score Data`, a native Excel
+`Score Pivot`, and a clustered column `Score Chart` when numeric `score_*`
+columns are present.
 
 Microsoft Excel must be installed on the Windows machine running the command,
 because the workbook uses native Excel PivotTable and chart automation. If the
@@ -715,13 +745,23 @@ path.
 
 ### Campaign Mode
 
-Campaign mode runs a fresh baseline, every campaign-included
-candidate, CSV report exports, and a final Excel comparison workbook in one
-command:
+Campaign mode runs a fresh baseline, every campaign-included candidate, CSV
+report exports, and a final comparison report in one command. By default, the
+final report remains Excel-only for compatibility:
 
 ```powershell
 uv run python run_experiment.py campaign `
   --project configs/projects/rewrite_quality.yaml
+```
+
+Use `--report-format html` for a browser-shareable report or `--report-format
+both` to generate both Excel and HTML:
+
+```powershell
+uv run python run_experiment.py campaign `
+  --project configs/projects/rewrite_quality.yaml `
+  --report-format both `
+  --overwrite
 ```
 
 Candidates are included in campaigns by default. Add
