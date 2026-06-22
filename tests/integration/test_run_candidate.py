@@ -8,6 +8,27 @@ from evaluator_harness.runner import ExperimentRunner
 from tests.fixtures.fake_provider import FakeModelProvider
 
 
+class FailingDatasetRunItems:
+    def create(self, **_kwargs):
+        raise RuntimeError("dataset run item write failed")
+
+
+class EmptyDatasetItems:
+    def list(self, **_kwargs):
+        return type("Page", (), {"data": []})()
+
+
+class LiveClientWithFailingRunItems:
+    api = type(
+        "Api",
+        (),
+        {
+            "dataset_run_items": FailingDatasetRunItems(),
+            "dataset_items": EmptyDatasetItems(),
+        },
+    )()
+
+
 def test_candidate_run_links_metadata_to_compatible_baseline() -> None:
     langfuse = DefaultLangfuseGateway()
     baseline_provider = FakeModelProvider(response=ModelResponse(output="baseline output"))
@@ -270,3 +291,32 @@ def test_parameter_variant_evaluator_payload_preserves_parameter_identity() -> N
     assert payload["parameter_identity"]["temperature"] == 0.8
     assert payload["generation_parameter_hash"]
     assert payload["variant_identity"]["generation_parameter_hash"] == payload["generation_parameter_hash"]
+
+
+def test_candidate_outputs_survive_recoverable_langfuse_warning() -> None:
+    langfuse = DefaultLangfuseGateway(client=LiveClientWithFailingRunItems())
+    provider = FakeModelProvider(response=ModelResponse(output="candidate output"))
+    runner = ExperimentRunner(
+        langfuse_gateway=langfuse,
+        provider_factory=lambda _config: provider,
+    )
+    baseline = runner.run(
+        Path("configs/projects/rewrite_quality.yaml"),
+        "baseline",
+        skip_sync=True,
+        select_human_review=False,
+    )
+
+    candidate = runner.run(
+        Path("configs/projects/rewrite_quality.yaml"),
+        "candidate",
+        candidate="dry-run-candidate",
+        baseline=baseline.run_id,
+        skip_sync=True,
+        select_human_review=False,
+    )
+
+    traces = langfuse.traces_for_run(candidate.run_id)
+    assert candidate.completed_count == 2
+    assert candidate.langfuse_status == "complete-with-warnings"
+    assert all(trace["output"] == "candidate output" for trace in traces)

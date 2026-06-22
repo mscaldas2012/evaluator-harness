@@ -99,6 +99,12 @@ def redact_langfuse_message(message: str) -> str:
     redacted = message
     for pattern in _SECRET_PATTERNS:
         redacted = pattern.sub("[REDACTED]", redacted)
+    redacted = re.sub(
+        r"(authorization['\"\s:=]+)(bearer\s+)?[^,\s}]+",
+        r"\1[REDACTED]",
+        redacted,
+        flags=re.IGNORECASE,
+    )
     for word in _SECRET_WORDS:
         redacted = re.sub(
             rf"({re.escape(word)}['\"\s:=]+)([^,\s}}]+)",

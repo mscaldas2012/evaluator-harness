@@ -19,6 +19,8 @@ class FakeRunResult:
     failed_count: int = 0
     baseline_reference: object | None = object()
     review_selection: object | None = None
+    langfuse_status: str = "complete"
+    langfuse_warnings: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -104,6 +106,46 @@ def test_run_candidate_cli_exports_report_by_default(monkeypatch) -> None:
     ]
     assert "report: reports\\rewrite-quality\\candidate-123.csv" in result.stdout
     assert "report-rows: 2" in result.stdout
+
+
+def test_run_candidate_cli_prints_langfuse_partial_persistence_warning(
+    monkeypatch,
+) -> None:
+    class FakeRunner(FakeRunnerBase):
+        def mixed_variant_axes(self, *_args, **_kwargs):
+            return []
+
+        def run(self, project, mode, **kwargs):
+            assert mode == "candidate"
+            return FakeRunResult(
+                langfuse_status="complete-with-warnings",
+                langfuse_warnings=(
+                    "Langfuse dataset run item was not recorded. "
+                    "(operation=dataset_run_item_recording, affected=2)",
+                ),
+            )
+
+    monkeypatch.setattr(cli, "ExperimentRunner", FakeRunner)
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "run",
+            "--project",
+            "configs/projects/rewrite_quality.yaml",
+            "--mode",
+            "candidate",
+            "--candidate",
+            "llama3-local",
+            "--baseline",
+            "latest-compatible",
+            "--no-report",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "langfuse: complete-with-warnings" in result.stdout
+    assert "warning: Langfuse dataset run item was not recorded." in result.stdout
 
 
 def test_run_candidate_cli_no_report_skips_export(monkeypatch) -> None:

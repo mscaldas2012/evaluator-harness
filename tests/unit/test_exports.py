@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import csv
 from pathlib import Path
+from types import SimpleNamespace
 
+import pytest
+
+from evaluator_harness.errors import ConfigError
 from evaluator_harness.exports import export_summary
 from evaluator_harness.langfuse_default_gateway import DefaultLangfuseGateway
 from evaluator_harness.runner import ExperimentRunner
@@ -126,6 +130,59 @@ def test_runner_export_writes_csv_under_project_report_folder() -> None:
     assert result.output_path.exists()
 
 
+def test_runner_export_blocks_failed_trace_confirmation(monkeypatch) -> None:
+    monkeypatch.setenv("EVALUATOR_HARNESS_LANGFUSE_TRACE_WAIT_SECONDS", "0")
+    monkeypatch.setenv("EVALUATOR_HARNESS_LANGFUSE_TRACE_POLL_INTERVAL_SECONDS", "0")
+
+    class FailingTraceClient:
+        def list(self, **_kwargs):
+            raise RuntimeError("trace list unavailable")
+
+    client = DefaultLangfuseGateway(
+        client=SimpleNamespace(
+            api=SimpleNamespace(trace=FailingTraceClient()),
+            get_dataset_runs=lambda **_kwargs: SimpleNamespace(data=[]),
+        )
+    )
+    runner = ExperimentRunner(langfuse_gateway=client)
+
+    with pytest.raises(ConfigError, match="trace confirmation failed"):
+        runner.export(
+            Path("configs/projects/rewrite_quality.yaml"),
+            "candidate-123",
+            "csv",
+            expected_count=1,
+        )
+
+
+def test_runner_export_blocks_failed_score_confirmation() -> None:
+    class FailingScoresClient:
+        def get_many(self, **_kwargs):
+            raise RuntimeError("score retrieval unavailable")
+
+    client = DefaultLangfuseGateway(
+        client=SimpleNamespace(
+            api=SimpleNamespace(scores=FailingScoresClient()),
+        ),
+        traces=[
+            {
+                "trace_id": "trace-1",
+                "run_id": "candidate-123",
+                "metadata": {"dataset_item_id": "1"},
+            }
+        ],
+    )
+    runner = ExperimentRunner(langfuse_gateway=client)
+
+    with pytest.raises(ConfigError, match="score confirmation failed"):
+        runner.export(
+            Path("configs/projects/rewrite_quality.yaml"),
+            "candidate-123",
+            "csv",
+            expected_count=1,
+        )
+
+
 def test_export_summary_leaves_missing_scores_empty(tmp_path: Path) -> None:
     traces = [
         {
@@ -231,3 +288,21 @@ def test_export_summary_groups_scores_by_trace_id_not_session_id(tmp_path: Path)
     rows = list(csv.DictReader(output_path.open(encoding="utf-8")))
     assert rows[0]["score_clarity"] == ""
     assert rows[1]["score_clarity"] == "1"
+
+
+def test_export_summary_preserves_langfuse_warning_metadata(tmp_path: Path) -> None:
+    output_path = tmp_path / "summary.csv"
+
+    result = export_summary(
+        [
+            {
+                "trace_id": "trace-1",
+                "run_id": "candidate-1",
+                "metadata": {"dataset_item_id": "1"},
+            }
+        ],
+        output_path,
+        warnings=("Langfuse score retrieval failed.",),
+    )
+
+    assert result.warnings == ("Langfuse score retrieval failed.",)

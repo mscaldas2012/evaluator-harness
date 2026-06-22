@@ -10,6 +10,7 @@ from evaluator_harness.langfuse_baselines import (
     parse_datetime,
     reference_matches,
 )
+from evaluator_harness.langfuse_default_gateway import DefaultLangfuseGateway
 
 
 def _fingerprint(**overrides: str) -> SimpleNamespace:
@@ -76,3 +77,35 @@ def test_parse_datetime_normalizes_zulu_and_naive_values() -> None:
     )
     assert parse_datetime("2026-06-18T10:00:00").tzinfo == UTC
     assert parse_datetime("not-a-date") is None
+
+
+def test_live_baseline_expected_not_found_does_not_warn() -> None:
+    client = SimpleNamespace(
+        get_dataset_runs=lambda **_kwargs: SimpleNamespace(data=[])
+    )
+    gateway = DefaultLangfuseGateway(client=client)
+
+    assert gateway.lookup_baseline(
+        selector="latest-compatible",
+        fingerprint=_fingerprint(),
+    ) is None
+    assert gateway.current_langfuse_warnings() == ()
+
+
+def test_live_baseline_lookup_failure_warns() -> None:
+    def get_dataset_runs(**_kwargs):
+        raise RuntimeError("authorization: sk-secret123")
+
+    gateway = DefaultLangfuseGateway(
+        client=SimpleNamespace(get_dataset_runs=get_dataset_runs)
+    )
+
+    assert gateway.lookup_baseline(
+        selector="latest-compatible",
+        fingerprint=_fingerprint(),
+    ) is None
+
+    warnings = gateway.current_langfuse_warnings()
+    assert len(warnings) == 1
+    assert warnings[0].operation == "baseline_lookup"
+    assert warnings[0].details["error"] == "authorization: [REDACTED]"

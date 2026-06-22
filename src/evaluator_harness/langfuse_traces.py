@@ -4,6 +4,7 @@ import time
 from typing import Any
 
 from evaluator_harness.errors import ConfigError
+from evaluator_harness.langfuse_records import LangfuseOperationOutcome
 from evaluator_harness.langfuse_settings import (
     langfuse_trace_poll_interval_seconds,
     langfuse_trace_wait_seconds,
@@ -79,7 +80,7 @@ def live_traces_for_run(
             run_id,
             dataset_names=dataset_names,
         )
-    direct_traces = _direct_traces_for_run(list_traces, run_id)
+    direct_traces = _direct_traces_for_run(owner, list_traces, run_id)
     dataset_run_traces = live_dataset_run_traces_for_run(
         owner,
         run_id,
@@ -103,7 +104,19 @@ def live_dataset_run_traces_for_run(
     for dataset_name in dataset_names or candidate_dataset_names(owner):
         try:
             page = get_dataset_runs(dataset_name=dataset_name, limit=100)
-        except Exception:
+        except Exception as exc:
+            _record_lookup_warning(
+                owner,
+                operation="trace_lookup",
+                message="Langfuse dataset run trace lookup failed.",
+                examples=(f"run={run_id} dataset={dataset_name}",),
+                details={
+                    "dataset_name": dataset_name,
+                    "run_id": run_id,
+                    "exception_type": type(exc).__name__,
+                    "error": str(exc),
+                },
+            )
             continue
         for run in getattr(page, "data", None) or getattr(page, "runs", None) or []:
             traces.extend(
@@ -132,7 +145,19 @@ def live_dataset_run_item_traces(
         return []
     try:
         run_with_items = get_dataset_run(dataset_name=dataset_name, run_name=run_id)
-    except Exception:
+    except Exception as exc:
+        _record_lookup_warning(
+            owner,
+            operation="trace_lookup",
+            message="Langfuse dataset run item trace lookup failed.",
+            examples=(f"run={run_id} dataset={dataset_name}",),
+            details={
+                "dataset_name": dataset_name,
+                "run_id": run_id,
+                "exception_type": type(exc).__name__,
+                "error": str(exc),
+            },
+        )
         return []
     traces: list[dict[str, Any]] = []
     for item in dataset_run_items(run_with_items):
@@ -156,12 +181,30 @@ def live_trace_by_id(owner: Any, trace_id: str) -> dict[str, Any] | None:
     if not callable(get_trace):
         return None
     try:
-        return live_trace_to_dict(get_trace(trace_id))
-    except Exception:
+        trace = get_trace(trace_id)
+    except Exception as exc:
+        _record_lookup_warning(
+            owner,
+            operation="trace_lookup",
+            message="Langfuse trace lookup failed.",
+            examples=(trace_id,),
+            details={
+                "trace_id": trace_id,
+                "exception_type": type(exc).__name__,
+                "error": str(exc),
+            },
+        )
         return None
+    if trace is None:
+        return None
+    return live_trace_to_dict(trace)
 
 
-def _direct_traces_for_run(get_traces: Any, run_id: str) -> list[dict[str, Any]]:
+def _direct_traces_for_run(
+    owner: Any,
+    get_traces: Any,
+    run_id: str,
+) -> list[dict[str, Any]]:
     filters = [
         f'metadata.run_id = "{run_id}"',
         f"metadata.run_id = {run_id}",
@@ -169,7 +212,19 @@ def _direct_traces_for_run(get_traces: Any, run_id: str) -> list[dict[str, Any]]
     for filter_expression in filters:
         try:
             page = get_traces(limit=100, filter=filter_expression)
-        except Exception:
+        except Exception as exc:
+            _record_lookup_warning(
+                owner,
+                operation="trace_lookup",
+                message="Langfuse direct trace lookup failed.",
+                examples=(run_id,),
+                details={
+                    "run_id": run_id,
+                    "filter": filter_expression,
+                    "exception_type": type(exc).__name__,
+                    "error": str(exc),
+                },
+            )
             continue
         direct_traces = [
             live_trace_to_dict(trace) for trace in (getattr(page, "data", None) or [])
@@ -282,3 +337,27 @@ def trace_from_metadata(
         "metadata": metadata,
         "timestamp": "",
     }
+
+
+def _record_lookup_warning(
+    owner: Any,
+    *,
+    operation: str,
+    message: str,
+    examples: tuple[str, ...],
+    details: dict[str, Any],
+) -> None:
+    record_outcome = getattr(owner, "record_langfuse_outcome", None)
+    if not callable(record_outcome):
+        return
+    record_outcome(
+        LangfuseOperationOutcome(
+            operation=operation,
+            status="partial_success",
+            severity="warning",
+            message=message,
+            affected_count=1,
+            examples=examples,
+            details=details,
+        )
+    )

@@ -67,6 +67,7 @@ from evaluator_harness.langfuse_records import (
     AnnotationRoutingResult,
     DatasetSyncResult,
     ScoreConfigSyncResult,
+    format_langfuse_warning,
 )
 from evaluator_harness.model_output_targeting import (
     MODEL_OUTPUT_ROLE,
@@ -133,6 +134,8 @@ class RunResult:
     review_selection: ReviewSelectionResult | None = None
     model_output_targeting_status: str | None = None
     model_output_targeting_message: str | None = None
+    langfuse_status: str = "complete"
+    langfuse_warnings: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -198,6 +201,31 @@ class ExperimentRunner:
         self.baseline_registry = baseline_registry or BaselineRegistry()
         self.annotation_queue_store = AnnotationQueueReferenceStore()
         self.progress = progress or NullProgressReporter()
+
+    def _current_langfuse_warning_messages(self) -> tuple[str, ...]:
+        warnings = self._current_langfuse_warnings()
+        return tuple(format_langfuse_warning(warning) for warning in warnings)
+
+    def _current_langfuse_warnings(self) -> tuple[Any, ...]:
+        current = getattr(self.langfuse_gateway, "current_langfuse_warnings", None)
+        if not callable(current):
+            return ()
+        warnings = current()
+        if isinstance(warnings, tuple):
+            return warnings
+        if isinstance(warnings, list):
+            return tuple(warnings)
+        return ()
+
+    def _langfuse_status(self, warnings: tuple[str, ...]) -> str:
+        return "complete-with-warnings" if warnings else "complete"
+
+    def _require_dataset_identity(self, dataset_sync: DatasetSyncResult) -> None:
+        if not dataset_sync.name:
+            raise ConfigError(
+                "Dataset identity is required before running Langfuse-backed "
+                "baseline or candidate workflows."
+            )
 
     def _load_project_config(self, project_path: Path) -> ProjectConfig:
         config = load_project_config(project_path)
@@ -426,6 +454,9 @@ class ExperimentRunner:
 
         config = self._load_project_config(project_path)
         validate_project_config(config)
+        drain_warnings = getattr(self.langfuse_gateway, "drain_langfuse_warnings", None)
+        if callable(drain_warnings):
+            drain_warnings()
         items = self._validate_dataset(config)
         skip_sync = bool(kwargs.get("skip_sync", False))
         if skip_sync:
@@ -437,6 +468,7 @@ class ExperimentRunner:
                 progress=self.progress,
             )
             self.langfuse_gateway.sync_score_configs(config, progress=self.progress)
+        self._require_dataset_identity(dataset_sync)
         if mode == "baseline":
             result = self._run_baseline(config, items, dataset_sync)
         else:
@@ -467,6 +499,8 @@ class ExperimentRunner:
                 review_selection=review,
                 model_output_targeting_status=result.model_output_targeting_status,
                 model_output_targeting_message=result.model_output_targeting_message,
+                langfuse_status=result.langfuse_status,
+                langfuse_warnings=result.langfuse_warnings,
             )
         return result
 
@@ -702,13 +736,45 @@ class ExperimentRunner:
             trace_ids=trace_ids,
             progress=self.progress,
         )
+        warnings = self._current_langfuse_warnings()
+        self._raise_if_export_linkage_failed(
+            expected_count=expected_count,
+            trace_count=len(traces),
+            warnings=warnings,
+        )
         output_path = _project_reports_dir(config) / f"{run_id}.csv"
+        warning_messages = tuple(
+            format_langfuse_warning(warning) for warning in warnings
+        )
         return export_summary(
             traces,
             output_path,
             scores=scores,
             progress=self.progress,
+            warnings=warning_messages,
         )
+
+    def _raise_if_export_linkage_failed(
+        self,
+        *,
+        expected_count: int | None,
+        trace_count: int,
+        warnings: tuple[Any, ...],
+    ) -> None:
+        operations = {getattr(warning, "operation", "") for warning in warnings}
+        if (
+            expected_count is not None
+            and trace_count < expected_count
+            and "trace_lookup" in operations
+        ):
+            raise ConfigError(
+                "Langfuse trace confirmation failed; export would be misleading "
+                f"({trace_count}/{expected_count} expected traces confirmed)."
+            )
+        if "score_retrieval" in operations:
+            raise ConfigError(
+                "Langfuse score confirmation failed; export would be misleading."
+            )
 
     def campaign(
         self,
@@ -1076,6 +1142,7 @@ class ExperimentRunner:
             run_id=run_id,
             completed_count=completed,
         )
+        langfuse_warnings = self._current_langfuse_warning_messages()
         return RunResult(
             run_id=run_id,
             run_type="baseline",
@@ -1084,6 +1151,8 @@ class ExperimentRunner:
             baseline_reference=reference,
             model_output_targeting_status=targeting.status,
             model_output_targeting_message=targeting.message,
+            langfuse_status=self._langfuse_status(langfuse_warnings),
+            langfuse_warnings=langfuse_warnings,
         )
 
     def _run_candidate(
@@ -1124,7 +1193,11 @@ class ExperimentRunner:
             else baseline_selector
         )
         if baseline_reference is None:
-            raise ConfigError(f"No baseline reference found for {baseline_run_id}")
+            warning_context = self._current_langfuse_warning_messages()
+            message = f"No baseline reference found for {baseline_run_id}"
+            if warning_context:
+                message = f"{message}. {warning_context[0]}"
+            raise ConfigError(message)
 
         provider: ModelProvider = self.provider_factory(candidate)
         run_id = f"candidate-{uuid4().hex[:12]}"
@@ -1319,6 +1392,7 @@ class ExperimentRunner:
             run_id=run_id,
             completed_count=completed,
         )
+        langfuse_warnings = self._current_langfuse_warning_messages()
         return RunResult(
             run_id=run_id,
             run_type="candidate",
@@ -1327,6 +1401,8 @@ class ExperimentRunner:
             baseline_reference=baseline_reference,
             model_output_targeting_status=targeting.status,
             model_output_targeting_message=targeting.message,
+            langfuse_status=self._langfuse_status(langfuse_warnings),
+            langfuse_warnings=langfuse_warnings,
         )
 
     def _trace_payload(

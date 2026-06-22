@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from evaluator_harness.config import BaselineReference
+from evaluator_harness.langfuse_records import LangfuseOperationOutcome
 
 FINGERPRINT_FIELDS = [
     "project_name",
@@ -54,7 +55,19 @@ def lookup_live_baseline_workflow(
         return None
     try:
         page = get_dataset_runs(dataset_name=dataset_name, limit=100)
-    except Exception:
+    except Exception as exc:
+        _record_lookup_warning(
+            owner,
+            operation="baseline_lookup",
+            message="Langfuse baseline lookup failed.",
+            examples=(selector,),
+            details={
+                "selector": selector,
+                "dataset_name": dataset_name,
+                "exception_type": type(exc).__name__,
+                "error": str(exc),
+            },
+        )
         return None
     runs = getattr(page, "data", None) or getattr(page, "runs", None) or []
     matches = _matching_baseline_runs(owner, runs, selector, fingerprint, dataset_name)
@@ -100,7 +113,19 @@ def dataset_run_metadata_workflow(
             dataset_name=dataset_name,
             run_name=str(run_name),
         )
-    except Exception:
+    except Exception as exc:
+        _record_lookup_warning(
+            owner,
+            operation="dataset_run_metadata_lookup",
+            message="Langfuse dataset run metadata lookup failed.",
+            examples=(str(run_name),),
+            details={
+                "dataset_name": dataset_name,
+                "run_name": str(run_name),
+                "exception_type": type(exc).__name__,
+                "error": str(exc),
+            },
+        )
         return {}
     for item in getattr(run_with_items, "items", None) or []:
         item_metadata = getattr(item, "metadata", None) or {}
@@ -203,3 +228,27 @@ def _matching_baseline_runs(
         if metadata_matches(metadata, fingerprint):
             matches.append((run, metadata, index))
     return matches
+
+
+def _record_lookup_warning(
+    owner: Any,
+    *,
+    operation: str,
+    message: str,
+    examples: tuple[str, ...],
+    details: dict[str, Any],
+) -> None:
+    record_outcome = getattr(owner, "record_langfuse_outcome", None)
+    if not callable(record_outcome):
+        return
+    record_outcome(
+        LangfuseOperationOutcome(
+            operation=operation,
+            status="partial_success",
+            severity="warning",
+            message=message,
+            affected_count=1,
+            examples=examples,
+            details=details,
+        )
+    )
