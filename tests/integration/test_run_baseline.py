@@ -12,6 +12,66 @@ from evaluator_harness.providers.base import ModelResponse
 from evaluator_harness.runner import ExperimentRunner
 from tests.fixtures.fake_provider import FakeModelProvider
 
+SHARED_TRACE_METADATA_KEYS = {
+    "project",
+    "project_version",
+    "run_type",
+    "dataset_name",
+    "dataset_version",
+    "dataset_compatibility_version",
+    "dataset_item_id",
+    "trace_id",
+    "trace_name",
+    "item_comparison_session_id",
+    "item_comparison_session_inputs",
+    "prompt_version",
+    "prompt_shape",
+    "prompt_roles",
+    "prompt_identity",
+    "baseline_prompt_identity",
+    "evaluator_set_id",
+    "ground_truth",
+    "provider",
+    "model",
+    "model_name",
+    "temperature",
+    "parameter_hash",
+    "parameter_identity",
+    "generation_parameter_hash",
+    "variant_identity",
+    "retry_count",
+    "provider_tracing_strategy",
+}
+
+
+def assert_shared_trace_evidence(trace: dict, *, run_type: str) -> None:
+    metadata = trace["metadata"]
+
+    assert SHARED_TRACE_METADATA_KEYS <= set(metadata)
+    assert metadata["run_type"] == run_type
+    assert metadata["trace_id"] == trace["trace_id"]
+    assert metadata["trace_name"] == trace["name"]
+    assert metadata["dataset_item_id"]
+    assert metadata["item_comparison_session_id"]
+    assert (
+        metadata["item_comparison_session_inputs"]["dataset_item_id"]
+        == metadata["dataset_item_id"]
+    )
+    assert metadata["prompt_identity"]["version"] == metadata["prompt_version"]
+    assert (
+        metadata["baseline_prompt_identity"]["version"]
+        == metadata["baseline_prompt_version"]
+    )
+    assert metadata["provider_tracing_strategy"]["provider"] == metadata["provider"]
+
+
+def assert_shared_failure_evidence(trace: dict, *, run_type: str) -> None:
+    assert_shared_trace_evidence(trace, run_type=run_type)
+    assert trace["error"]
+    assert trace["output"] is None
+    assert trace["rendered_prompt"]
+    assert trace["metadata"]["retry_count"] == 0
+
 
 def test_run_baseline_records_traces_and_reference() -> None:
     langfuse = DefaultLangfuseGateway()
@@ -36,10 +96,18 @@ def test_run_baseline_records_traces_and_reference() -> None:
     assert result.completed_count == 2
     assert result.review_selection is not None
     assert result.review_selection.queued_count >= 1
+    assert_shared_trace_evidence(langfuse.traces[0], run_type="baseline")
     assert langfuse.traces[0]["metadata"]["project"] == "rewrite-quality"
     assert langfuse.traces[0]["metadata"]["prompt_version"] == "v1"
     assert langfuse.traces[0]["metadata"]["ground_truth"]
     assert langfuse.baseline_evaluator_payloads[0]["output"] == "baseline output"
+    assert langfuse.baseline_evaluator_payloads[0]["evaluators"] == [
+        {
+            "name": "clarity",
+            "version": "v1",
+            "score_config": "eh_rewrite_quality_clarity",
+        }
+    ]
     assert langfuse.annotation_queue_items
 
 
@@ -142,7 +210,9 @@ def test_role_based_baseline_passes_ordered_messages_to_provider() -> None:
         provider_factory=lambda _config: provider,
     )
 
-    runner.run(Path("tests/fixtures/projects/valid_role_prompt_project.yaml"), "baseline")
+    runner.run(
+        Path("tests/fixtures/projects/valid_role_prompt_project.yaml"), "baseline"
+    )
 
     rendered = provider.calls[0].rendered_prompt
     assert rendered.shape == "messages"
@@ -181,6 +251,7 @@ def test_run_baseline_records_failed_call_context() -> None:
     result = runner.run(Path("configs/projects/rewrite_quality.yaml"), "baseline")
 
     assert result.failed_count == 2
+    assert_shared_failure_evidence(langfuse.traces[0], run_type="baseline")
     assert langfuse.traces[0]["error"]
     assert langfuse.traces[0]["metadata"]["provider"] == "openai_compatible"
     assert langfuse.traces[0]["metadata"]["retry_count"] >= 0
