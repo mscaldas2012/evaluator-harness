@@ -1,16 +1,16 @@
 # Graph Report - EvaluatorHarness  (2026-06-22)
 
 ## Corpus Check
-- 440 files · ~274,844 words
+- 460 files · ~283,671 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 4629 nodes · 10089 edges · 383 communities (317 shown, 66 thin omitted)
-- Extraction: 75% EXTRACTED · 25% INFERRED · 0% AMBIGUOUS · INFERRED: 2535 edges (avg confidence: 0.52)
+- 4836 nodes · 11154 edges · 398 communities (329 shown, 69 thin omitted)
+- Extraction: 71% EXTRACTED · 29% INFERRED · 0% AMBIGUOUS · INFERRED: 3179 edges (avg confidence: 0.52)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `d5453496`
+- Built from commit: `688857c7`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -356,27 +356,42 @@
 - [[_COMMUNITY_Community 367|Community 367]]
 - [[_COMMUNITY_Community 368|Community 368]]
 - [[_COMMUNITY_Community 369|Community 369]]
+- [[_COMMUNITY_Community 370|Community 370]]
 - [[_COMMUNITY_Community 371|Community 371]]
 - [[_COMMUNITY_Community 372|Community 372]]
 - [[_COMMUNITY_Community 373|Community 373]]
+- [[_COMMUNITY_Community 375|Community 375]]
+- [[_COMMUNITY_Community 376|Community 376]]
 - [[_COMMUNITY_Community 377|Community 377]]
+- [[_COMMUNITY_Community 378|Community 378]]
 - [[_COMMUNITY_Community 380|Community 380]]
 - [[_COMMUNITY_Community 381|Community 381]]
 - [[_COMMUNITY_Community 382|Community 382]]
+- [[_COMMUNITY_Community 383|Community 383]]
 - [[_COMMUNITY_Community 384|Community 384]]
+- [[_COMMUNITY_Community 385|Community 385]]
+- [[_COMMUNITY_Community 386|Community 386]]
 - [[_COMMUNITY_Community 387|Community 387]]
+- [[_COMMUNITY_Community 388|Community 388]]
+- [[_COMMUNITY_Community 389|Community 389]]
 - [[_COMMUNITY_Community 390|Community 390]]
 - [[_COMMUNITY_Community 391|Community 391]]
+- [[_COMMUNITY_Community 392|Community 392]]
+- [[_COMMUNITY_Community 393|Community 393]]
+- [[_COMMUNITY_Community 394|Community 394]]
+- [[_COMMUNITY_Community 395|Community 395]]
+- [[_COMMUNITY_Community 401|Community 401]]
+- [[_COMMUNITY_Community 402|Community 402]]
 
 ## God Nodes (most connected - your core abstractions)
-1. `DefaultLangfuseGateway` - 315 edges
-2. `ConfigError` - 265 edges
-3. `ExperimentRunner` - 187 edges
-4. `load_project_config()` - 161 edges
-5. `LangfuseGateway` - 119 edges
-6. `ProjectConfig` - 105 edges
-7. `ProgressReporter` - 87 edges
-8. `FakeModelProvider` - 87 edges
+1. `DefaultLangfuseGateway` - 319 edges
+2. `ConfigError` - 307 edges
+3. `ExperimentRunner` - 202 edges
+4. `load_project_config()` - 165 edges
+5. `ProjectConfig` - 155 edges
+6. `LangfuseGateway` - 140 edges
+7. `ProgressReporter` - 100 edges
+8. `FakeModelProvider` - 90 edges
 9. `CliRunner` - 85 edges
 10. `NullProgressReporter` - 81 edges
 
@@ -396,23 +411,23 @@
 - 1-file cycle: `scripts/cleanup_duplicate_score_configs.py -> scripts/cleanup_duplicate_score_configs.py`
 - 1-file cycle: `src/evaluator_harness/langfuse_baselines.py -> src/evaluator_harness/langfuse_baselines.py`
 
-## Communities (383 total, 66 thin omitted)
+## Communities (398 total, 69 thin omitted)
 
 ### Community 0 - "Project and Dataset Configuration"
-Cohesion: 0.05
-Nodes (164): AnnotationQueueSyncResult, BaselineFingerprint, BaselineRegistry, DatasetSyncResultFactory, DefaultLangfuseGateway, AnnotationQueueReferenceStore, AnnotationQueueSyncResult, BaselineFingerprint (+156 more)
+Cohesion: 0.24
+Nodes (71): CampaignRunResult, AnnotationQueueReferenceStore, AnnotationQueueSyncResult, BaselineFingerprint, BaselineRegistry, BaselineRunContext, CampaignCandidateRun, CampaignCandidateSelection (+63 more)
 
 ### Community 1 - "Model Provider Authentication Errors"
-Cohesion: 0.18
-Nodes (23): RenderedPromptMessage, OpenAICompatibleProvider, MonkeyPatch, FakeAzureOpenAI, FakeAzureOpenAIRejectsMaxTokens, FakeAzureOpenAIWithCompletions, FakeCompletions, FakeRejectsMaxTokensCompletions (+15 more)
+Cohesion: 0.05
+Nodes (46): FailureContext, ProviderError, A model provider call failed., check_reachable_workflow(), verify_workspace_access(), RenderedPromptMessage, _duration_to_ms(), OllamaProvider (+38 more)
 
 ### Community 2 - "Prompt Artifact Management"
-Cohesion: 0.06
-Nodes (73): _report(), _artifact_from_prompt_ref(), _assert_unique_managed_names(), _binding_from_status(), _conflict(), content_identity(), default_prompt_binding_path(), discover_prompt_artifacts() (+65 more)
+Cohesion: 0.07
+Nodes (69): _report(), _artifact_from_prompt_ref(), _assert_unique_managed_names(), _binding_from_status(), _conflict(), content_identity(), default_prompt_binding_path(), discover_prompt_artifacts() (+61 more)
 
 ### Community 3 - "Annotation Queue Management"
 Cohesion: 0.07
-Nodes (59): _align_queue_score_configs(), AnnotationQueueReference, _create_annotation_queue(), _dry_run_annotation_queue(), _dry_run_queue_match_result(), _get_annotation_queue(), _list_annotation_queues(), managed_queue_name() (+51 more)
+Nodes (62): _align_queue_score_configs(), AnnotationQueueReference, _create_annotation_queue(), _dry_run_annotation_queue(), _dry_run_queue_match_result(), _get_annotation_queue(), _list_annotation_queues(), managed_queue_name() (+54 more)
 
 ### Community 4 - "Score Config Cleanup and Archiving"
 Cohesion: 0.08
@@ -423,43 +438,43 @@ Cohesion: 0.05
 Nodes (53): CliRunner, test_campaign_cli_both_report_format_output(), test_campaign_cli_completed_with_failures_exits_nonzero(), test_campaign_cli_html_report_format_output(), test_campaign_cli_rejects_unsupported_report_format(), test_campaign_cli_skipped_when_no_candidates_eligible(), test_campaign_cli_success_output(), FakeReportResult (+45 more)
 
 ### Community 6 - "Configuration and Credential Validation"
-Cohesion: 0.15
-Nodes (28): DatasetSource, LiveSettings, ScoreConfigRef, LangfuseError, A Langfuse operation failed., aggregate_langfuse_warnings(), LangfuseOperationOutcome, LangfuseWarning (+20 more)
+Cohesion: 0.08
+Nodes (49): build_baseline_fingerprint(), fingerprint_metadata(), build_baseline_run_context(), build_candidate_run_context(), scenario_metadata(), base_run_metadata(), build_run_fingerprint(), baseline_reference_metadata() (+41 more)
 
 ### Community 7 - "Evaluator Metadata and Backfill Status"
-Cohesion: 0.13
-Nodes (39): apply_judge_evaluator_setup(), audit_judge_evaluator_setup(), _backfill_status(), _binding_path(), _blocked_plan(), build_managed_evaluator_name(), build_prompt_variable_mapping(), build_variable_mapping() (+31 more)
+Cohesion: 0.10
+Nodes (78): DatasetSyncResultFactory, Enum, candidate_by_name(), EvaluatorDefinition, EvaluatorSourceType, EvaluatorTarget, HistoricalBackfillPolicy, _require_variables() (+70 more)
 
 ### Community 8 - "Evaluator Definitions and Validation"
-Cohesion: 0.10
-Nodes (31): assert_blind_prompt(), assert_prompt_is_single_dimension(), build_filter_profile(), evaluator_score_summary(), evaluator_target_summary(), export_evaluator_setup(), load_judge_prompt(), managed_score_name() (+23 more)
+Cohesion: 0.12
+Nodes (36): EvaluatorFilterProfile, EvaluatorMode, EvaluatorRunType, assert_blind_prompt(), assert_prompt_is_single_dimension(), build_filter_profile(), evaluator_score_summary(), evaluator_target_summary() (+28 more)
 
 ### Community 9 - "TLS and Environment Configuration"
-Cohesion: 0.25
-Nodes (18): AnnotationRoutingResultFactory, annotation_queue_object_ids_workflow(), _annotation_queues_api(), build_annotation_queue_payload_workflow(), create_annotation_queue_workflow(), create_live_annotation_queue(), create_live_annotation_queue_item(), _evaluator_payload() (+10 more)
+Cohesion: 0.11
+Nodes (21): AuthMode, ProviderName, ModelRequest, Generate a model response for one request., DryRunProvider, ModelConfig, ModelRequest, ModelResponse (+13 more)
 
 ### Community 10 - "Export and Campaign Run Results"
-Cohesion: 0.21
-Nodes (19): export_summary(), _json_or_empty(), _score_columns(), _score_name_slug(), _score_row(), _score_sort_key(), _scores_by_trace(), _trace_row() (+11 more)
+Cohesion: 0.10
+Nodes (36): campaign_candidate_selections(), export_summary(), _json_or_empty(), _score_columns(), _score_name_slug(), _score_row(), _score_sort_key(), _scores_by_trace() (+28 more)
 
 ### Community 11 - "Experiment and Model Provider Testing"
-Cohesion: 0.08
-Nodes (31): FakeModelProvider, test_api_key_candidate_trace_metadata_is_evaluator_filterable(), test_baseline_and_candidate_traces_include_model_output_filter_metadata(), test_mixed_variant_trace_metadata_remains_evaluator_filterable(), test_parameter_variant_trace_metadata_includes_parameter_identity(), test_prompt_variant_trace_metadata_includes_baseline_and_candidate_prompt_identity(), test_role_prompt_trace_metadata_includes_shape_roles_and_variables(), EmptyDatasetItems (+23 more)
+Cohesion: 0.07
+Nodes (38): FakeModelProvider, test_api_key_candidate_trace_metadata_is_evaluator_filterable(), test_baseline_and_candidate_traces_include_model_output_filter_metadata(), test_mixed_variant_trace_metadata_remains_evaluator_filterable(), test_parameter_variant_trace_metadata_includes_parameter_identity(), test_prompt_variant_trace_metadata_includes_baseline_and_candidate_prompt_identity(), test_role_prompt_trace_metadata_includes_shape_roles_and_variables(), EmptyDatasetItems (+30 more)
 
 ### Community 12 - "Langfuse Trace Sync and Retry"
-Cohesion: 0.14
-Nodes (14): ProviderError, A model provider call failed., _duration_to_ms(), OllamaProvider, _optional_int(), ModelRequest, ModelResponse, Exception (+6 more)
+Cohesion: 0.07
+Nodes (26): Dependencies & Execution Order, Format: `[ID] [P?] [Story] Description`, Implementation for User Story 1, Implementation for User Story 2, Implementation for User Story 3, Implementation Strategy, Incremental Delivery, MVP First (User Story 1 Only) (+18 more)
 
 ### Community 13 - "Human Review Policy and Selection"
-Cohesion: 0.10
-Nodes (24): validate_queue_name(), HumanReviewPolicy, random_review_cohort(), review_policy_version(), _sample_count(), select_review_items(), stable_review_cohort(), HumanReviewPolicy (+16 more)
+Cohesion: 0.18
+Nodes (16): random_review_cohort(), review_policy_version(), _sample_count(), select_review_items(), stable_review_cohort(), HumanReviewPolicy, HumanReviewSelection, SelectionReason (+8 more)
 
 ### Community 14 - "Comparison Report Generation"
-Cohesion: 0.19
-Nodes (30): CombinedReportRow, ComparisonReportOutput, build_warnings(), CombinedReportRow, ComparisonReportPayload, ComparisonReportWriter, create_comparison_reports(), _default_writer() (+22 more)
+Cohesion: 0.17
+Nodes (34): CombinedReportRow, CombinedReportRow, ComparisonReportPayload, ComparisonReportWriter, create_comparison_reports(), _default_writer(), parse_report_format(), Write a comparison report from a normalized payload. (+26 more)
 
 ### Community 15 - "Fake Dataset and Langfuse SDK"
-Cohesion: 0.09
+Cohesion: 0.10
 Nodes (24): FakeLangfuseSdk, SlowDatasetItemSdk, test_dataset_item_expected_missing_does_not_warn(), test_dataset_item_lookup_failure_warns(), test_dataset_run_item_recording_failure_produces_warning(), test_langfuse_unreachable_fails_fast(), test_live_baseline_lookup_latest_compatible_uses_newest_created_at(), test_live_baseline_lookup_matches_dataset_compatibility_version_metadata() (+16 more)
 
 ### Community 16 - "CLI Export and Report Commands"
@@ -472,7 +487,7 @@ Nodes (30): Dependencies & Execution Order, Extension Hooks, Implementation for 
 
 ### Community 18 - "Evaluator Binding Management"
 Cohesion: 0.04
-Nodes (8): DefaultLangfuseGateway, Any, test_annotation_queue_object_ids_reads_fake_queue_items(), test_fake_langfuse_creates_and_lists_annotation_queue(), test_fake_langfuse_retrieves_annotation_queue(), test_route_annotation_items_creates_new_live_queue_item_once(), test_route_annotation_items_records_trace_object_ids(), test_route_annotation_items_skips_existing_live_queue_item()
+Nodes (11): DefaultLangfuseGateway, Any, test_annotation_queue_routing_skips_duplicate_items(), test_builds_baseline_annotation_payload_with_optional_ground_truth(), test_builds_candidate_annotation_payload_without_provider_identity_for_blind_evaluator(), test_annotation_queue_object_ids_reads_fake_queue_items(), test_fake_langfuse_creates_and_lists_annotation_queue(), test_fake_langfuse_retrieves_annotation_queue() (+3 more)
 
 ### Community 19 - "Baseline and Prompt Versioning"
 Cohesion: 0.20
@@ -480,19 +495,19 @@ Nodes (5): RecordingGateway, test_default_gateway_preserves_constructor_and_work
 
 ### Community 20 - "Model Output Observation Testing"
 Cohesion: 0.14
-Nodes (14): model_output_observations(), FakeLiveClient, FakeObservation, FakeSpanContext, _final_observation_snapshots(), test_manual_generation_provider_marks_only_generation_as_model_output(), test_non_generation_provider_marks_parent_span_as_single_model_output(), Any (+6 more)
+Nodes (13): FakeLiveClient, FakeObservation, FakeSpanContext, _final_observation_snapshots(), test_manual_generation_provider_marks_only_generation_as_model_output(), test_non_generation_provider_marks_parent_span_as_single_model_output(), Any, FakeScoreConfigsApi (+5 more)
 
 ### Community 21 - "Judge Result and Variable Mapping Tests"
 Cohesion: 0.06
-Nodes (83): create_evaluator_workflow(), create_live_evaluator(), create_rest_evaluator(), get_evaluator_workflow(), get_live_evaluator(), get_rest_evaluator(), inactivate_evaluator_workflow(), list_evaluators_workflow() (+75 more)
+Nodes (86): AnnotationRoutingResultFactory, annotation_queue_object_ids_workflow(), _annotation_queues_api(), build_annotation_queue_payload_workflow(), create_annotation_queue_workflow(), create_live_annotation_queue(), create_live_annotation_queue_item(), _evaluator_payload() (+78 more)
 
 ### Community 22 - "Langfuse Client and Trace Handling"
-Cohesion: 0.08
-Nodes (51): baseline_reference_sort_key(), dataset_run_metadata_workflow(), lookup_baseline_workflow(), lookup_live_baseline_workflow(), _matching_baseline_runs(), metadata_fingerprint_value(), metadata_matches(), parse_datetime() (+43 more)
+Cohesion: 0.07
+Nodes (53): baseline_reference_sort_key(), dataset_run_metadata_workflow(), lookup_baseline_workflow(), lookup_live_baseline_workflow(), _matching_baseline_runs(), metadata_fingerprint_value(), metadata_matches(), parse_datetime() (+45 more)
 
 ### Community 23 - "Model Provider Factory and Dry Run"
-Cohesion: 0.07
-Nodes (15): build_default_langfuse_gateway(), build_langfuse_gateway(), gateway_config_from_connection(), GatewayFactoryInput, should_use_in_memory_gateway(), LangfuseRestGateway, Any, Any (+7 more)
+Cohesion: 0.12
+Nodes (5): RestOwner, test_in_memory_and_live_compatible_score_shapes_match(), test_rest_gateway_delegates_fallback_evaluator_and_queue_operations(), test_sdk_callable_guards_handle_missing_and_non_callable_attributes(), test_sdk_gateway_delegates_live_capability_surfaces_to_owner()
 
 ### Community 24 - "Langfuse Error Handling and Queues"
 Cohesion: 0.06
@@ -507,16 +522,16 @@ Cohesion: 0.07
 Nodes (29): Dependencies & Execution Order, Format: `[ID] [P?] [Story] Description`, Implementation for Foundation, Implementation for User Story 1, Implementation for User Story 2, Implementation for User Story 3, Implementation Strategy, Incremental Delivery (+21 more)
 
 ### Community 27 - "Comparison Report Data Building"
-Cohesion: 0.27
-Nodes (19): BaselineRunSelection, build_combined_rows(), build_comparison_payload(), build_run_summary(), build_score_observations(), candidate_baseline_references(), CsvReportInput, derive_output_path() (+11 more)
+Cohesion: 0.24
+Nodes (21): BaselineRunSelection, build_combined_rows(), build_comparison_payload(), build_run_summary(), build_score_aggregates(), build_score_observations(), build_warnings(), candidate_baseline_references() (+13 more)
 
 ### Community 28 - "Dataset Loading and Compatibility"
-Cohesion: 0.22
-Nodes (17): dataset_compatibility_version(), _load_csv(), load_dataset(), _load_json(), _optional_str(), _rows_to_items(), Any, DatasetItem (+9 more)
+Cohesion: 0.12
+Nodes (32): dataset_compatibility_version(), _load_csv(), load_dataset(), _load_json(), _optional_str(), _rows_to_items(), _create_dataset_item_with_retries(), dataset_item_sync_payload() (+24 more)
 
 ### Community 29 - "Configuration and Auth Testing"
-Cohesion: 0.14
-Nodes (19): AnnotationQueueRecord, InMemoryAnnotationRoutingResult, InMemoryLangfuseGateway, AnnotationQueueRecord, DatasetItemRecord, DatasetRecord, EvaluatorRecord, PromptRecord (+11 more)
+Cohesion: 0.13
+Nodes (20): AnnotationQueueRecord, InMemoryAnnotationRoutingResult, InMemoryLangfuseGateway, AnnotationQueueRecord, DatasetItemRecord, DatasetRecord, EvaluatorRecord, PromptRecord (+12 more)
 
 ### Community 30 - "Excel Report Writing and Testing"
 Cohesion: 0.32
@@ -527,16 +542,16 @@ Cohesion: 0.19
 Nodes (7): AbstractContextManager, Console, NullProgressTask, ProgressTask, RichProgressReporter, RichProgressTask, Progress
 
 ### Community 32 - "Score Config Sync and Planner Tests"
-Cohesion: 0.20
-Nodes (15): _filters_compatible(), safe_update_changes(), ScoreConfigSyncResult, _score_result(), test_backfill_request_blocks_when_unsupported(), test_broad_filter_blocks_setup(), test_catalog_variable_aliases_satisfy_required_observation_inputs(), test_planner_blocks_create_when_score_config_id_is_missing() (+7 more)
+Cohesion: 0.16
+Nodes (17): build_variable_mapping(), _filters_compatible(), safe_update_changes(), _score_result(), test_backfill_request_blocks_when_unsupported(), test_broad_filter_blocks_setup(), test_catalog_variable_aliases_satisfy_required_observation_inputs(), test_planner_creates_missing_managed_evaluator() (+9 more)
 
 ### Community 33 - "Review Selection and Trace Client"
 Cohesion: 0.07
 Nodes (29): Dependencies & Execution Order, Format: `[ID] [P?] [Story] Description`, Implementation for Foundation, Implementation for User Story 1, Implementation for User Story 2, Implementation for User Story 3, Implementation for User Story 4, Implementation Strategy (+21 more)
 
 ### Community 34 - "Model Output Targeting Diagnostics"
-Cohesion: 0.08
-Nodes (33): EnvLoadResult, load_env_file(), load_layered_env_files(), _ManagedEnvValue, _normalize_langfuse_host_alias(), project_env_file_path(), _read_yaml_mapping(), _resolve_config_refs() (+25 more)
+Cohesion: 0.14
+Nodes (26): _dataset_columns(), EnvLoadResult, load_env_file(), load_layered_env_files(), _ManagedEnvValue, _normalize_langfuse_host_alias(), project_env_file_path(), _read_yaml_mapping() (+18 more)
 
 ### Community 35 - "Fake Langfuse Client Implementation"
 Cohesion: 0.25
@@ -552,19 +567,15 @@ Nodes (13): test_run_cli_keeps_explicit_project_path(), test_run_cli_resolves_pr
 
 ### Community 38 - "Baseline Registry and Validation"
 Cohesion: 0.07
-Nodes (28): 1. Create Project Artifacts, 2. Sync Artifacts to Langfuse, 3. Execute Experiments, Annotation Queue Sync, Campaign Mode, Candidate Variants, Compare Runs in Langfuse, Core Concepts (+20 more)
-
-### Community 39 - "Session Identity and Metadata"
-Cohesion: 0.29
-Nodes (10): item_comparison_session_id(), _row_component(), _slug(), _truncate_with_hash(), SessionIdentityInputs, _inputs(), test_item_comparison_session_id_changes_when_identity_inputs_change(), test_item_comparison_session_id_is_ascii_and_under_langfuse_limit() (+2 more)
+Nodes (27): 1. Create Project Artifacts, 2. Sync Artifacts to Langfuse, 3. Execute Experiments, Annotation Queue Sync, Campaign Mode, Candidate Variants, Compare Runs in Langfuse, Core Concepts (+19 more)
 
 ### Community 40 - "Progress Reporting Tests"
 Cohesion: 0.28
 Nodes (8): Path, RecordingProgress, RecordingTask, test_dataset_sync_reports_progress_for_local_items(), test_judge_evaluator_apply_reports_progress_for_plans(), test_run_baseline_reports_progress_for_dataset_items(), test_score_config_sync_reports_progress_for_evaluators(), test_select_review_reports_progress_for_live_steps()
 
 ### Community 41 - "Shared Evaluation Config Validation"
-Cohesion: 0.08
-Nodes (48): load_project_config(), effective_judge_model_or_connection(), test_rewrite_quality_judge_filter_does_not_depend_on_generation_name(), test_validates_sample_rewrite_project_without_model_calls(), Path, Path, Path, test_accepts_candidate_level_task_prompt_override() (+40 more)
+Cohesion: 0.09
+Nodes (46): load_project_config(), effective_judge_model_or_connection(), test_variant_identity_is_stable_for_unchanged_candidate(), Path, test_accepts_candidate_level_task_prompt_override(), test_auth_mode_is_not_inferred_from_available_environment(), test_candidate_campaign_exclusion_alias_parses_explicit_values(), test_candidate_campaign_exclusion_defaults_false() (+38 more)
 
 ### Community 42 - "Branch Naming and Project Root Scripts"
 Cohesion: 0.20
@@ -583,8 +594,8 @@ Cohesion: 0.38
 Nodes (9): _project_with_binding(), test_sync_judge_evaluators_apply_reports_status(), test_sync_judge_evaluators_audit_reports_non_mutating_audit(), test_sync_judge_evaluators_dry_run_reports_missing_score_config_id(), test_sync_judge_evaluators_dry_run_reports_preview_plan(), test_sync_judge_evaluators_dry_run_reports_score_config_name_and_id(), test_sync_judge_evaluators_returns_unsupported_operation_exit_code(), test_sync_judge_evaluators_returns_validation_failure_exit_code() (+1 more)
 
 ### Community 46 - "Excel Report Data and Charts"
-Cohesion: 0.26
-Nodes (5): _messages_for_request(), Exception, ModelConfig, ModelRequest, ModelResponse
+Cohesion: 0.09
+Nodes (33): DefaultLangfuseGateway, validate_project_config(), ExperimentRunner, test_campaign_runs_all_candidates_except_explicitly_excluded(), test_campaign_success_with_fake_backed_dry_run(), test_rewrite_quality_example_prompt_v2_candidate_changes_only_prompt_axis(), assert_shared_failure_evidence(), assert_shared_trace_evidence() (+25 more)
 
 ### Community 47 - "Project Config Reference Validation"
 Cohesion: 0.07
@@ -699,8 +710,8 @@ Cohesion: 0.14
 Nodes (13): Complexity Tracking, Constitution Check, Current Quality Baseline, Documentation (this feature), Implementation Plan: Split Langfuse Client, Phase 0: Research Summary, Phase 1: Design Summary, Post-Design Constitution Check (+5 more)
 
 ### Community 77 - "CLI Sync Prompts Tests"
-Cohesion: 0.21
-Nodes (9): FailureContext, check_reachable_workflow(), verify_workspace_access(), ProviderName, validate_provider_roles(), Any, test_ollama_rejects_role_based_prompts_before_model_call(), test_openai_compatible_accepts_common_chat_roles() (+1 more)
+Cohesion: 0.25
+Nodes (18): _create_live_trace_event(), create_run_workflow(), create_trace_id_workflow(), generation_span_workflow(), log_trace_workflow(), observation_id_workflow(), _response_cost_details(), _response_usage_details() (+10 more)
 
 ### Community 78 - "Model Registration and Azure API Tests"
 Cohesion: 0.67
@@ -775,8 +786,8 @@ Cohesion: 0.12
 Nodes (16): Binding Record, Catalog Evaluator, Custom Evaluator, Historical Backfill, Judge Model or LLM Connection, Langfuse Evaluator Setup Contract, Managed Display Name, Ownership Proof (+8 more)
 
 ### Community 108 - "Judge Result Contracts"
-Cohesion: 0.18
-Nodes (11): bounded_examples(), format_langfuse_warning(), OperationFailure, redact_details(), require_non_empty_string(), safe_metadata(), partial_persistence_outcome(), JsonDict (+3 more)
+Cohesion: 0.14
+Nodes (18): build_default_langfuse_gateway(), build_langfuse_gateway(), build_langfuse_gateway_from_env(), gateway_config_from_connection(), GatewayFactoryInput, should_use_in_memory_gateway(), bounded_examples(), format_langfuse_warning() (+10 more)
 
 ### Community 109 - "Langfuse Evaluator Setup"
 Cohesion: 0.12
@@ -947,8 +958,8 @@ Cohesion: 0.15
 Nodes (12): Acceptance Checks, Contract: Provider Final Output Observation Targeting, Explicit Non-Final Target, Manual Generation Provider, Multiple LLM Calls, Native Langfuse Provider, Non-Generation Provider, Non-Goals (+4 more)
 
 ### Community 201 - "Community 201"
-Cohesion: 0.15
-Nodes (12): Cleaning Up Duplicate Score Configs, Cleaning Up Invalid Annotation Queue Items, Codex Skills, Documentation, Evaluator Harness, Langfuse Hobby Annotation Queue Limit, LLM-as-Judge Setup, Prompt Sync (+4 more)
+Cohesion: 0.17
+Nodes (11): Cleaning Up Duplicate Score Configs, Cleaning Up Invalid Annotation Queue Items, Codex Skills, Documentation, Langfuse Hobby Annotation Queue Limit, LLM-as-Judge Setup, Prompt Sync, Quickstart (+3 more)
 
 ### Community 202 - "Community 202"
 Cohesion: 0.17
@@ -991,8 +1002,8 @@ Cohesion: 0.17
 Nodes (11): Core Objective, Language Requirements, Lists, Output Requirements, Plain Language Standards, role: system, role: user, Sentence and Paragraph Length (+3 more)
 
 ### Community 212 - "Community 212"
-Cohesion: 0.15
-Nodes (18): assert_same_evaluation_config(), test_dfe_judge_setup_carries_langfuse_model_provider_and_model(), test_dfe_scenario_project_configs_validate(), test_dfe_scenario_projects_keep_distinct_scenario_artifacts(), test_dfe_scenario_projects_share_evaluation_config(), ProjectConfig, Path, _project_with_config_ref() (+10 more)
+Cohesion: 0.28
+Nodes (4): parent_observation_metadata(), Any, DatasetItem, ProjectConfig
 
 ### Community 213 - "Community 213"
 Cohesion: 0.18
@@ -1067,8 +1078,8 @@ Cohesion: 0.20
 Nodes (9): Annotation Queue Routing, Baseline Reference Resolution, Connectivity Verification, Dataset Runs and Experiments, Dataset Sync, Langfuse Live Persistence Contract, Score Config Sync, Scores and Evaluators (+1 more)
 
 ### Community 231 - "Community 231"
-Cohesion: 0.34
-Nodes (12): _create_dataset_item_with_retries(), dataset_item_sync_payload(), dataset_sync_workers(), find_dataset_item_id(), _prepare_live_dataset(), _record_dataset_run_item_warning(), record_dataset_run_item_workflow(), _record_lookup_warning() (+4 more)
+Cohesion: 0.15
+Nodes (28): DatasetSource, LiveSettings, ScoreConfigRef, LangfuseError, A Langfuse operation failed., aggregate_langfuse_warnings(), LangfuseOperationOutcome, LangfuseWarning (+20 more)
 
 ### Community 232 - "Community 232"
 Cohesion: 0.20
@@ -1163,8 +1174,8 @@ Cohesion: 0.25
 Nodes (7): Contract: Prompt Binding File, Optional Fields, Path, Purpose, Required Fields, Shape, Validation Rules
 
 ### Community 255 - "Community 255"
-Cohesion: 0.16
-Nodes (22): EvaluatorBindingRecord, EvaluatorBindingStore, load_evaluator_bindings(), _reject_secret_fields(), save_evaluator_bindings(), validate_binding_path(), _project_with_binding(), test_sync_judge_evaluators_apply_creates_active_fake_evaluator() (+14 more)
+Cohesion: 0.61
+Nodes (7): _project_with_binding(), test_sync_judge_evaluators_apply_creates_active_fake_evaluator(), test_sync_judge_evaluators_apply_updates_mismatched_score_config_id(), test_sync_judge_evaluators_apply_uses_resolved_score_config_id(), test_sync_judge_evaluators_dry_run_does_not_mutate_fake_state(), test_sync_judge_evaluators_partial_success_preserves_created_evaluator(), Path
 
 ### Community 256 - "Community 256"
 Cohesion: 0.25
@@ -1386,9 +1397,13 @@ Nodes (5): Edge Cases, User Scenarios & Testing *(mandatory)*, User Story 1 - Co
 Cohesion: 0.40
 Nodes (4): Context7, graphify, Python Environment, Repository
 
+### Community 311 - "Community 311"
+Cohesion: 0.12
+Nodes (15): Assumptions, Clarifications, Edge Cases, Experiment Requirements, Feature Specification: Shared Run Item Execution, Functional Requirements, Key Entities, Measurable Outcomes (+7 more)
+
 ### Community 312 - "Community 312"
-Cohesion: 0.38
-Nodes (5): ModelResponse, Any, ModelConfig, ModelRequest, ModelResponse
+Cohesion: 0.11
+Nodes (11): BaseModel, AzureApiKeyCredentialRefs, AzureCredentialRefs, ConfidenceFieldSchema, ConfigRefs, HumanReviewSelection, JudgeResultSchema, JudgeSetupDefaults (+3 more)
 
 ### Community 313 - "Community 313"
 Cohesion: 0.40
@@ -1467,8 +1482,8 @@ Cohesion: 0.22
 Nodes (8): Implementation Checkpoints, Inspect the Baseline, Quickstart: Split Langfuse Client, Regenerate Quality Reports, Setup, Verify Legacy Client Migration, Verify Live Behavior, Verify Non-Live Behavior
 
 ### Community 359 - "Community 359"
-Cohesion: 0.33
-Nodes (9): build_langfuse_gateway_from_env(), delete_queue_items(), find_invalid_trace_queue_items(), InvalidQueueItem, main(), Any, LangfuseGateway, _queue_item_dict() (+1 more)
+Cohesion: 0.38
+Nodes (8): delete_queue_items(), find_invalid_trace_queue_items(), InvalidQueueItem, main(), Any, LangfuseGateway, _queue_item_dict(), _sdk_client()
 
 ### Community 360 - "Community 360"
 Cohesion: 0.33
@@ -1476,15 +1491,15 @@ Nodes (5): Specification Quality Checklist: Split Langfuse Client, Content Quali
 
 ### Community 361 - "Community 361"
 Cohesion: 0.29
-Nodes (3): test_expected_not_found_does_not_become_warning(), test_gateway_aggregates_multiple_affected_run_items(), test_warning_aggregation_bounds_examples()
+Nodes (16): score_config_is_compatible(), align_score_config_to_existing_id(), _archive_active_managed_score_configs(), archived_score_config_name(), assert_score_config_compatible(), create_live_score_config(), _create_missing_score_config(), load_live_score_configs_by_name() (+8 more)
 
 ### Community 362 - "Community 362"
-Cohesion: 0.50
-Nodes (3): FakeExportResult, test_export_csv_cli_prints_langfuse_warnings(), test_export_csv_cli_success_output()
+Cohesion: 0.14
+Nodes (43): CandidateSelectionsCallback, CreateReportsCallback, build_campaign_final_reports(), campaign_csv_warnings(), export_baseline_report(), export_candidate_report(), _project_reports_dir(), run_campaign() (+35 more)
 
 ### Community 363 - "Community 363"
-Cohesion: 0.10
-Nodes (25): EvaluationProject, ModelParameters, DryRunProvider, create_provider(), provider_tracing_metadata(), Any, ModelConfig, ModelProvider (+17 more)
+Cohesion: 0.12
+Nodes (21): EvaluationProject, ModelParameters, create_provider(), provider_tracing_metadata(), _dry_run_config(), test_dry_run_provider_hashes_role_messages(), test_dry_run_provider_is_first_class_provider(), test_dry_run_provider_rejects_auth_modes() (+13 more)
 
 ### Community 364 - "Community 364"
 Cohesion: 0.20
@@ -1495,72 +1510,120 @@ Cohesion: 0.29
 Nodes (6): Data Model: Surface Live Langfuse Failures, ExpectedNotFoundResult, LangfuseOperationOutcome, LangfuseWarning, LiveLookupFailure, RunCompletionSummary
 
 ### Community 366 - "Community 366"
-Cohesion: 0.50
-Nodes (3): test_sync_dataset_cli_dry_run_output(), test_sync_dataset_cli_failure_output(), test_sync_dataset_cli_success_output()
+Cohesion: 0.15
+Nodes (12): Complexity Tracking, Constitution Check, Documentation (this feature), Implementation Plan: Shared Run Item Execution, Phase 0: Research Summary, Phase 1: Design Summary, Post-Design Constitution Check, Project Structure (+4 more)
 
-### Community 367 - "Community 367"
-Cohesion: 0.10
-Nodes (21): _create_live_trace_event(), create_run_workflow(), create_trace_id_workflow(), generation_span_workflow(), log_trace_workflow(), observation_id_workflow(), _response_cost_details(), _response_usage_details() (+13 more)
+### Community 368 - "Community 368"
+Cohesion: 0.23
+Nodes (4): FakeDefaultLangfuseGateway, Any, test_dataset_source_defaults_to_local_csv(), test_foundation_fakes_record_langfuse_and_provider_calls()
 
 ### Community 369 - "Community 369"
 Cohesion: 0.29
 Nodes (6): Decision: Aggregate warnings at gateway/run-result boundary, Decision: Fail only when missing live data invalidates requested output, Decision: Keep expected not-found as non-error state, Decision: Represent live operations with explicit outcomes, Decision: Reuse existing secret redaction in diagnostics, Research: Surface Live Langfuse Failures
+
+### Community 370 - "Community 370"
+Cohesion: 0.29
+Nodes (13): AnnotationRoutingResult, resolve_annotation_queue_without_sync(), review_dataset_identity(), select_and_route_review_items(), selection_reasons(), ReviewCandidate, AnnotationQueueReferenceStore, AnnotationQueueSyncResult (+5 more)
 
 ### Community 371 - "Community 371"
 Cohesion: 0.29
 Nodes (6): Blocking Contract, Contract: Langfuse Failure Surface, Expected Not-Found Contract, Fallback Contract, User-Facing Status Contract, Warning Contract
 
 ### Community 372 - "Community 372"
-Cohesion: 0.13
-Nodes (38): BaseModel, Enum, AuthMode, AzureApiKeyCredentialRefs, AzureCredentialRefs, ConfidenceFieldSchema, ConfigRefs, EvaluatorDefinition (+30 more)
+Cohesion: 0.24
+Nodes (7): validate_queue_name(), HumanReviewPolicy, test_managed_review_policy_defaults(), test_project_config_accepts_managed_queue_policy(), test_project_validation_reports_invalid_user_owned_queue(), test_queue_name_must_be_slug_safe(), test_user_owned_policy_requires_queue_id()
 
 ### Community 373 - "Community 373"
 Cohesion: 0.40
 Nodes (4): _sync_all_result(), test_sync_all_cli_dry_run_reports_all_phases(), test_sync_all_cli_exits_nonzero_on_annotation_conflict(), SimpleNamespace
 
+### Community 375 - "Community 375"
+Cohesion: 0.22
+Nodes (8): Graph Update After Implementation, Prerequisites, Quality Checks, Quickstart: Shared Run Item Execution, Run Broader Non-Live Verification, Validate CLI Behavior, Validate Langfuse Warning Behavior, Validate the Current Feature Plan
+
+### Community 376 - "Community 376"
+Cohesion: 0.25
+Nodes (7): Baseline Evaluator Payload, Candidate Evaluator Payload, Data Model: Shared Run Item Execution, Run Item Evidence, Run Item Execution Plan, Run Item Execution Result, State Transitions
+
 ### Community 377 - "Community 377"
 Cohesion: 0.33
 Nodes (5): Specification Quality Checklist: Surface Live Langfuse Failures, Content Quality, Feature Readiness, Notes, Requirement Completeness
 
-### Community 380 - "Community 380"
-Cohesion: 0.50
-Nodes (3): test_validate_accepts_role_based_prompt_project(), test_validate_rejects_missing_dataset_column(), test_validate_rejects_provider_that_cannot_send_role_messages()
+### Community 378 - "Community 378"
+Cohesion: 0.14
+Nodes (19): assert_same_evaluation_config(), test_dfe_judge_setup_carries_langfuse_model_provider_and_model(), test_dfe_scenario_project_configs_validate(), test_dfe_scenario_projects_keep_distinct_scenario_artifacts(), test_dfe_scenario_projects_share_evaluation_config(), test_dfe_scenario_score_config_names_fit_langfuse_limit(), ProjectConfig, Path (+11 more)
 
 ### Community 381 - "Community 381"
-Cohesion: 0.22
-Nodes (13): diagnose_model_output_targeting(), final_output_metadata(), _has_provider_specific_candidates(), metadata_with_observation_role(), parent_observation_metadata(), test_model_output_targeting_diagnostic_detects_duplicate_role_markers(), Any, test_final_output_metadata_uses_model_output_role() (+5 more)
+Cohesion: 0.21
+Nodes (13): diagnose_model_output_targeting(), final_output_metadata(), _has_provider_specific_candidates(), metadata_with_observation_role(), model_output_observations(), test_model_output_targeting_diagnostic_detects_duplicate_role_markers(), Any, test_final_output_metadata_uses_model_output_role() (+5 more)
+
+### Community 382 - "Community 382"
+Cohesion: 0.29
+Nodes (6): Decision: Keep run setup and finalization in the existing run methods, Decision: Preserve Langfuse warning propagation unchanged, Decision: Treat parity corrections as explicit, tested changes, Decision: Use a shared per-item execution path with explicit run plans, Decision: Verify shared behavior through focused regression tests, Research: Shared Run Item Execution
+
+### Community 383 - "Community 383"
+Cohesion: 0.29
+Nodes (6): Baseline-Specific Behavior, Behavior Preservation Rule, Candidate-Specific Behavior, Contract: Run Item Execution Behavior, Failure Behavior, Shared Item Execution
 
 ### Community 384 - "Community 384"
 Cohesion: 0.33
-Nodes (3): FailingCredential, test_api_key_secret_values_are_redacted_from_provider_error(), test_secret_values_are_redacted_from_provider_error()
+Nodes (5): Specification Quality Checklist: Shared Run Item Execution, Content Quality, Feature Readiness, Notes, Requirement Completeness
+
+### Community 385 - "Community 385"
+Cohesion: 0.38
+Nodes (6): Path, test_blind_defaults_to_true_for_evaluator_config(), test_invalid_evaluator_configs_fail_validation(), test_rejects_invalid_run_type(), test_rejects_non_blind_evaluator_without_reason(), test_valid_evaluator_config_parses_judge_fields()
+
+### Community 386 - "Community 386"
+Cohesion: 0.29
+Nodes (3): test_expected_not_found_does_not_become_warning(), test_gateway_aggregates_multiple_affected_run_items(), test_warning_aggregation_bounds_examples()
 
 ### Community 387 - "Community 387"
-Cohesion: 0.52
-Nodes (6): build_score_aggregates(), ScoreAggregate, Path, _payload(), test_html_writer_creates_polished_self_contained_report(), test_html_writer_renders_no_score_state()
+Cohesion: 0.30
+Nodes (11): MonkeyPatch, test_layered_env_files_apply_shell_project_root_precedence(), test_layered_env_files_parse_valid_lines_without_leaking_values(), test_live_settings_can_use_layered_env_files(), test_live_settings_load_file_false_skips_env_files(), test_live_settings_prefers_langfuse_host(), test_live_settings_uses_base_url_alias(), test_load_env_file_does_not_override_existing_env() (+3 more)
+
+### Community 388 - "Community 388"
+Cohesion: 0.50
+Nodes (3): FakeExportResult, test_export_csv_cli_prints_langfuse_warnings(), test_export_csv_cli_success_output()
+
+### Community 389 - "Community 389"
+Cohesion: 0.50
+Nodes (3): test_validate_accepts_role_based_prompt_project(), test_validate_rejects_missing_dataset_column(), test_validate_rejects_provider_that_cannot_send_role_messages()
 
 ### Community 390 - "Community 390"
-Cohesion: 0.10
-Nodes (19): fake_evaluator_client_with_managed_clarity(), missing_env_vars(), require_live_azure_openai(), require_live_langfuse(), test_annotation_queue_uses_managed_evaluator_score_config(), require_live_azure_api_key_candidate(), test_live_azure_api_key_candidate_smoke(), test_live_azure_baseline_smoke() (+11 more)
+Cohesion: 0.08
+Nodes (22): configure_tls_truststore(), Use the OS certificate store when truststore is installed.      This is especial, _required_str(), fake_evaluator_client_with_managed_clarity(), require_live_langfuse(), test_select_review_routes_to_environment_override(), test_annotation_queue_uses_managed_evaluator_score_config(), test_select_review_auto_resolves_managed_queue_without_env() (+14 more)
+
+### Community 395 - "Community 395"
+Cohesion: 0.33
+Nodes (5): Goal, Quality Targets, Runner Maintainability Refactor, Scope, Verification
+
+### Community 401 - "Community 401"
+Cohesion: 0.50
+Nodes (3): test_sync_dataset_cli_dry_run_output(), test_sync_dataset_cli_failure_output(), test_sync_dataset_cli_success_output()
+
+### Community 402 - "Community 402"
+Cohesion: 0.67
+Nodes (3): sanitized_judge_input_package(), test_blind_judge_input_package_excludes_provider_and_model_identity(), test_non_blind_judge_input_package_can_include_identity_metadata()
 
 ## Knowledge Gaps
-- **1808 isolated node(s):** `auto-commit.sh script`, `create-new-feature.sh script`, `git-common.sh script`, `initialize-repo.sh script`, `QualityCheck` (+1803 more)
+- **1879 isolated node(s):** `auto-commit.sh script`, `create-new-feature.sh script`, `git-common.sh script`, `initialize-repo.sh script`, `QualityCheck` (+1874 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **66 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **69 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `DefaultLangfuseGateway` connect `Evaluator Binding Management` to `Project and Dataset Configuration`, `Prompt Artifact Management`, `Annotation Queue Management`, `Score Config Cleanup and Archiving`, `Community 390`, `Configuration and Credential Validation`, `Evaluator Definitions and Validation`, `TLS and Environment Configuration`, `Export and Campaign Run Results`, `Experiment and Model Provider Testing`, `Evaluator Metadata and Backfill Status`, `Fake Dataset and Langfuse SDK`, `Baseline and Prompt Versioning`, `Model Output Observation Testing`, `Judge Result and Variable Mapping Tests`, `Langfuse Client and Trace Handling`, `Model Provider Factory and Dry Run`, `Configuration and Auth Testing`, `Score Config Sync and Planner Tests`, `Progress Reporting Tests`, `Shared Evaluation Config Validation`, `Item Comparison Session Tests`, `CLI Project Env File Tests`, `Judge Setup and Evaluator Validation`, `CLI Sync Prompts Tests`, `Community 212`, `Community 231`, `Community 361`, `Community 367`, `Community 255`?**
+- **Why does `DefaultLangfuseGateway` connect `Evaluator Binding Management` to `Project and Dataset Configuration`, `Model Provider Authentication Errors`, `Prompt Artifact Management`, `Annotation Queue Management`, `Score Config Cleanup and Archiving`, `Community 386`, `Community 390`, `Evaluator Metadata and Backfill Status`, `Configuration and Credential Validation`, `Evaluator Definitions and Validation`, `Export and Campaign Run Results`, `Experiment and Model Provider Testing`, `Fake Dataset and Langfuse SDK`, `Baseline and Prompt Versioning`, `Model Output Observation Testing`, `Judge Result and Variable Mapping Tests`, `Langfuse Client and Trace Handling`, `Dataset Loading and Compatibility`, `Configuration and Auth Testing`, `Score Config Sync and Planner Tests`, `Progress Reporting Tests`, `Shared Evaluation Config Validation`, `Item Comparison Session Tests`, `Excel Report Data and Charts`, `CLI Project Env File Tests`, `Judge Setup and Evaluator Validation`, `CLI Sync Prompts Tests`, `Community 231`, `Community 362`, `Judge Result Contracts`, `Community 370`, `Community 378`, `Community 255`?**
   _High betweenness centrality (0.048) - this node is a cross-community bridge._
-- **Why does `ConfigError` connect `Project and Dataset Configuration` to `Model Provider Authentication Errors`, `Prompt Artifact Management`, `Annotation Queue Management`, `Community 387`, `CLI Campaign Testing`, `Configuration and Credential Validation`, `Evaluator Metadata and Backfill Status`, `Evaluator Definitions and Validation`, `TLS and Environment Configuration`, `Export and Campaign Run Results`, `Human Review Policy and Selection`, `Comparison Report Generation`, `Judge Result and Variable Mapping Tests`, `Langfuse Client and Trace Handling`, `Comparison Report Data Building`, `Dataset Loading and Compatibility`, `Excel Report Writing and Testing`, `Model Output Targeting Diagnostics`, `CLI Project Resolution Testing`, `Shared Evaluation Config Validation`, `Prompt Identity and Validation`, `Comparison Report Output Testing`, `Community 312`, `Judge Setup and Evaluator Validation`, `CLI Sync Prompts Tests`, `Community 231`, `Community 363`, `Community 372`, `Community 255`?**
-  _High betweenness centrality (0.046) - this node is a cross-community bridge._
-- **Why does `load_project_config()` connect `Shared Evaluation Config Validation` to `Project and Dataset Configuration`, `Model Provider Authentication Errors`, `Prompt Artifact Management`, `Annotation Queue Management`, `Community 384`, `Community 390`, `Evaluator Metadata and Backfill Status`, `Evaluator Definitions and Validation`, `Experiment and Model Provider Testing`, `Langfuse Trace Sync and Retry`, `Human Review Policy and Selection`, `CLI Export and Report Commands`, `Score Config Sync and Planner Tests`, `Model Output Targeting Diagnostics`, `Fake Langfuse Client Implementation`, `Progress Reporting Tests`, `Prompt Identity and Validation`, `Community 212`, `Community 363`, `Community 372`?**
-  _High betweenness centrality (0.021) - this node is a cross-community bridge._
+- **Why does `ConfigError` connect `Evaluator Metadata and Backfill Status` to `Project and Dataset Configuration`, `Model Provider Authentication Errors`, `Prompt Artifact Management`, `Annotation Queue Management`, `Community 385`, `CLI Campaign Testing`, `Configuration and Credential Validation`, `Community 390`, `Evaluator Definitions and Validation`, `TLS and Environment Configuration`, `Community 394`, `Export and Campaign Run Results`, `Community 387`, `Comparison Report Generation`, `Judge Result and Variable Mapping Tests`, `Langfuse Client and Trace Handling`, `Comparison Report Data Building`, `Dataset Loading and Compatibility`, `Excel Report Writing and Testing`, `Score Config Sync and Planner Tests`, `Model Output Targeting Diagnostics`, `CLI Project Resolution Testing`, `Shared Evaluation Config Validation`, `Prompt Identity and Validation`, `Excel Report Data and Charts`, `Comparison Report Output Testing`, `Community 312`, `Judge Setup and Evaluator Validation`, `Community 212`, `Community 231`, `Community 361`, `Community 362`, `Community 363`, `Community 370`, `Community 372`?**
+  _High betweenness centrality (0.047) - this node is a cross-community bridge._
+- **Why does `load_project_config()` connect `Shared Evaluation Config Validation` to `Community 385`, `Prompt Artifact Management`, `Annotation Queue Management`, `Model Provider Authentication Errors`, `Community 390`, `Evaluator Metadata and Backfill Status`, `Configuration and Credential Validation`, `Evaluator Definitions and Validation`, `Export and Campaign Run Results`, `Experiment and Model Provider Testing`, `CLI Export and Report Commands`, `Evaluator Binding Management`, `Community 402`, `Langfuse Client and Trace Handling`, `Score Config Sync and Planner Tests`, `Model Output Targeting Diagnostics`, `Fake Langfuse Client Implementation`, `Progress Reporting Tests`, `Prompt Identity and Validation`, `Excel Report Data and Charts`, `Community 362`, `Community 363`, `Community 372`, `Community 378`?**
+  _High betweenness centrality (0.026) - this node is a cross-community bridge._
 - **Are the 72 inferred relationships involving `DefaultLangfuseGateway` (e.g. with `DatasetItem` and `DatasetSource`) actually correct?**
   _`DefaultLangfuseGateway` has 72 INFERRED edges - model-reasoned connections that need verification._
-- **Are the 196 inferred relationships involving `ConfigError` (e.g. with `AnnotationQueueSyncResult` and `AnnotationRoutingResultFactory`) actually correct?**
-  _`ConfigError` has 196 INFERRED edges - model-reasoned connections that need verification._
-- **Are the 64 inferred relationships involving `ExperimentRunner` (e.g. with `AnnotationQueueReferenceStore` and `AnnotationQueueSyncResult`) actually correct?**
-  _`ExperimentRunner` has 64 INFERRED edges - model-reasoned connections that need verification._
-- **Are the 72 inferred relationships involving `LangfuseGateway` (e.g. with `AnnotationQueueSyncResult` and `BaselineFingerprint`) actually correct?**
-  _`LangfuseGateway` has 72 INFERRED edges - model-reasoned connections that need verification._
+- **Are the 231 inferred relationships involving `ConfigError` (e.g. with `AnnotationRoutingResultFactory` and `CampaignRunResult`) actually correct?**
+  _`ConfigError` has 231 INFERRED edges - model-reasoned connections that need verification._
+- **Are the 74 inferred relationships involving `ExperimentRunner` (e.g. with `AnnotationQueueReferenceStore` and `AnnotationQueueSyncResult`) actually correct?**
+  _`ExperimentRunner` has 74 INFERRED edges - model-reasoned connections that need verification._
+- **Are the 147 inferred relationships involving `ProjectConfig` (e.g. with `CampaignRunResult` and `CandidateSelectionsCallback`) actually correct?**
+  _`ProjectConfig` has 147 INFERRED edges - model-reasoned connections that need verification._

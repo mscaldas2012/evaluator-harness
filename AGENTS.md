@@ -1,7 +1,7 @@
 <!-- SPECKIT START -->
 For additional context about technologies to be used, project structure,
 shell commands, and other important information, read
-specs/022-surface-langfuse-failures/plan.md
+specs/023-shared-run-execution/plan.md
 <!-- SPECKIT END -->
 
 ## Python Environment

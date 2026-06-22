@@ -1,4 +1,4 @@
-# User Guide: Lightweight Langfuse Evaluation Harness
+﻿# User Guide: Lightweight Langfuse Evaluation Harness
 
 This harness runs evaluation projects from local configuration, logs runs to
 Langfuse, and leaves trace inspection, evaluator execution, annotation queues,
@@ -116,7 +116,7 @@ uv sync
 Run commands through `uv run`:
 
 ```bash
-uv run python run_experiment.py validate --project configs/projects/rewrite_quality.yaml
+eval validate --project configs/projects/rewrite_quality.yaml
 ```
 
 Set `EVALUATOR_HARNESS_LIVE=1` when commands should use real Langfuse and model
@@ -427,13 +427,13 @@ After the project artifacts exist locally, validate and sync them to Langfuse.
 Validate first:
 
 ```powershell
-uv run python run_experiment.py validate --project configs/projects/rewrite_quality.yaml
+eval validate --project configs/projects/rewrite_quality.yaml
 ```
 
 For project files under `configs/projects/`, you can pass just the project name:
 
 ```powershell
-uv run python run_experiment.py validate --project rewrite_quality
+eval validate --project rewrite_quality
 ```
 
 The harness resolves that shorthand to `configs/projects/rewrite_quality.yaml`.
@@ -441,13 +441,13 @@ The harness resolves that shorthand to `configs/projects/rewrite_quality.yaml`.
 Preview the full sync without mutating Langfuse:
 
 ```powershell
-uv run python run_experiment.py sync-all --project configs/projects/rewrite_quality.yaml --dry-run
+eval sync-all --project configs/projects/rewrite_quality.yaml --dry-run
 ```
 
 Apply the sync:
 
 ```powershell
-uv run python run_experiment.py sync-all --project configs/projects/rewrite_quality.yaml
+eval sync-all --project configs/projects/rewrite_quality.yaml
 ```
 
 `sync-all` performs these phases:
@@ -466,25 +466,25 @@ The DFE readability use case has three project configs with distinct datasets
 and task prompts, all sharing `configs/shared/dfe_readability.yaml`:
 
 ```powershell
-uv run python run_experiment.py validate --project configs/projects/dfe-general-public.yaml
-uv run python run_experiment.py validate --project configs/projects/dfe-healthcare-provider.yaml
-uv run python run_experiment.py validate --project configs/projects/dfe-public-health-sme.yaml
+eval validate --project configs/projects/dfe-general-public.yaml
+eval validate --project configs/projects/dfe-healthcare-provider.yaml
+eval validate --project configs/projects/dfe-public-health-sme.yaml
 ```
 
 Preview setup for each scenario before mutating Langfuse:
 
 ```powershell
-uv run python run_experiment.py sync-all --project configs/projects/dfe-general-public.yaml --dry-run
-uv run python run_experiment.py sync-all --project configs/projects/dfe-healthcare-provider.yaml --dry-run
-uv run python run_experiment.py sync-all --project configs/projects/dfe-public-health-sme.yaml --dry-run
+eval sync-all --project configs/projects/dfe-general-public.yaml --dry-run
+eval sync-all --project configs/projects/dfe-healthcare-provider.yaml --dry-run
+eval sync-all --project configs/projects/dfe-public-health-sme.yaml --dry-run
 ```
 
 Run baselines independently by scenario:
 
 ```powershell
-uv run python run_experiment.py run --project configs/projects/dfe-general-public.yaml --mode baseline
-uv run python run_experiment.py run --project configs/projects/dfe-healthcare-provider.yaml --mode baseline
-uv run python run_experiment.py run --project configs/projects/dfe-public-health-sme.yaml --mode baseline
+eval run --project configs/projects/dfe-general-public.yaml --mode baseline
+eval run --project configs/projects/dfe-healthcare-provider.yaml --mode baseline
+eval run --project configs/projects/dfe-public-health-sme.yaml --mode baseline
 ```
 
 ### Run Sync Phases Independently
@@ -494,33 +494,33 @@ Use individual sync commands for targeted repair, debugging, or partial setup.
 Dataset only:
 
 ```powershell
-uv run python run_experiment.py sync-dataset --project configs/projects/rewrite_quality.yaml
+eval sync-dataset --project configs/projects/rewrite_quality.yaml
 ```
 
 Prompts only:
 
 ```powershell
-uv run python run_experiment.py sync-prompts --project configs/projects/rewrite_quality.yaml --dry-run
-uv run python run_experiment.py sync-prompts --project configs/projects/rewrite_quality.yaml
+eval sync-prompts --project configs/projects/rewrite_quality.yaml --dry-run
+eval sync-prompts --project configs/projects/rewrite_quality.yaml
 ```
 
 Score configs only:
 
 ```powershell
-uv run python run_experiment.py sync-score-configs --project configs/projects/rewrite_quality.yaml
+eval sync-score-configs --project configs/projects/rewrite_quality.yaml
 ```
 
 Judge evaluators only:
 
 ```powershell
-uv run python run_experiment.py sync-judge-evaluators --project configs/projects/rewrite_quality.yaml --dry-run
-uv run python run_experiment.py sync-judge-evaluators --project configs/projects/rewrite_quality.yaml
+eval sync-judge-evaluators --project configs/projects/rewrite_quality.yaml --dry-run
+eval sync-judge-evaluators --project configs/projects/rewrite_quality.yaml
 ```
 
 Annotation queue only:
 
 ```powershell
-uv run python run_experiment.py sync-annotation-queue --project configs/projects/rewrite_quality.yaml
+eval sync-annotation-queue --project configs/projects/rewrite_quality.yaml
 ```
 
 ### Prompt Sync
@@ -593,13 +593,13 @@ After artifacts are synced, run experiments.
 PowerShell one-line command:
 
 ```powershell
-uv run python run_experiment.py run --project configs/projects/rewrite_quality.yaml --mode baseline
+eval run --project configs/projects/rewrite_quality.yaml --mode baseline
 ```
 
 PowerShell multiline command:
 
 ```powershell
-uv run python run_experiment.py run `
+eval run `
   --project configs/projects/rewrite_quality.yaml `
   --mode baseline
 ```
@@ -617,7 +617,7 @@ The baseline run:
 ### Run a Candidate
 
 ```powershell
-uv run python run_experiment.py run `
+eval run `
   --project configs/projects/rewrite_quality.yaml `
   --mode candidate `
   --candidate dry-run-candidate `
@@ -647,7 +647,7 @@ Use `--skip-sync` only when the Langfuse dataset, score configs, and managed
 annotation queue are already current:
 
 ```powershell
-uv run python run_experiment.py run `
+eval run `
   --project configs/projects/rewrite_quality.yaml `
   --mode baseline `
   --skip-sync
@@ -675,7 +675,7 @@ Tune this wait with `EVALUATOR_HARNESS_LANGFUSE_TRACE_WAIT_SECONDS` and
 Use `--no-report` to skip that export:
 
 ```powershell
-uv run python run_experiment.py run `
+eval run `
   --project configs/projects/rewrite_quality.yaml `
   --mode baseline `
   --no-report
@@ -686,7 +686,7 @@ from a baseline run ID. The unified `comparison-report` command can write
 Excel, HTML, or both:
 
 ```powershell
-uv run python run_experiment.py comparison-report `
+eval comparison-report `
   --project rewrite-quality `
   --baseline baseline-7140f0ce98a9 `
   --format html
@@ -698,7 +698,7 @@ Use `--format excel`, `--format html`, or `--format both`. Use `--reports-dir`,
 `--output`, and `--output-dir` when you need a custom location:
 
 ```powershell
-uv run python run_experiment.py comparison-report `
+eval comparison-report `
   --baseline baseline-7140f0ce98a9 `
   --reports-dir reports/rewrite-quality `
   --format both `
@@ -716,7 +716,7 @@ clear warning/no-score states without external CSS, fonts, scripts, or CDNs.
 The existing Excel-only command remains supported:
 
 ```powershell
-uv run python run_experiment.py excel-report `
+eval excel-report `
   --project rewrite-quality `
   --baseline baseline-7140f0ce98a9
 ```
@@ -725,7 +725,7 @@ Use `--reports-dir` and `--output` with `excel-report` when you need a custom
 workbook location:
 
 ```powershell
-uv run python run_experiment.py excel-report `
+eval excel-report `
   --baseline baseline-7140f0ce98a9 `
   --reports-dir reports/rewrite-quality `
   --output reports/rewrite-quality/baseline-7140f0ce98a9-comparison.xlsx
@@ -750,7 +750,7 @@ report exports, and a final comparison report in one command. By default, the
 final report remains Excel-only for compatibility:
 
 ```powershell
-uv run python run_experiment.py campaign `
+eval campaign `
   --project configs/projects/rewrite_quality.yaml
 ```
 
@@ -758,7 +758,7 @@ Use `--report-format html` for a browser-shareable report or `--report-format
 both` to generate both Excel and HTML:
 
 ```powershell
-uv run python run_experiment.py campaign `
+eval campaign `
   --project configs/projects/rewrite_quality.yaml `
   --report-format both `
   --overwrite
@@ -835,7 +835,7 @@ call review selection after generation. Run output includes:
 Use `--skip-human-review` for generation-only runs:
 
 ```powershell
-uv run python run_experiment.py run `
+eval run `
   --project configs/projects/rewrite_quality.yaml `
   --mode baseline `
   --skip-human-review
@@ -845,7 +845,7 @@ Use `select-review` directly for manual reruns, backfills, or sampling
 overrides:
 
 ```powershell
-uv run python run_experiment.py select-review `
+eval select-review `
   --project configs/projects/rewrite_quality.yaml `
   --run baseline-9e123c8aa836 `
   --sample-strategy random
@@ -928,13 +928,13 @@ truncates it and appends a short deterministic hash.
 # 1. Create project artifacts in the repository first.
 
 # 2. Sync artifacts to Langfuse.
-uv run python run_experiment.py validate --project configs/projects/rewrite_quality.yaml
-uv run python run_experiment.py sync-all --project configs/projects/rewrite_quality.yaml --dry-run
-uv run python run_experiment.py sync-all --project configs/projects/rewrite_quality.yaml
+eval validate --project configs/projects/rewrite_quality.yaml
+eval sync-all --project configs/projects/rewrite_quality.yaml --dry-run
+eval sync-all --project configs/projects/rewrite_quality.yaml
 
 # 3. Execute experiments.
-uv run python run_experiment.py run --project configs/projects/rewrite_quality.yaml --mode baseline
-uv run python run_experiment.py run --project configs/projects/rewrite_quality.yaml --mode candidate --candidate dry-run-candidate --baseline latest-compatible
+eval run --project configs/projects/rewrite_quality.yaml --mode baseline
+eval run --project configs/projects/rewrite_quality.yaml --mode candidate --candidate dry-run-candidate --baseline latest-compatible
 ```
 
 ## Live Smoke Tests
@@ -956,3 +956,4 @@ are not configured.
 - Langfuse annotation queues: https://langfuse.com/docs/evaluation/evaluation-methods/annotation-queues
 - Langfuse scores: https://langfuse.com/docs/evaluation/scores/overview
 - Langfuse sessions: https://langfuse.com/docs/observability/features/sessions
+

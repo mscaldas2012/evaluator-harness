@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from evaluator_harness.config import load_project_config
+from evaluator_harness.errors import ConfigError
 from evaluator_harness.errors import RuntimeDependencyError
 from evaluator_harness.exports import ExportResult
 from evaluator_harness.runner import (
@@ -334,3 +335,48 @@ def test_campaign_no_report_skips_final_report_generation(monkeypatch) -> None:
 
     assert result.csv_reports == []
     assert result.final_reports == []
+
+
+def test_campaign_keeps_candidate_when_export_linkage_is_incomplete() -> None:
+    class LinkageWarningRunner(RecordingRunner):
+        def export(
+            self,
+            project_path: Path,
+            run_id: str,
+            fmt: str,
+            **kwargs,
+        ) -> ExportResult:
+            self.export_calls.append(
+                (project_path, run_id, fmt, kwargs.get("expected_count"))
+            )
+            if run_id.startswith("candidate-"):
+                strict = kwargs.get("strict_linkage", True)
+                if strict:
+                    raise ConfigError("trace confirmation failed")
+                return ExportResult(
+                    Path("reports/campaign-mode") / f"{run_id}.csv",
+                    2,
+                    warnings=(
+                        "Langfuse trace confirmation failed; export would be misleading (2/3 expected traces confirmed).",
+                    ),
+                )
+            return ExportResult(Path("reports/campaign-mode") / f"{run_id}.csv", 3)
+
+    runner = LinkageWarningRunner()
+
+    result = runner.campaign(Path("tests/fixtures/projects/campaign_mode.yaml"))
+
+    assert [candidate.status for candidate in result.candidate_runs] == [
+        "completed",
+        "completed",
+    ]
+    assert [report.output_path.name for report in result.csv_reports] == [
+        "baseline-campaign.csv",
+        "candidate-included-candidate.csv",
+        "candidate-default-included-candidate.csv",
+    ]
+    assert any(
+        "candidate-included-candidate" in warning
+        and "expected traces confirmed" in warning
+        for warning in result.warnings
+    )

@@ -6,6 +6,11 @@ from evaluator_harness.langfuse_default_gateway import DefaultLangfuseGateway
 from evaluator_harness.providers.base import ModelResponse
 from evaluator_harness.runner import ExperimentRunner
 from tests.fixtures.fake_provider import FakeModelProvider
+from tests.integration.test_run_baseline import (
+    SHARED_TRACE_METADATA_KEYS,
+    assert_shared_failure_evidence,
+    assert_shared_trace_evidence,
+)
 
 
 class FailingDatasetRunItems:
@@ -31,7 +36,9 @@ class LiveClientWithFailingRunItems:
 
 def test_candidate_run_links_metadata_to_compatible_baseline() -> None:
     langfuse = DefaultLangfuseGateway()
-    baseline_provider = FakeModelProvider(response=ModelResponse(output="baseline output"))
+    baseline_provider = FakeModelProvider(
+        response=ModelResponse(output="baseline output")
+    )
     candidate_provider = FakeModelProvider(
         response=ModelResponse(
             output="candidate output",
@@ -44,9 +51,15 @@ def test_candidate_run_links_metadata_to_compatible_baseline() -> None:
     )
 
     def provider_factory(config):
-        return baseline_provider if config.name == "gpt-4.1-baseline" else candidate_provider
+        return (
+            baseline_provider
+            if config.name == "gpt-4.1-baseline"
+            else candidate_provider
+        )
 
-    runner = ExperimentRunner(langfuse_gateway=langfuse, provider_factory=provider_factory)
+    runner = ExperimentRunner(
+        langfuse_gateway=langfuse, provider_factory=provider_factory
+    )
     baseline = runner.run(Path("configs/projects/rewrite_quality.yaml"), "baseline")
 
     candidate = runner.run(
@@ -59,7 +72,10 @@ def test_candidate_run_links_metadata_to_compatible_baseline() -> None:
     assert candidate.run_type == "candidate"
     assert candidate.baseline_reference == baseline.baseline_reference
     assert candidate.completed_count == 2
-    trace = [trace for trace in langfuse.traces if trace["run_id"] == candidate.run_id][0]
+    trace = [trace for trace in langfuse.traces if trace["run_id"] == candidate.run_id][
+        0
+    ]
+    assert_shared_trace_evidence(trace, run_type="candidate")
     assert trace["metadata"]["project"] == "rewrite-quality"
     assert trace["metadata"]["environment"] == "local"
     assert trace["metadata"]["project_tags"] == ["rewrite", "mvp"]
@@ -74,6 +90,108 @@ def test_candidate_run_links_metadata_to_compatible_baseline() -> None:
     assert trace["metadata"]["ground_truth"]
     assert trace["metadata"]["input_tokens"] is None
     assert trace["metadata"]["cost_usd"] is None
+
+
+def test_baseline_and_candidate_success_traces_share_required_evidence_fields() -> None:
+    langfuse = DefaultLangfuseGateway()
+    baseline_provider = FakeModelProvider(
+        response=ModelResponse(output="baseline output")
+    )
+    candidate_provider = FakeModelProvider(
+        response=ModelResponse(output="candidate output")
+    )
+
+    def provider_factory(config):
+        return (
+            candidate_provider
+            if config.name == "dry-run-candidate"
+            else baseline_provider
+        )
+
+    runner = ExperimentRunner(
+        langfuse_gateway=langfuse, provider_factory=provider_factory
+    )
+    baseline = runner.run(Path("configs/projects/rewrite_quality.yaml"), "baseline")
+    candidate = runner.run(
+        Path("configs/projects/rewrite_quality.yaml"),
+        "candidate",
+        candidate="dry-run-candidate",
+        baseline=baseline.run_id,
+    )
+
+    baseline_trace = langfuse.traces_for_run(baseline.run_id)[0]
+    candidate_trace = langfuse.traces_for_run(candidate.run_id)[0]
+
+    assert SHARED_TRACE_METADATA_KEYS <= set(baseline_trace["metadata"])
+    assert SHARED_TRACE_METADATA_KEYS <= set(candidate_trace["metadata"])
+    assert_shared_trace_evidence(baseline_trace, run_type="baseline")
+    assert_shared_trace_evidence(candidate_trace, run_type="candidate")
+    assert (
+        baseline_trace["metadata"]["dataset_item_id"]
+        == candidate_trace["metadata"]["dataset_item_id"]
+    )
+    assert (
+        baseline_trace["metadata"]["item_comparison_session_id"]
+        == candidate_trace["metadata"]["item_comparison_session_id"]
+    )
+
+
+def test_candidate_run_metadata_does_not_include_baseline_creation_fields() -> None:
+    langfuse = DefaultLangfuseGateway()
+    runner = ExperimentRunner(
+        langfuse_gateway=langfuse,
+        provider_factory=lambda _config: FakeModelProvider(
+            response=ModelResponse(output="generated output")
+        ),
+    )
+
+    baseline = runner.run(Path("configs/projects/rewrite_quality.yaml"), "baseline")
+    candidate = runner.run(
+        Path("configs/projects/rewrite_quality.yaml"),
+        "candidate",
+        candidate="dry-run-candidate",
+        baseline=baseline.run_id,
+    )
+
+    metadata = langfuse.runs[candidate.run_id]["kwargs"]["metadata"]
+    assert "created_at" not in metadata
+    assert "baseline_run_id" not in metadata
+    assert metadata["candidate"] == "dry-run-candidate"
+
+
+def test_shared_run_item_executor_contract_is_exposed_for_runner_refactor() -> None:
+    assert hasattr(ExperimentRunner, "_execute_run_item")
+
+
+def test_candidate_records_failed_call_context_with_shared_evidence() -> None:
+    langfuse = DefaultLangfuseGateway()
+    baseline_provider = FakeModelProvider(
+        response=ModelResponse(output="baseline output")
+    )
+    candidate_provider = FakeModelProvider(scenario="timeout")
+
+    def provider_factory(config):
+        return (
+            candidate_provider
+            if config.name == "dry-run-candidate"
+            else baseline_provider
+        )
+
+    runner = ExperimentRunner(
+        langfuse_gateway=langfuse, provider_factory=provider_factory
+    )
+    baseline = runner.run(Path("configs/projects/rewrite_quality.yaml"), "baseline")
+    candidate = runner.run(
+        Path("configs/projects/rewrite_quality.yaml"),
+        "candidate",
+        candidate="dry-run-candidate",
+        baseline=baseline.run_id,
+    )
+
+    trace = langfuse.traces_for_run(candidate.run_id)[0]
+    assert candidate.failed_count == 2
+    assert_shared_failure_evidence(trace, run_type="candidate")
+    assert langfuse.candidate_evaluator_payloads == []
 
 
 def test_api_key_candidate_run_preserves_baseline_reference_metadata() -> None:
@@ -103,7 +221,9 @@ def test_api_key_candidate_run_preserves_baseline_reference_metadata() -> None:
         baseline=baseline.run_id,
     )
 
-    trace = [trace for trace in langfuse.traces if trace["run_id"] == candidate.run_id][0]
+    trace = [trace for trace in langfuse.traces if trace["run_id"] == candidate.run_id][
+        0
+    ]
     assert candidate.completed_count == 2
     assert trace["metadata"]["provider"] == "openai_compatible"
     assert trace["metadata"]["model"] == "mistral-large-3"
@@ -133,7 +253,9 @@ def test_prompt_variant_candidate_reuses_existing_baseline_reference() -> None:
     )
 
     assert candidate.baseline_reference == baseline.baseline_reference
-    trace = [trace for trace in langfuse.traces if trace["run_id"] == candidate.run_id][0]
+    trace = [trace for trace in langfuse.traces if trace["run_id"] == candidate.run_id][
+        0
+    ]
     assert trace["metadata"]["baseline_reference"]["prompt_version"] == "v1"
     assert trace["metadata"]["candidate_prompt_identity"]["version"] == "v2"
     assert trace["metadata"]["baseline_prompt_identity"]["version"] == "v1"
@@ -141,13 +263,23 @@ def test_prompt_variant_candidate_reuses_existing_baseline_reference() -> None:
 
 def test_prompt_variant_candidate_renders_candidate_prompt_override() -> None:
     langfuse = DefaultLangfuseGateway()
-    baseline_provider = FakeModelProvider(response=ModelResponse(output="baseline output"))
-    candidate_provider = FakeModelProvider(response=ModelResponse(output="candidate output"))
+    baseline_provider = FakeModelProvider(
+        response=ModelResponse(output="baseline output")
+    )
+    candidate_provider = FakeModelProvider(
+        response=ModelResponse(output="candidate output")
+    )
 
     def provider_factory(config):
-        return candidate_provider if config.name == "dry-run-prompt-v2" else baseline_provider
+        return (
+            candidate_provider
+            if config.name == "dry-run-prompt-v2"
+            else baseline_provider
+        )
 
-    runner = ExperimentRunner(langfuse_gateway=langfuse, provider_factory=provider_factory)
+    runner = ExperimentRunner(
+        langfuse_gateway=langfuse, provider_factory=provider_factory
+    )
     baseline = runner.run(
         Path("tests/fixtures/projects/valid_prompt_variant_candidate.yaml"),
         "baseline",
@@ -165,13 +297,23 @@ def test_prompt_variant_candidate_renders_candidate_prompt_override() -> None:
 
 def test_role_prompt_candidate_override_replaces_full_prompt() -> None:
     langfuse = DefaultLangfuseGateway()
-    baseline_provider = FakeModelProvider(response=ModelResponse(output="baseline output"))
-    candidate_provider = FakeModelProvider(response=ModelResponse(output="candidate output"))
+    baseline_provider = FakeModelProvider(
+        response=ModelResponse(output="baseline output")
+    )
+    candidate_provider = FakeModelProvider(
+        response=ModelResponse(output="candidate output")
+    )
 
     def provider_factory(config):
-        return candidate_provider if config.name == "dry-run-role-prompt-v2" else baseline_provider
+        return (
+            candidate_provider
+            if config.name == "dry-run-role-prompt-v2"
+            else baseline_provider
+        )
 
-    runner = ExperimentRunner(langfuse_gateway=langfuse, provider_factory=provider_factory)
+    runner = ExperimentRunner(
+        langfuse_gateway=langfuse, provider_factory=provider_factory
+    )
     baseline = runner.run(
         Path("tests/fixtures/projects/valid_role_prompt_project.yaml"),
         "baseline",
@@ -190,21 +332,30 @@ def test_role_prompt_candidate_override_replaces_full_prompt() -> None:
         "user",
         "reviewer-note",
     ]
-    assert [message.role for message in candidate_rendered.messages] == ["system", "user"]
+    assert [message.role for message in candidate_rendered.messages] == [
+        "system",
+        "user",
+    ]
     assert "custom note" not in candidate_rendered.messages[1].content
 
 
 def test_rewrite_quality_example_runs_same_model_with_prompt_v2_candidate() -> None:
     langfuse = DefaultLangfuseGateway()
-    baseline_provider = FakeModelProvider(response=ModelResponse(output="baseline output"))
-    candidate_provider = FakeModelProvider(response=ModelResponse(output="candidate output"))
+    baseline_provider = FakeModelProvider(
+        response=ModelResponse(output="baseline output")
+    )
+    candidate_provider = FakeModelProvider(
+        response=ModelResponse(output="candidate output")
+    )
 
     def provider_factory(config):
         if config.name == "gpt5.2-dgw-default-prompt-v2":
             return candidate_provider
         return baseline_provider
 
-    runner = ExperimentRunner(langfuse_gateway=langfuse, provider_factory=provider_factory)
+    runner = ExperimentRunner(
+        langfuse_gateway=langfuse, provider_factory=provider_factory
+    )
     baseline = runner.run(Path("configs/projects/rewrite_quality.yaml"), "baseline")
     candidate = runner.run(
         Path("configs/projects/rewrite_quality.yaml"),
@@ -233,7 +384,7 @@ def test_rewrite_quality_example_runs_same_model_with_prompt_v2_candidate() -> N
     assert "clearer structure" in candidate_provider.calls[0].prompt
 
 
-def test_prompt_variant_evaluator_payload_preserves_baseline_output_and_prompt_identity() -> None:
+def test_prompt_variant_payload_preserves_baseline_output_and_prompt_identity() -> None:
     langfuse = DefaultLangfuseGateway()
     runner = ExperimentRunner(
         langfuse_gateway=langfuse,
@@ -290,7 +441,10 @@ def test_parameter_variant_evaluator_payload_preserves_parameter_identity() -> N
     ][0]
     assert payload["parameter_identity"]["temperature"] == 0.8
     assert payload["generation_parameter_hash"]
-    assert payload["variant_identity"]["generation_parameter_hash"] == payload["generation_parameter_hash"]
+    assert (
+        payload["variant_identity"]["generation_parameter_hash"]
+        == payload["generation_parameter_hash"]
+    )
 
 
 def test_candidate_outputs_survive_recoverable_langfuse_warning() -> None:
