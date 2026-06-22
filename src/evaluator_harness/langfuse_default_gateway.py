@@ -82,8 +82,12 @@ from evaluator_harness.langfuse_prompts import (
 from evaluator_harness.langfuse_records import (
     AnnotationRoutingResult,
     DatasetSyncResult,
+    LangfuseOperationOutcome,
+    LangfuseWarning,
     ScoreConfigRecord,
     ScoreConfigSyncResult,
+    aggregate_langfuse_warnings,
+    warning_from_outcome,
 )
 from evaluator_harness.langfuse_retry import (
     with_logged_langfuse_retries,
@@ -136,6 +140,7 @@ class DefaultLangfuseGateway:
     annotation_queue_items: list[dict[str, Any]] = field(default_factory=list)
     evaluators: dict[str, dict[str, Any]] = field(default_factory=dict)
     evaluator_backfill_targets: set[str] = field(default_factory=set)
+    langfuse_warnings: list[LangfuseWarning] = field(default_factory=list)
     retry_sleep: Any = field(default=time.sleep, repr=False)
     _annotation_queue_keys: set[tuple[str, str]] = field(default_factory=set)
     _gateway: Any = field(default=None, init=False, repr=False)
@@ -150,6 +155,24 @@ class DefaultLangfuseGateway:
                 reachable=self.reachable,
             ),
         )
+
+    def record_langfuse_outcome(self, outcome: LangfuseOperationOutcome) -> None:
+        warning = warning_from_outcome(outcome)
+        if warning is not None:
+            self.add_langfuse_warning(warning)
+
+    def add_langfuse_warning(self, warning: LangfuseWarning) -> None:
+        self.langfuse_warnings = list(
+            aggregate_langfuse_warnings((*self.langfuse_warnings, warning))
+        )
+
+    def current_langfuse_warnings(self) -> tuple[LangfuseWarning, ...]:
+        return aggregate_langfuse_warnings(self.langfuse_warnings)
+
+    def drain_langfuse_warnings(self) -> tuple[LangfuseWarning, ...]:
+        warnings = self.current_langfuse_warnings()
+        self.langfuse_warnings.clear()
+        return warnings
 
     @classmethod
     def from_env(cls) -> DefaultLangfuseGateway:

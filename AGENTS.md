@@ -1,7 +1,7 @@
 <!-- SPECKIT START -->
 For additional context about technologies to be used, project structure,
 shell commands, and other important information, read
-specs/021-split-langfuse-client/plan.md
+specs/022-surface-langfuse-failures/plan.md
 <!-- SPECKIT END -->
 
 ## Python Environment

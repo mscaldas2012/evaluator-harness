@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Any, Protocol
 
 from evaluator_harness.config import LiveSettings
+from evaluator_harness.langfuse_records import LangfuseOperationOutcome, LangfuseWarning
 
 
 class LangfuseGateway(Protocol):
@@ -13,6 +14,15 @@ class LangfuseGateway(Protocol):
     baseline_references: dict[str, Any]
     baseline_evaluator_payloads: list[dict[str, Any]]
     candidate_evaluator_payloads: list[dict[str, Any]]
+    langfuse_warnings: list[LangfuseWarning]
+
+    def record_langfuse_outcome(self, outcome: LangfuseOperationOutcome) -> None: ...
+
+    def add_langfuse_warning(self, warning: LangfuseWarning) -> None: ...
+
+    def current_langfuse_warnings(self) -> tuple[LangfuseWarning, ...]: ...
+
+    def drain_langfuse_warnings(self) -> tuple[LangfuseWarning, ...]: ...
 
     def check_reachable(
         self,

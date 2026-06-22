@@ -8,7 +8,11 @@ import pytest
 
 from evaluator_harness.config import DatasetItem, DatasetKind, DatasetSource
 from evaluator_harness.errors import LangfuseError
-from evaluator_harness.langfuse_default_gateway import DatasetSyncResult, DefaultLangfuseGateway
+from evaluator_harness.langfuse_dataset import find_dataset_item_id
+from evaluator_harness.langfuse_default_gateway import (
+    DatasetSyncResult,
+    DefaultLangfuseGateway,
+)
 
 
 def test_sync_dataset_creates_or_updates_dataset_with_items() -> None:
@@ -60,6 +64,63 @@ def test_sync_dataset_can_create_live_items_concurrently(monkeypatch) -> None:
     assert result.status == "synced"
     assert len(sdk.created_items) == 8
     assert sdk.max_active_creates > 1
+
+
+def test_dataset_run_item_recording_failure_produces_warning() -> None:
+    sdk = FakeLangfuseSdk(fail_run_item_ids={"rewrite/v1:item-1"})
+    client = DefaultLangfuseGateway(client=sdk)
+
+    client.record_dataset_run_item(
+        dataset_sync=DatasetSyncResult(
+            name="rewrite/v1",
+            version="latest",
+            compatibility_version="v1",
+            item_count=1,
+            status="synced",
+        ),
+        item_id="item-1",
+        run_name="candidate-1",
+        trace_id="trace-1",
+        observation_id="observation-1",
+        metadata={"item_id": "item-1"},
+    )
+
+    warnings = client.current_langfuse_warnings()
+    assert len(warnings) == 1
+    assert warnings[0].operation == "dataset_run_item_recording"
+    assert warnings[0].affected_count == 1
+    assert warnings[0].examples == ("run=candidate-1 item=item-1 trace=trace-1",)
+
+
+def test_dataset_item_expected_missing_does_not_warn() -> None:
+    sdk = FakeLangfuseSdk(existing_dataset_items=[])
+    client = DefaultLangfuseGateway(client=sdk)
+
+    assert (
+        find_dataset_item_id(client, dataset_name="rewrite/v1", item_id="missing")
+        is None
+    )
+    assert client.current_langfuse_warnings() == ()
+
+
+def test_dataset_item_lookup_failure_warns() -> None:
+    class FailingDatasetItemsClient:
+        def list(self, **_kwargs):
+            raise RuntimeError("authorization: sk-secret123")
+
+    sdk = FakeLangfuseSdk()
+    sdk.api.dataset_items = FailingDatasetItemsClient()
+    client = DefaultLangfuseGateway(client=sdk)
+
+    assert (
+        find_dataset_item_id(client, dataset_name="rewrite/v1", item_id="item-1")
+        is None
+    )
+
+    warnings = client.current_langfuse_warnings()
+    assert len(warnings) == 1
+    assert warnings[0].operation == "dataset_item_lookup"
+    assert warnings[0].details["error"] == "authorization: [REDACTED]"
 
 
 def test_sync_dataset_dry_run_reports_plan_without_creating_items() -> None:

@@ -7,6 +7,7 @@ from typer.testing import CliRunner
 
 import evaluator_harness.cli as cli
 from evaluator_harness.cli import app
+from evaluator_harness.errors import ConfigError
 from tests.contract.test_cli_run_candidate import FakeRunResult
 
 
@@ -180,3 +181,38 @@ def test_run_baseline_cli_rejects_unsupported_mode(monkeypatch) -> None:
 
     assert result.exit_code == 1
     assert "candidate" in result.stdout
+
+
+def test_run_cli_surfaces_baseline_lookup_failure(monkeypatch) -> None:
+    class FakeRunner:
+        def mixed_variant_axes(self, *_args, **_kwargs):
+            return []
+
+        def run(self, project, mode, **kwargs):
+            raise ConfigError(
+                "No baseline reference found for latest-compatible. "
+                "Langfuse baseline lookup failed."
+            )
+
+    monkeypatch.setattr(cli, "ExperimentRunner", FakeRunner)
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "run",
+            "--project",
+            "configs/projects/rewrite_quality.yaml",
+            "--mode",
+            "candidate",
+            "--candidate",
+            "dry-run-candidate",
+            "--baseline",
+            "latest-compatible",
+            "--no-report",
+        ],
+    )
+
+    assert result.exit_code == 1
+    normalized = result.stdout.replace("\n", " ")
+    assert "Langfuse baseline lookup" in normalized
+    assert "failed." in normalized

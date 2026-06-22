@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+from evaluator_harness.langfuse_default_gateway import DefaultLangfuseGateway
 from evaluator_harness.langfuse_scores import _scores_for_trace
 
 
@@ -36,3 +37,22 @@ def test_scores_for_trace_returns_partial_results_when_later_page_fails() -> Non
         )
 
     assert len(_scores_for_trace(get_many, "trace-1")) == 1
+
+
+def test_live_score_retrieval_failure_produces_lookup_warning() -> None:
+    def get_many(*, trace_id: str, fields: str, page: int, limit: int) -> object:
+        raise RuntimeError("authorization: sk-secret123")
+
+    gateway = DefaultLangfuseGateway(
+        client=SimpleNamespace(api=SimpleNamespace(scores=SimpleNamespace(get_many=get_many)))
+    )
+
+    scores = gateway.fetch_scores("candidate-1", trace_ids=["trace-1"])
+
+    warnings = gateway.current_langfuse_warnings()
+    assert scores == []
+    assert len(warnings) == 1
+    assert warnings[0].operation == "score_retrieval"
+    assert warnings[0].affected_count == 1
+    assert warnings[0].examples == ("trace-1",)
+    assert warnings[0].details["error"] == "authorization: [REDACTED]"

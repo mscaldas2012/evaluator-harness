@@ -16,16 +16,14 @@ not owned by a single active feature spec.
 
 - **TD-GRAPH-002: Surface live Langfuse partial persistence and lookup failures**
   - Source: Graphify review of `src/evaluator_harness/langfuse_client.py`.
-  - Current status: Still relevant after TD-GRAPH-001. The Langfuse client
-    split moved the affected behavior out of the facade and into focused owner
-    modules, which makes this debt smaller and easier to address.
-  - Problem: Several live paths still convert SDK/API errors into `None`,
-    `{}`, or `[]`, especially baseline lookup, dataset run metadata lookup,
-    dataset item lookup, dataset run item recording, trace lookup, and score
-    retrieval. Runs can appear successful while Langfuse linkage is incomplete.
-  - Improvement: Return typed partial-success results or structured warnings,
-    distinguish expected not-found cases from lookup/persistence failures, and
-    only suppress explicitly expected not-found cases.
+  - Current status: Implemented by `specs/022-surface-langfuse-failures`.
+    Langfuse persistence and lookup paths now use structured outcomes/warnings
+    so recoverable partial persistence is visible, expected not-found cases stay
+    distinct from lookup failures, and required live linkage can block
+    misleading exports.
+  - Follow-up: The behavior is covered by non-live and live test suites.
+    Remaining cleanup is general lint debt in the broad Langfuse/runner Ruff
+    glob, primarily line-length and enum modernization findings.
   - Likely modules: `langfuse_baselines.py`, `langfuse_dataset.py`,
     `langfuse_traces.py`, and `langfuse_scores.py`.
 
