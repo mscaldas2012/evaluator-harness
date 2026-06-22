@@ -8,6 +8,7 @@ from typing import Any
 from evaluator_harness.config import DatasetItem, DatasetKind, DatasetSource
 from evaluator_harness.dataset_loader import dataset_compatibility_version
 from evaluator_harness.errors import ConfigError
+from evaluator_harness.langfuse_records import LangfuseOperationOutcome
 from evaluator_harness.progress import NullProgressReporter, ProgressReporter
 
 DatasetSyncResultFactory = Callable[..., Any]
@@ -77,6 +78,15 @@ def record_dataset_run_item_workflow(
     dataset_run_items = getattr(api, "dataset_run_items", None)
     create = getattr(dataset_run_items, "create", None)
     if not callable(create):
+        _record_dataset_run_item_warning(
+            owner,
+            dataset_sync=dataset_sync,
+            item_id=item_id,
+            run_name=run_name,
+            trace_id=trace_id,
+            message="Langfuse dataset run item recording is unavailable.",
+            details={"reason": "dataset_run_items.create is not callable"},
+        )
         return
     payload = {
         "run_name": run_name,
@@ -87,18 +97,77 @@ def record_dataset_run_item_workflow(
     try:
         create(dataset_item_id=f"{dataset_sync.name}:{item_id}", **payload)
         return
-    except Exception:
+    except Exception as exc:
+        primary_exc = exc
         fallback_item_id = find_dataset_item_id(
             owner,
             dataset_name=dataset_sync.name,
             item_id=item_id,
         )
         if not fallback_item_id:
+            _record_dataset_run_item_warning(
+                owner,
+                dataset_sync=dataset_sync,
+                item_id=item_id,
+                run_name=run_name,
+                trace_id=trace_id,
+                message="Langfuse dataset run item was not recorded.",
+                details={
+                    "reason": "fallback dataset item lookup returned no id",
+                    "exception_type": type(primary_exc).__name__,
+                    "error": str(primary_exc),
+                },
+            )
             return
     try:
         create(dataset_item_id=fallback_item_id, **payload)
-    except Exception:
+    except Exception as exc:
+        _record_dataset_run_item_warning(
+            owner,
+            dataset_sync=dataset_sync,
+            item_id=item_id,
+            run_name=run_name,
+            trace_id=trace_id,
+            message="Langfuse dataset run item was not recorded.",
+            details={
+                "reason": "fallback dataset run item create failed",
+                "exception_type": type(exc).__name__,
+                "error": str(exc),
+            },
+        )
         return
+
+
+def _record_dataset_run_item_warning(
+    owner: Any,
+    *,
+    dataset_sync: Any,
+    item_id: str,
+    run_name: str,
+    trace_id: str,
+    message: str,
+    details: dict[str, Any],
+) -> None:
+    record_outcome = getattr(owner, "record_langfuse_outcome", None)
+    if not callable(record_outcome):
+        return
+    record_outcome(
+        LangfuseOperationOutcome(
+            operation="dataset_run_item_recording",
+            status="partial_success",
+            severity="warning",
+            message=message,
+            affected_count=1,
+            examples=(f"run={run_name} item={item_id} trace={trace_id}",),
+            details={
+                "dataset": getattr(dataset_sync, "name", None),
+                "run_name": run_name,
+                "item_id": item_id,
+                "trace_id": trace_id,
+                **details,
+            },
+        )
+    )
 
 
 def find_dataset_item_id(
@@ -116,7 +185,19 @@ def find_dataset_item_id(
         return None
     try:
         page = list_items(dataset_name=dataset_name, limit=100)
-    except Exception:
+    except Exception as exc:
+        _record_lookup_warning(
+            owner,
+            operation="dataset_item_lookup",
+            message="Langfuse dataset item lookup failed.",
+            examples=(f"dataset={dataset_name} item={item_id}",),
+            details={
+                "dataset_name": dataset_name,
+                "item_id": item_id,
+                "exception_type": type(exc).__name__,
+                "error": str(exc),
+            },
+        )
         return None
     items = getattr(page, "data", None) or getattr(page, "items", None) or []
     for item in items:
@@ -125,6 +206,30 @@ def find_dataset_item_id(
             value = getattr(item, "id", None)
             return str(value) if value else None
     return None
+
+
+def _record_lookup_warning(
+    owner: Any,
+    *,
+    operation: str,
+    message: str,
+    examples: tuple[str, ...],
+    details: dict[str, Any],
+) -> None:
+    record_outcome = getattr(owner, "record_langfuse_outcome", None)
+    if not callable(record_outcome):
+        return
+    record_outcome(
+        LangfuseOperationOutcome(
+            operation=operation,
+            status="partial_success",
+            severity="warning",
+            message=message,
+            affected_count=1,
+            examples=examples,
+            details=details,
+        )
+    )
 
 
 def dataset_item_sync_payload(

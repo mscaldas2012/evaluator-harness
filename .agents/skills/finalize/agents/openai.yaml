@@ -1,0 +1,4 @@
+interface:
+  display_name: "Finalize"
+  short_description: "Run tests and open a GitLab PR"
+  default_prompt: "Use $finalize to verify the Speckit implementation and create a GitLab PR."

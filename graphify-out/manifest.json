@@ -45,8 +45,8 @@
     "semantic_hash": "00c16b4a96cb8c566ae0e13ef5c85370"
   },
   ".specify/feature.json": {
-    "mtime": 1781797792.2740662,
-    "ast_hash": "99df5c8f85df75c1382ffd555b4ee4a9",
+    "mtime": 1781813065.3601623,
+    "ast_hash": "1a49478dd02114d71f7772869789bdca",
     "semantic_hash": ""
   },
   ".specify/init-options.json": {
@@ -140,8 +140,8 @@
     "semantic_hash": "35191b430555ffa9397c117869f5f0eb"
   },
   "src/evaluator_harness/cli.py": {
-    "mtime": 1781797557.1112988,
-    "ast_hash": "2a659c9f61fd1687460dbd6c136c4c8e",
+    "mtime": 1782138704.4962132,
+    "ast_hash": "970ad89e387203bf78b2007f8721b8ab",
     "semantic_hash": ""
   },
   "src/evaluator_harness/comparison_reports.py": {
@@ -180,8 +180,8 @@
     "semantic_hash": ""
   },
   "src/evaluator_harness/exports.py": {
-    "mtime": 1781797244.7383523,
-    "ast_hash": "e9e479f14a2fc2046f69a8fc0411a36c",
+    "mtime": 1782137720.1707437,
+    "ast_hash": "c3ce17e4cfa54c95466cc451b32ffd43",
     "semantic_hash": ""
   },
   "src/evaluator_harness/html_reports.py": {
@@ -245,8 +245,8 @@
     "semantic_hash": "4236961853763d225cbb41ecbba5b016"
   },
   "src/evaluator_harness/runner.py": {
-    "mtime": 1781812303.1091971,
-    "ast_hash": "3ef570ff404711d3eff034b6daf4bc86",
+    "mtime": 1782138990.9927754,
+    "ast_hash": "b581aff9c5d9567f7d33d5331fa28427",
     "semantic_hash": ""
   },
   "src/evaluator_harness/session_identity.py": {
@@ -280,8 +280,8 @@
     "semantic_hash": ""
   },
   "tests/contract/test_cli_export.py": {
-    "mtime": 1781797244.780347,
-    "ast_hash": "775be8b3aa4abc0bd990d56ba01da18b",
+    "mtime": 1782138285.7044654,
+    "ast_hash": "811fe7d591cc5c3598f62557a7855d06",
     "semantic_hash": ""
   },
   "tests/contract/test_cli_export_evaluator_setup.py": {
@@ -310,13 +310,13 @@
     "semantic_hash": "d455db95f1e2e71e1524fcf8eb3cbaa6"
   },
   "tests/contract/test_cli_run_baseline.py": {
-    "mtime": 1781797244.7990682,
-    "ast_hash": "ac5169530078fdda4056ddb5ff0170d1",
+    "mtime": 1782138007.6385305,
+    "ast_hash": "9cf988b8fbb335461dfb46ac16144b30",
     "semantic_hash": ""
   },
   "tests/contract/test_cli_run_candidate.py": {
-    "mtime": 1781797244.8053217,
-    "ast_hash": "ec887d4bf232d6f893be5b05cba0f189",
+    "mtime": 1782137396.7741385,
+    "ast_hash": "38e294de99e8eb9b09ac54af1f92407f",
     "semantic_hash": ""
   },
   "tests/contract/test_cli_select_review.py": {
@@ -400,8 +400,8 @@
     "semantic_hash": "4a1295220fa1093139dba9a3205712d9"
   },
   "tests/fixtures/fake_langfuse.py": {
-    "mtime": 1781812048.0226674,
-    "ast_hash": "256e98026fd0f97b8e0a11710430948a",
+    "mtime": 1782137404.347687,
+    "ast_hash": "4421cb505f747f9057ce79076bfbb320",
     "semantic_hash": ""
   },
   "tests/fixtures/fake_provider.py": {
@@ -525,13 +525,13 @@
     "semantic_hash": ""
   },
   "tests/integration/test_run_baseline.py": {
-    "mtime": 1781812048.162743,
-    "ast_hash": "ef4faeb079726a5751691fdaa46789f1",
+    "mtime": 1782138803.8846252,
+    "ast_hash": "a0e51266ea96b887c4be132f53de42e4",
     "semantic_hash": ""
   },
   "tests/integration/test_run_candidate.py": {
-    "mtime": 1781812048.168768,
-    "ast_hash": "e2c6919ff6a91690dce01b16556e4ae7",
+    "mtime": 1782138262.0348492,
+    "ast_hash": "f097815132345de7472d81ad73e95eda",
     "semantic_hash": ""
   },
   "tests/integration/test_select_review.py": {
@@ -675,8 +675,8 @@
     "semantic_hash": ""
   },
   "tests/unit/test_exports.py": {
-    "mtime": 1781812048.2439792,
-    "ast_hash": "f56697da05c243bee7eac05a937fa247",
+    "mtime": 1782138727.3713787,
+    "ast_hash": "57c3090000a586ea0790cbee0a7a7dbe",
     "semantic_hash": ""
   },
   "tests/unit/test_foundation_scaffold.py": {
@@ -735,8 +735,8 @@
     "semantic_hash": ""
   },
   "tests/unit/test_langfuse_dataset_sync.py": {
-    "mtime": 1781812048.2756271,
-    "ast_hash": "de28375e6ce1e1422b38d610a4b01c3c",
+    "mtime": 1782138066.199402,
+    "ast_hash": "4d612fe28dc9e45d18aa4ad3122fc912",
     "semantic_hash": ""
   },
   "tests/unit/test_langfuse_evaluator_rest.py": {
@@ -1060,8 +1060,8 @@
     "semantic_hash": ""
   },
   "AGENTS.md": {
-    "mtime": 1781798379.3282564,
-    "ast_hash": "d3b482b595978c1a9dc304e6bcccb664",
+    "mtime": 1781813256.7629747,
+    "ast_hash": "16be3a85ea7fc49f976d606dd849a9e2",
     "semantic_hash": ""
   },
   "README.md": {
@@ -2010,8 +2010,8 @@
     "semantic_hash": ""
   },
   "specs/Backlog.md": {
-    "mtime": 1781808919.489679,
-    "ast_hash": "931462c5e6c455b44b0988b33ad9d590",
+    "mtime": 1782139300.2288668,
+    "ast_hash": "5234c811553872152a5eea1a852af8cd",
     "semantic_hash": ""
   },
   "tests/fixtures/langfuse/evaluator_bindings/rewrite-quality.yaml": {
@@ -2285,8 +2285,8 @@
     "semantic_hash": ""
   },
   "src/evaluator_harness/langfuse_gateways.py": {
-    "mtime": 1781812574.7273247,
-    "ast_hash": "62c53aa5433e6046ed7b4d61f7a9f31d",
+    "mtime": 1782137182.8909433,
+    "ast_hash": "929a75792b5947f39ac863573b7cdaa1",
     "semantic_hash": ""
   },
   "src/evaluator_harness/langfuse_in_memory.py": {
@@ -2300,8 +2300,8 @@
     "semantic_hash": ""
   },
   "src/evaluator_harness/langfuse_records.py": {
-    "mtime": 1781812096.7541327,
-    "ast_hash": "d6b1d9d491267b5992092f9b7598fe51",
+    "mtime": 1782137470.9808016,
+    "ast_hash": "c2fca8128432e7eea63909399a00a3c9",
     "semantic_hash": ""
   },
   "src/evaluator_harness/langfuse_rest.py": {
@@ -2310,8 +2310,8 @@
     "semantic_hash": ""
   },
   "src/evaluator_harness/langfuse_retry.py": {
-    "mtime": 1781802307.557221,
-    "ast_hash": "51682cdb284595a03f8b00b80bb2c9fb",
+    "mtime": 1782138983.780866,
+    "ast_hash": "4589a86e2e34231bab739312cecc355f",
     "semantic_hash": ""
   },
   "src/evaluator_harness/langfuse_sdk.py": {
@@ -2380,8 +2380,8 @@
     "semantic_hash": ""
   },
   "src/evaluator_harness/langfuse_dataset.py": {
-    "mtime": 1781802324.366213,
-    "ast_hash": "4d1d944e8d910c500112a426aa389a0b",
+    "mtime": 1782137970.1273322,
+    "ast_hash": "e09bff36511875a2fdc2ed7359ae37f1",
     "semantic_hash": ""
   },
   "src/evaluator_harness/langfuse_evaluator_ops.py": {
@@ -2415,8 +2415,8 @@
     "semantic_hash": ""
   },
   "src/evaluator_harness/langfuse_baselines.py": {
-    "mtime": 1781808480.7146595,
-    "ast_hash": "ba15b9cf396285769b3ff9deb3cd6e4d",
+    "mtime": 1782137962.3919375,
+    "ast_hash": "51d58a3f34c1fefd067cd729613dc2ef",
     "semantic_hash": ""
   },
   "src/evaluator_harness/langfuse_prompts.py": {
@@ -2425,8 +2425,8 @@
     "semantic_hash": ""
   },
   "src/evaluator_harness/langfuse_scores.py": {
-    "mtime": 1781808482.7721314,
-    "ast_hash": "d443f790dfb83a8764e5ec189bf441f0",
+    "mtime": 1782137475.6094198,
+    "ast_hash": "2874acbf6180de5697c4900afed0c9b6",
     "semantic_hash": ""
   },
   "src/evaluator_harness/langfuse_settings.py": {
@@ -2435,13 +2435,13 @@
     "semantic_hash": ""
   },
   "src/evaluator_harness/langfuse_traces.py": {
-    "mtime": 1781808483.8087006,
-    "ast_hash": "1dcb16446a470db6a2dbdee3f39a949c",
+    "mtime": 1782137993.9624648,
+    "ast_hash": "c57f6d6f6e315edd7af7e79453420a8b",
     "semantic_hash": ""
   },
   "tests/unit/test_langfuse_baselines.py": {
-    "mtime": 1781808381.3574326,
-    "ast_hash": "c7882038277fca14ac1fc5fece90801e",
+    "mtime": 1782138073.076058,
+    "ast_hash": "b5b67c0842517650d9ffa749f73842d6",
     "semantic_hash": ""
   },
   "tests/unit/test_langfuse_prompts.py": {
@@ -2450,8 +2450,8 @@
     "semantic_hash": ""
   },
   "tests/unit/test_langfuse_scores.py": {
-    "mtime": 1781808384.3482873,
-    "ast_hash": "77d10b20bceb470d70ad1bfdc31df8b2",
+    "mtime": 1782137330.3130558,
+    "ast_hash": "95cfca1c57df531656712571b4625de9",
     "semantic_hash": ""
   },
   "tests/unit/test_langfuse_settings.py": {
@@ -2460,8 +2460,8 @@
     "semantic_hash": ""
   },
   "tests/unit/test_langfuse_traces.py": {
-    "mtime": 1781808383.3466313,
-    "ast_hash": "5a434d901ffb7b17d49a5c5d10bf08aa",
+    "mtime": 1782137915.0078409,
+    "ast_hash": "2bd4e34da1893b947898869ae63da4d1",
     "semantic_hash": ""
   },
   "tests/unit/test_langfuse_gateway_boundary.py": {
@@ -2470,13 +2470,73 @@
     "semantic_hash": ""
   },
   "src/evaluator_harness/langfuse_default_gateway.py": {
-    "mtime": 1781812482.1003265,
-    "ast_hash": "ac4c32ae246b2f4d9a5dd3588805a81e",
+    "mtime": 1782137177.1647558,
+    "ast_hash": "99830bced81eb70840702dd10da53071",
     "semantic_hash": ""
   },
   "tests/integration/test_langfuse_default_gateway.py": {
     "mtime": 1781812183.5175867,
     "ast_hash": "a58328b325d7807ef240ee25e6680b9d",
+    "semantic_hash": ""
+  },
+  "tests/integration/test_langfuse_failure_surface.py": {
+    "mtime": 1782138078.3479433,
+    "ast_hash": "b8ce7105485245a74ceb06b6a2cda9d7",
+    "semantic_hash": ""
+  },
+  "tests/unit/test_langfuse_gateway_warnings.py": {
+    "mtime": 1782138277.99075,
+    "ast_hash": "ce7bbdfe970eb0f281efc659b0f77796",
+    "semantic_hash": ""
+  },
+  "specs/022-surface-langfuse-failures/checklists/requirements.md": {
+    "mtime": 1781813064.1565783,
+    "ast_hash": "9d8a8002382e8d9ce53c5fb852a21941",
+    "semantic_hash": ""
+  },
+  "specs/022-surface-langfuse-failures/contracts/langfuse-failure-surface.md": {
+    "mtime": 1781813254.2616963,
+    "ast_hash": "b49cce9df857c16f04ba642d63eb8f41",
+    "semantic_hash": ""
+  },
+  "specs/022-surface-langfuse-failures/data-model.md": {
+    "mtime": 1781813253.077403,
+    "ast_hash": "7cfb4f0989c43c0746dfd583a9f48362",
+    "semantic_hash": ""
+  },
+  "specs/022-surface-langfuse-failures/plan.md": {
+    "mtime": 1781813250.9272306,
+    "ast_hash": "5c9d1d2184ed100e720f91379b0f3b46",
+    "semantic_hash": ""
+  },
+  "specs/022-surface-langfuse-failures/quickstart.md": {
+    "mtime": 1782139299.0058856,
+    "ast_hash": "ebde46318ede8df718e5150603b169f4",
+    "semantic_hash": ""
+  },
+  "specs/022-surface-langfuse-failures/research.md": {
+    "mtime": 1781813251.9509673,
+    "ast_hash": "6701c8dee8369e557155554c47de2bb5",
+    "semantic_hash": ""
+  },
+  "specs/022-surface-langfuse-failures/spec.md": {
+    "mtime": 1781813062.6306176,
+    "ast_hash": "71d29d6aac940a53d584245f92881479",
+    "semantic_hash": ""
+  },
+  "specs/022-surface-langfuse-failures/tasks.md": {
+    "mtime": 1782139335.11728,
+    "ast_hash": "636909e17f720422f08e033d1e34287e",
+    "semantic_hash": ""
+  },
+  ".agents/skills/finalize/SKILL.md": {
+    "mtime": 1782139463.2140267,
+    "ast_hash": "5e03425ba0af0faa2a8511bd3725fa44",
+    "semantic_hash": ""
+  },
+  ".agents/skills/finalize/agents/openai.yaml": {
+    "mtime": 1782139322.7919412,
+    "ast_hash": "bd16e6362cac3c91720bc890cac633f5",
     "semantic_hash": ""
   }
 }

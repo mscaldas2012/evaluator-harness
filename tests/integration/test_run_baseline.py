@@ -4,9 +4,10 @@ from pathlib import Path
 
 import pytest
 
-from evaluator_harness.errors import ConfigError
 from evaluator_harness.annotation_queues import AnnotationQueueReferenceStore
+from evaluator_harness.errors import ConfigError
 from evaluator_harness.langfuse_default_gateway import DefaultLangfuseGateway
+from evaluator_harness.langfuse_records import DatasetSyncResult
 from evaluator_harness.providers.base import ModelResponse
 from evaluator_harness.runner import ExperimentRunner
 from tests.fixtures.fake_provider import FakeModelProvider
@@ -81,6 +82,33 @@ def test_run_baseline_can_skip_sync_calls() -> None:
     assert "sync_dataset" not in call_names
     assert "sync_score_configs" not in call_names
     assert langfuse.traces[0]["metadata"]["dataset_name"] == "rewrite-quality/v1"
+
+
+def test_run_baseline_blocks_missing_required_dataset_identity() -> None:
+    class MissingDatasetIdentityRunner(ExperimentRunner):
+        def _skip_sync_dataset_result(self, config, items):
+            return DatasetSyncResult(
+                name="",
+                version="latest",
+                compatibility_version="v1",
+                item_count=len(items),
+                status="resolved",
+            )
+
+    provider = FakeModelProvider(response=ModelResponse(output="baseline output"))
+    runner = MissingDatasetIdentityRunner(
+        langfuse_gateway=DefaultLangfuseGateway(),
+        provider_factory=lambda _config: provider,
+    )
+
+    with pytest.raises(ConfigError, match="Dataset identity"):
+        runner.run(
+            Path("configs/projects/rewrite_quality.yaml"),
+            "baseline",
+            skip_sync=True,
+        )
+
+    assert provider.calls == []
 
 
 def test_run_baseline_skip_sync_applies_to_automatic_review_selection(tmp_path) -> None:

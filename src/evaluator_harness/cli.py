@@ -6,7 +6,10 @@ from typing import Annotated
 import typer
 from rich.console import Console
 
-from evaluator_harness.comparison_reports import create_comparison_reports, parse_report_format
+from evaluator_harness.comparison_reports import (
+    create_comparison_reports,
+    parse_report_format,
+)
 from evaluator_harness.config import load_project_config
 from evaluator_harness.errors import HarnessError
 from evaluator_harness.progress import RichProgressReporter
@@ -375,6 +378,14 @@ def run(
         if targeting_status and targeting_message:
             console.print(f"model-output-targeting: {targeting_status}")
             console.print(f"model-output-targeting-detail: {targeting_message}")
+        langfuse_status = getattr(result, "langfuse_status", None)
+        if langfuse_status and langfuse_status != "complete":
+            console.print(f"langfuse: {langfuse_status}")
+        printed_warnings = tuple(getattr(result, "langfuse_warnings", ()))
+        if printed_warnings:
+            console.print(f"warning-count: {len(printed_warnings)}")
+        for warning in printed_warnings:
+            console.print(f"warning: {warning}")
         review = getattr(result, "review_selection", None)
         if review is not None:
             console.print(f"review-selected: {review.selected_count}")
@@ -394,6 +405,9 @@ def run(
             if report is not None:
                 console.print(f"report: {report.output_path}")
                 console.print(f"report-rows: {report.row_count}")
+                for warning in getattr(report, "warnings", ()):
+                    if warning not in printed_warnings:
+                        console.print(f"warning: {warning}")
 
 
 @app.command("select-review")
@@ -441,6 +455,11 @@ def export(
     if result is not None:
         console.print(f"export: {result.output_path}")
         console.print(f"rows: {result.row_count}")
+        warnings = tuple(getattr(result, "warnings", ()))
+        if warnings:
+            console.print(f"warning-count: {len(warnings)}")
+        for warning in warnings:
+            console.print(f"warning: {warning}")
 
 
 @app.command("campaign")

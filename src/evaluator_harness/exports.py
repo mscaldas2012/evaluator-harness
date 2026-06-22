@@ -3,12 +3,12 @@ from __future__ import annotations
 import csv
 import json
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from evaluator_harness.progress import NullProgressReporter, ProgressReporter
-
 
 EXPORT_FIELDS = [
     "trace_id",
@@ -57,6 +57,7 @@ EXPORT_FIELDS = [
 class ExportResult:
     output_path: Path
     row_count: int
+    warnings: tuple[str, ...] = ()
 
 
 def export_summary(
@@ -65,6 +66,7 @@ def export_summary(
     *,
     scores: list[dict[str, Any]] | None = None,
     progress: ProgressReporter | None = None,
+    warnings: Sequence[str] | None = None,
 ) -> ExportResult:
     score_columns = _score_columns(scores or [])
     fieldnames = [*EXPORT_FIELDS, *score_columns]
@@ -85,7 +87,11 @@ def export_summary(
                 )
                 writer.writerow(row)
                 task.advance()
-    return ExportResult(output_path=output_path, row_count=len(traces))
+    return ExportResult(
+        output_path=output_path,
+        row_count=len(traces),
+        warnings=tuple(warnings or ()),
+    )
 
 
 def _trace_row(trace: dict[str, Any]) -> dict[str, Any]:

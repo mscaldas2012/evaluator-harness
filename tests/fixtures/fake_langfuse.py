@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from evaluator_harness.langfuse_records import LangfuseOperationOutcome
+
 
 @dataclass
 class FakeDefaultLangfuseGateway:
@@ -69,3 +71,14 @@ class FakeDefaultLangfuseGateway:
         self.calls.append(("add_annotation_queue_item", item))
         self.annotation_queue_items.append(item)
         return item
+
+
+def partial_persistence_outcome(*examples: str) -> LangfuseOperationOutcome:
+    return LangfuseOperationOutcome(
+        operation="dataset_run_item_recording",
+        status="partial_success",
+        severity="warning",
+        message="Langfuse dataset run item was not recorded.",
+        affected_count=max(1, len(examples)),
+        examples=tuple(examples),
+    )
