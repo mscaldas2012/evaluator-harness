@@ -1,4 +1,4 @@
-# Evaluator Harness
+﻿# Evaluator Harness
 
 Lightweight, headless, Langfuse-first offline evaluation harness.
 
@@ -77,14 +77,14 @@ visibility.
 Run dry-run mode first to preview changes:
 
 ```powershell
-uv run python run_experiment.py sync-prompts --project configs/projects/rewrite_quality.yaml --dry-run
+eval sync-prompts --project configs/projects/rewrite_quality.yaml --dry-run
 ```
 
 Apply mode creates or reuses harness-managed Langfuse prompt versions and writes
 local prompt binding references under `configs/langfuse/prompt_bindings/`:
 
 ```powershell
-uv run python run_experiment.py sync-prompts --project configs/projects/rewrite_quality.yaml
+eval sync-prompts --project configs/projects/rewrite_quality.yaml
 ```
 
 `prompt_version` is a strict release label. If prompt content changes after it
@@ -114,45 +114,45 @@ $env:REWRITE_QUALITY_MISTRAL_LARGE_3_API_VERSION="2024-12-01-preview"
 ## Quickstart
 
 ```powershell
-uv run python run_experiment.py validate --project configs/projects/rewrite_quality.yaml
-uv run python run_experiment.py sync-all --project configs/projects/rewrite_quality.yaml --dry-run
-uv run python run_experiment.py sync-all --project configs/projects/rewrite_quality.yaml
+eval validate --project configs/projects/rewrite_quality.yaml
+eval sync-all --project configs/projects/rewrite_quality.yaml --dry-run
+eval sync-all --project configs/projects/rewrite_quality.yaml
 
-uv run python run_experiment.py run `
+eval run `
   --project configs/projects/rewrite_quality.yaml `
   --mode baseline
 
-uv run python run_experiment.py run `
+eval run `
   --project configs/projects/rewrite_quality.yaml `
   --mode candidate `
   --candidate dry-run-candidate `
   --baseline latest-compatible
 
-uv run python run_experiment.py run `
+eval run `
   --project configs/projects/rewrite_quality.yaml `
   --mode candidate `
   --candidate gpt5.2-dgw-default-prompt-v2 `
   --baseline latest-compatible
 
-uv run python run_experiment.py run `
+eval run `
   --project configs/projects/rewrite_quality.yaml `
   --mode candidate `
   --candidate gpt5.2-dgw-default-temp-high `
   --baseline latest-compatible
 
-uv run python run_experiment.py run `
+eval run `
   --project configs/projects/rewrite_quality.yaml `
   --mode candidate `
   --candidate azure-mistral-large-3 `
   --baseline latest-compatible `
   --confirm-mixed-variant
 
-uv run python run_experiment.py comparison-report `
+eval comparison-report `
   --project rewrite-quality `
   --baseline <baseline-run-id> `
   --format html
 
-uv run python run_experiment.py campaign `
+eval campaign `
   --project configs/projects/rewrite_quality.yaml `
   --report-format both
 ```
@@ -191,9 +191,9 @@ DFE readability is split into three scenario project configs that reuse the
 same shared evaluation setup:
 
 ```powershell
-uv run python run_experiment.py validate --project configs/projects/dfe-general-public.yaml
-uv run python run_experiment.py validate --project configs/projects/dfe-healthcare-provider.yaml
-uv run python run_experiment.py validate --project configs/projects/dfe-public-health-sme.yaml
+eval validate --project configs/projects/dfe-general-public.yaml
+eval validate --project configs/projects/dfe-healthcare-provider.yaml
+eval validate --project configs/projects/dfe-public-health-sme.yaml
 ```
 
 When `human_review.enabled: true`, baseline and candidate runs automatically
@@ -220,21 +220,21 @@ reference, result contract, score target, and Langfuse filter profile.
 Render the Langfuse-ready setup values:
 
 ```powershell
-uv run python run_experiment.py render-judge-prompts `
+eval render-judge-prompts `
   --project configs/projects/rewrite_quality.yaml
 ```
 
 Export a lightweight setup document:
 
 ```powershell
-uv run python run_experiment.py export-evaluator-setup `
+eval export-evaluator-setup `
   --project configs/projects/rewrite_quality.yaml
 ```
 
 Preview direct Langfuse evaluator setup without mutation:
 
 ```powershell
-uv run python run_experiment.py sync-judge-evaluators `
+eval sync-judge-evaluators `
   --project configs/projects/rewrite_quality.yaml `
   --dry-run
 ```
@@ -245,7 +245,7 @@ records, and inactivates superseded harness-managed versions where Langfuse
 supports it:
 
 ```powershell
-uv run python run_experiment.py sync-judge-evaluators `
+eval sync-judge-evaluators `
   --project configs/projects/rewrite_quality.yaml
 ```
 
@@ -261,7 +261,7 @@ Audit compares project definitions, local bindings, and remote evaluator state
 without mutation:
 
 ```powershell
-uv run python run_experiment.py sync-judge-evaluators `
+eval sync-judge-evaluators `
   --project configs/projects/rewrite_quality.yaml `
   --audit
 ```
@@ -418,3 +418,4 @@ uv run pytest -m live
 - User guide: `docs/user-guide.md`
 - Langfuse automation backlog: `docs/langfuse-automation-backlog.md`
 - Spec Kit feature docs: `specs/002-live-langfuse-mvp/`
+

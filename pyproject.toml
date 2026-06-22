@@ -33,6 +33,7 @@ dev = [
 
 [project.scripts]
 evaluator-harness = "evaluator_harness.cli:app"
+eval = "evaluator_harness.cli:app"
 
 [build-system]
 requires = ["hatchling"]

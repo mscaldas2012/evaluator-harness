@@ -29,11 +29,13 @@ not owned by a single active feature spec.
 
 - **TD-GRAPH-003: Extract shared run-item execution from `ExperimentRunner`**
   - Source: Graphify review of `src/evaluator_harness/runner.py`.
-  - Problem: Baseline and candidate execution duplicate trace creation, prompt
-    rendering, session identity, request metadata, provider invocation, trace
-    logging, dataset run item recording, and failure trace logging.
-  - Improvement: Extract a `RunExecutor` or equivalent shared per-item execution
-    path with separate baseline and candidate run plans.
+  - Current status: Implemented by `specs/023-shared-run-execution`.
+    Baseline and candidate execution now share a per-item execution path for
+    trace creation, prompt rendering, session identity, request metadata,
+    provider invocation, trace logging, dataset run item recording, and failure
+    trace logging while keeping run-type-specific evaluator payloads separate.
+  - Follow-up: Continue using shared baseline/candidate evidence assertions when
+    adding new per-item metadata or Langfuse linkage behavior.
 
 - **TD-GRAPH-004: Replace global environment mutation with scoped environment resolution**
   - Source: Graphify review of `src/evaluator_harness/config.py`.
