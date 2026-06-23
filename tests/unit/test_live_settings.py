@@ -30,7 +30,7 @@ def test_live_settings_uses_base_url_alias(monkeypatch: pytest.MonkeyPatch) -> N
     settings = LiveSettings.from_env(load_file=False)
 
     assert settings.langfuse_host == "https://legacy.test"
-    assert os.environ["LANGFUSE_HOST"] == "https://legacy.test"
+    assert os.getenv("LANGFUSE_HOST") is None
 
 
 def test_load_env_file_does_not_override_existing_env(
@@ -131,12 +131,13 @@ def test_missing_project_env_file_is_ignored(monkeypatch: pytest.MonkeyPatch) ->
     for name in ("LANGFUSE_PUBLIC_KEY", "LANGFUSE_SECRET_KEY", "LANGFUSE_HOST"):
         monkeypatch.delenv(name, raising=False)
 
-    LiveSettings.from_env(
+    settings = LiveSettings.from_env(
         env_file="tests/fixtures/env/project_env_root.env",
         project_env_file="tests/fixtures/env/missing-project.env",
     )
 
-    assert os.getenv("LANGFUSE_HOST") == "https://root-langfuse.test"
+    assert settings.langfuse_host == "https://root-langfuse.test"
+    assert os.getenv("LANGFUSE_HOST") is None
 
 
 def test_root_only_env_loading_keeps_existing_behavior(monkeypatch: pytest.MonkeyPatch) -> None:

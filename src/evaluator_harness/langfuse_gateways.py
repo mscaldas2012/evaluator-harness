@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Protocol
 
@@ -162,7 +163,10 @@ def build_default_langfuse_gateway() -> LangfuseGateway:
     return DefaultLangfuseGateway()
 
 
-def build_langfuse_gateway_from_env() -> LangfuseGateway:
+def build_langfuse_gateway_from_env(
+    *,
+    env_mapping: Mapping[str, str] | None = None,
+) -> LangfuseGateway:
     from evaluator_harness.langfuse_default_gateway import DefaultLangfuseGateway
 
-    return DefaultLangfuseGateway.from_env()
+    return DefaultLangfuseGateway.from_env(env_mapping=env_mapping)

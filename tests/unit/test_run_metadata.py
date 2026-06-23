@@ -87,6 +87,7 @@ def test_build_trace_payload_preserves_candidate_metadata_shape() -> None:
 
     metadata = payload["metadata"]
     assert payload["output"] == "Candidate"
+    assert metadata["run_id"] == "candidate-1"
     assert metadata["run_type"] == "candidate"
     assert metadata["scenario_group"] == "fixture"
     assert metadata["baseline_reference"]["baseline_run_id"] == "baseline-1"

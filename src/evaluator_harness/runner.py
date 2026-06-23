@@ -40,10 +40,9 @@ from evaluator_harness.config import (
     DatasetKind,
     ModelConfig,
     ProjectConfig,
-    load_env_file,
-    load_layered_env_files,
     load_project_config,
     project_env_file_path,
+    resolve_environment,
     validate_project_config,
 )
 from evaluator_harness.dataset_loader import dataset_compatibility_version, load_dataset
@@ -144,10 +143,10 @@ class ExperimentRunner:
         progress: ProgressReporter | None = None,
     ) -> None:
         configure_tls_truststore()
-        load_env_file()
         self._langfuse_gateway_provided = langfuse_gateway is not None
         self.langfuse_gateway = langfuse_gateway or build_default_langfuse_gateway()
         self.provider_factory = provider_factory or create_provider
+        self._resolved_env = None
         self.baseline_registry = baseline_registry or BaselineRegistry()
         self.annotation_queue_store = AnnotationQueueReferenceStore()
         self.progress = progress or NullProgressReporter()
@@ -179,14 +178,23 @@ class ExperimentRunner:
 
     def _load_project_config(self, project_path: Path) -> ProjectConfig:
         config = load_project_config(project_path)
-        load_layered_env_files(
-            root_env_file=".env",
+        env_mapping = resolve_environment(
+            env_file=".env",
             project_env_file=project_env_file_path(config.project.name),
         )
-        if not self._langfuse_gateway_provided and os.getenv(
-            "EVALUATOR_HARNESS_LIVE"
-        ) in {"1", "true", "TRUE", "yes"}:
-            self.langfuse_gateway = build_langfuse_gateway_from_env()
+        live_mode_value = str(env_mapping.get("EVALUATOR_HARNESS_LIVE") or "").strip().lower()
+        live_mode_enabled = live_mode_value in {"1", "true", "yes", "on"}
+        if not self._langfuse_gateway_provided:
+            gateway_missing = self.langfuse_gateway is None
+            env_changed = self._resolved_env != env_mapping
+            if gateway_missing or env_changed:
+                if live_mode_enabled:
+                    self.langfuse_gateway = build_langfuse_gateway_from_env(
+                        env_mapping=env_mapping
+                    )
+                else:
+                    self.langfuse_gateway = build_default_langfuse_gateway()
+        self._resolved_env = env_mapping
         return config
 
     def validate_project(self, project_path: Path) -> ValidationResult:
@@ -604,7 +612,13 @@ class ExperimentRunner:
         dataset_sync: DatasetSyncResult,
     ) -> RunResult:
         context = build_baseline_run_context(config=config, dataset_sync=dataset_sync)
-        provider: ModelProvider = self.provider_factory(config.baseline)
+        try:
+            provider: ModelProvider = self.provider_factory(
+                config.baseline,
+                env_mapping=self._resolved_env,
+            )
+        except TypeError:
+            provider = self.provider_factory(config.baseline)
 
         self.langfuse_gateway.create_run(
             run_id=context.run_id,
@@ -682,7 +696,13 @@ class ExperimentRunner:
             baseline_registry=self.baseline_registry,
             warning_messages=self._current_langfuse_warning_messages(),
         )
-        provider: ModelProvider = self.provider_factory(context.candidate)
+        try:
+            provider: ModelProvider = self.provider_factory(
+                context.candidate,
+                env_mapping=self._resolved_env,
+            )
+        except TypeError:
+            provider = self.provider_factory(context.candidate)
         self.langfuse_gateway.create_run(
             run_id=context.run_id,
             run_name=context.run_name,

@@ -58,6 +58,7 @@ def build_trace_payload(
         active_prompt_identity if baseline_reference is not None else None
     )
     metadata = {
+        "run_id": run_id,
         **(fingerprint_metadata(fingerprint) if fingerprint else {}),
         **trace_project_metadata(config, run_id, active_model, baseline_reference),
         **trace_dataset_metadata(dataset_sync, item, run_id),

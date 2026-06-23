@@ -3,6 +3,7 @@ from __future__ import annotations
 import time
 from contextlib import contextmanager
 from dataclasses import dataclass, field
+from collections.abc import Mapping
 from typing import Any
 
 import httpx
@@ -175,8 +176,12 @@ class DefaultLangfuseGateway:
         return warnings
 
     @classmethod
-    def from_env(cls) -> DefaultLangfuseGateway:
-        settings = LiveSettings.from_env()
+    def from_env(
+        cls,
+        *,
+        env_mapping: Mapping[str, str] | None = None,
+    ) -> DefaultLangfuseGateway:
+        settings = LiveSettings.from_env(load_file=env_mapping is None, env_mapping=env_mapping)
         settings.require_langfuse()
         try:
             from langfuse import Langfuse

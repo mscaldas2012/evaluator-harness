@@ -26,7 +26,8 @@ Usage:
 """
 
 from types import MappingProxyType
-from typing import Dict, Optional, Iterator, Tuple
+from collections.abc import Mapping, Iterator
+from typing import Dict, Optional, Tuple
 import os
 import re
 from contextlib import contextmanager
@@ -167,7 +168,7 @@ class EnvironmentResolver:
         return EnvironmentResolver.resolve(root_vars, project_vars, shell_vars, defaults)
 
 
-class ResolvedEnvironment:
+class ResolvedEnvironment(Mapping[str, str]):
     """
     Immutable, read-only mapping of resolved environment variables.
     
@@ -198,6 +199,10 @@ class ResolvedEnvironment:
     def __contains__(self, key: str) -> bool:
         """Check if key exists."""
         return key in self._proxy
+
+    def __iter__(self) -> Iterator[str]:
+        """Iterate over keys."""
+        return iter(self._proxy)
     
     def items(self) -> Iterator[Tuple[str, str]]:
         """Iterate over (key, value) pairs."""

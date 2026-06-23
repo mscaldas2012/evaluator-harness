@@ -35,9 +35,9 @@
 
 **Purpose**: Project initialization and test infrastructure setup
 
-- [ ] T001 Create environment abstraction module skeleton at `src/evaluator_harness/environment.py`
-- [ ] T002 [P] Create unit test directory structure under `tests/unit/test_environment.py` and `tests/unit/test_config_isolation.py`
-- [ ] T003 [P] Create integration test directory structure under `tests/integration/test_repeated_harness.py` and `tests/integration/test_provider_integration.py`
+- [X] T001 Create environment abstraction module skeleton at `src/evaluator_harness/environment.py`
+- [X] T002 [P] Create unit test directory structure under `tests/unit/test_environment.py` and `tests/unit/test_config_isolation.py`
+- [X] T003 [P] Create integration test directory structure under `tests/integration/test_repeated_harness.py` and `tests/integration/test_provider_integration.py`
 
 ---
 
@@ -47,40 +47,40 @@
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete
 
-- [ ] T004 [P] Create `EnvironmentResolver` utility class in `src/evaluator_harness/environment.py` with `resolve()`, `parse_env_file()`, and `load_with_precedence()` methods
+- [X] T004 [P] Create `EnvironmentResolver` utility class in `src/evaluator_harness/environment.py` with `resolve()`, `parse_env_file()`, and `load_with_precedence()` methods
   - Implement resolution precedence: shell > project-env > root-env > defaults
   - Support KEY=VALUE file parsing with comment/blank line skipping
   - Validate environment variable names
   - Handle missing required variables with clear error messages
 
-- [ ] T005 [P] Create `ResolvedEnvironment` class in `src/evaluator_harness/environment.py` as immutable mapping wrapper
+- [X] T005 [P] Create `ResolvedEnvironment` class in `src/evaluator_harness/environment.py` as immutable mapping wrapper
   - Use `types.MappingProxyType` or equivalent for immutability guarantee
   - Support dict-like interface: `get()`, `__getitem__()`, `items()`, `keys()`, `values()`, `__contains__()`
   - Prevent mutation attempts (raise TypeError)
   - Add copy-safe guarantees (no shared internal references)
 
-- [ ] T006 [P] Create `EnvironmentScope` context manager class in `src/evaluator_harness/environment.py`
+- [X] T006 [P] Create `EnvironmentScope` context manager class in `src/evaluator_harness/environment.py`
   - Implement `__enter__()` and `__exit__()` for context management
   - Support optional `apply_to_os_environ` parameter for legacy client support
   - Snapshot original `os.environ` on entry (if applying)
   - Restore original state on exit (even on exception)
   - Support nesting (independent snapshots)
 
-- [ ] T007 [P] Add unit tests for `EnvironmentResolver` in `tests/unit/test_environment.py`
+- [X] T007 [P] Add unit tests for `EnvironmentResolver` in `tests/unit/test_environment.py`
   - Test precedence resolution (shell > project > root > defaults)
   - Test .env file parsing with comments and blanks
   - Test variable name validation
   - Test missing required variable error handling
   - Minimum 90% code coverage for EnvironmentResolver
 
-- [ ] T008 [P] Add unit tests for `ResolvedEnvironment` immutability in `tests/unit/test_environment.py`
+- [X] T008 [P] Add unit tests for `ResolvedEnvironment` immutability in `tests/unit/test_environment.py`
   - Test TypeError raised on item assignment attempt
   - Test TypeError raised on dict mutation methods (pop, clear, update)
   - Test safe iteration and lookup (get, __getitem__)
   - Test copy-safe guarantees (internal dict not exposed)
   - Minimum 90% code coverage for ResolvedEnvironment
 
-- [ ] T009 [P] Add unit tests for `EnvironmentScope` lifecycle in `tests/unit/test_environment.py`
+- [X] T009 [P] Add unit tests for `EnvironmentScope` lifecycle in `tests/unit/test_environment.py`
   - Test __enter__ returns ResolvedEnvironment
   - Test __exit__ restores original os.environ
   - Test exception in scope body doesn't prevent cleanup
@@ -100,7 +100,7 @@
 
 ### Tests for User Story 1 (REQUIRED - Write First)
 
-- [ ] T010 [P] [US1] Unit test zero mutation behavior in `tests/unit/test_config_isolation.py`
+- [X] T010 [P] [US1] Unit test zero mutation behavior in `tests/unit/test_config_isolation.py`
   - Snapshot os.environ before creating ConfigLoader
   - Load config with .env file overrides
   - Call resolve_environment()
@@ -108,7 +108,7 @@
   - Verify resolved values are correct
   - Repeat with different project configs
 
-- [ ] T011 [P] [US1] Unit test independent instances in `tests/unit/test_config_isolation.py`
+- [X] T011 [P] [US1] Unit test independent instances in `tests/unit/test_config_isolation.py`
   - Create ConfigLoader instance A with one project
   - Create ConfigLoader instance B with different project
   - Call resolve_environment() on each
@@ -116,13 +116,13 @@
   - Verify no cross-contamination between instances
   - Test with 3+ concurrent config instances
 
-- [ ] T012 [P] [US1] Unit test immutability of resolved environment in `tests/unit/test_config_isolation.py`
+- [X] T012 [P] [US1] Unit test immutability of resolved environment in `tests/unit/test_config_isolation.py`
   - Get resolved_env from resolve_environment()
   - Attempt mutations (assignment, pop, clear, update)
   - Verify all raise TypeError
   - Verify resolved_env still readable after mutation attempts
 
-- [ ] T013 [P] [US1] Integration test for repeated invocations in `tests/integration/test_repeated_harness.py`
+- [X] T013 [P] [US1] Integration test for repeated invocations in `tests/integration/test_repeated_harness.py`
   - Run config loading 10+ times in loop
   - Snapshot os.environ before loop
   - Each iteration: create ConfigLoader, call resolve_environment(), verify values
@@ -131,36 +131,36 @@
 
 ### Implementation Tasks for User Story 1
 
-- [ ] T014 [US1] Analyze current config.py mutation points in `src/evaluator_harness/config.py`
+- [X] T014 [US1] Analyze current config.py mutation points in `src/evaluator_harness/config.py`
   - Identify all os.environ writes in _load_env_file() (lines 644-646)
   - Identify secondary mutations in _normalize_langfuse_host_alias()
   - Document current tracking mechanism (_MANAGED_ENV_VALUES)
   - Plan migration path from global to scoped
 
-- [ ] T015 [US1] Add ConfigLoader.resolve_environment() method in `src/evaluator_harness/config.py`
+- [X] T015 [US1] Add ConfigLoader.resolve_environment() method in `src/evaluator_harness/config.py`
   - Use EnvironmentResolver to merge root .env, project .env, shell vars
   - Return ResolvedEnvironment (immutable) instead of mutating os.environ
   - Preserve existing resolution precedence (shell > project > root > defaults)
   - Handle missing required variables with clear errors
   - Maintain backward compatibility with existing code paths
 
-- [ ] T016 [US1] Refactor internal config loading to avoid os.environ mutation in `src/evaluator_harness/config.py`
+- [X] T016 [US1] Refactor internal config loading to avoid os.environ mutation in `src/evaluator_harness/config.py`
   - Move mutation logic to EnvironmentResolver
   - Store resolved vars in memory instead of os.environ
   - Preserve _MANAGED_ENV_VALUES tracking for debugging (without mutation)
   - Remove direct os.environ writes from config initialization
 
-- [ ] T017 [P] [US1] Update LiveSettings to accept optional env_mapping in `src/evaluator_harness/config.py`
+- [X] T017 [P] [US1] Update LiveSettings to accept optional env_mapping in `src/evaluator_harness/config.py`
   - Add env_mapping parameter to __init__ (default=None, fallback to os.environ)
   - Use passed env mapping instead of reading from os.environ if provided
   - Preserve current behavior for backward compatibility
 
-- [ ] T018 [P] [US1] Update DefaultLangfuseGateway.from_env() to accept optional env_mapping in `src/evaluator_harness/providers/langfuse_gateway.py`
+- [X] T018 [P] [US1] Update DefaultLangfuseGateway.from_env() to accept optional env_mapping in `src/evaluator_harness/providers/langfuse_gateway.py`
   - Add env_mapping parameter to from_env() static method
   - Pass env mapping to Langfuse SDK or extract credentials before instantiation
   - Preserve current behavior when env_mapping not provided
 
-- [ ] T019 [US1] Add migration documentation to `specs/024-scoped-env-resolution/migration-notes.md`
+- [X] T019 [US1] Add migration documentation to `specs/024-scoped-env-resolution/migration-notes.md`
   - Document breaking vs. non-breaking API changes
   - Provide examples of old code → new code patterns
   - Note that resolve_environment() is new addition (non-breaking)
@@ -213,12 +213,12 @@
 
 ### Implementation Tasks for User Story 2
 
-- [ ] T025 [US2] Add ConfigLoader.environment_scope() method in `src/evaluator_harness/config.py`
+- [X] T025 [US2] Add ConfigLoader.environment_scope() method in `src/evaluator_harness/config.py`
   - Return EnvironmentScope instance with resolved_env from resolve_environment()
   - Support apply_to_os_environ parameter (default False)
   - Documented usage patterns (legacy fallback, safe scoped access)
 
-- [ ] T026 [P] [US2] Update harness entry point run_experiment() in `src/evaluator_harness/runner.py` or `run_experiment.py`
+- [X] T026 [P] [US2] Update harness entry point run_experiment() in `src/evaluator_harness/runner.py` or `run_experiment.py`
   - Wrap config loading and client initialization in environment_scope()
   - Use context manager to ensure cleanup on exit
   - Maintain existing public API (no breaking changes)

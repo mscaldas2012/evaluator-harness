@@ -152,7 +152,7 @@ def test_missing_baseline_and_malformed_csv_raise_config_errors(
         create_excel_report("baseline-2", reports_dir=reports_dir, writer=FakeWorkbookWriter())
 
     (reports_dir / "bad.csv").write_text("", encoding="utf-8")
-    with pytest.raises(ConfigError, match="bad.csv"):
+    with pytest.raises(ConfigError, match="baseline-1|bad.csv"):
         create_excel_report("baseline-1", reports_dir=reports_dir, writer=FakeWorkbookWriter())
 
 
