@@ -24,6 +24,7 @@ class BaselineRunSelection:
     output_path: Path | None = None
     output_dir: Path | None = None
     overwrite: bool = False
+    include_run_ids: tuple[str, ...] | None = None
 
 
 @dataclass(frozen=True)
@@ -136,6 +137,7 @@ def build_comparison_payload(
     output_path: Path | None = None,
     output_dir: Path | None = None,
     overwrite: bool = False,
+    include_run_ids: tuple[str, ...] | list[str] | None = None,
 ) -> ComparisonReportPayload:
     selection = BaselineRunSelection(
         baseline_run_id=baseline_run_id,
@@ -144,19 +146,25 @@ def build_comparison_payload(
         output_path=output_path,
         output_dir=output_dir,
         overwrite=overwrite,
+        include_run_ids=tuple(include_run_ids) if include_run_ids else None,
     )
     output = derive_output_path(selection)
-    available_reports = discover_reports(selection.reports_dir)
+    available_reports, discovery_warnings = discover_reports_with_warnings(
+        selection.reports_dir
+    )
     reports = select_reports(selection, available_reports)
     summaries = [build_run_summary(report, selection.baseline_run_id) for report in reports]
     combined_rows = build_combined_rows(reports)
     score_observations = build_score_observations(reports)
-    warnings = build_warnings(
+    warnings = [
+        *discovery_warnings,
+        *build_warnings(
         summaries,
         score_observations,
         candidate_baseline_references(available_reports),
         score_column_names(reports),
-    )
+        ),
+    ]
     score_aggregates = build_score_aggregates(score_observations)
     create_score_visuals = bool(score_observations)
     worksheet_order = ["Run Summary", "Combined Data", "Score Data"]
@@ -185,6 +193,7 @@ def create_comparison_reports(
     output_path: Path | None = None,
     output_dir: Path | None = None,
     overwrite: bool = False,
+    include_run_ids: tuple[str, ...] | list[str] | None = None,
     excel_writer: WriterLike | None = None,
     html_writer: WriterLike | None = None,
 ) -> list[ComparisonReportOutput]:
@@ -201,6 +210,7 @@ def create_comparison_reports(
             output_path=output_path if len(requested_formats) == 1 else None,
             output_dir=output_dir,
             overwrite=overwrite,
+            include_run_ids=include_run_ids,
         )
         writer = _default_writer(report_format, excel_writer, html_writer)
         _write_report(writer, payload)
@@ -254,12 +264,38 @@ def discover_reports(reports_dir: Path) -> list[CsvReportInput]:
     return [read_csv_report(path) for path in sorted(Path(reports_dir).glob("*.csv"))]
 
 
+def discover_reports_with_warnings(
+    reports_dir: Path,
+) -> tuple[list[CsvReportInput], list[str]]:
+    reports: list[CsvReportInput] = []
+    warnings: list[str] = []
+    for path in sorted(Path(reports_dir).glob("*.csv")):
+        try:
+            reports.append(read_csv_report(path))
+        except ConfigError as exc:
+            warnings.append(str(exc))
+    return reports, warnings
+
+
 def select_reports(
     selection: BaselineRunSelection,
     reports: list[CsvReportInput] | None = None,
 ) -> list[CsvReportInput]:
     if reports is None:
         reports = discover_reports(selection.reports_dir)
+    if selection.include_run_ids:
+        reports_by_run_id = {report.run_id: report for report in reports}
+        requested = [run_id for run_id in selection.include_run_ids if run_id]
+        if selection.baseline_run_id not in requested:
+            requested = [selection.baseline_run_id, *requested]
+        selected = [reports_by_run_id[run_id] for run_id in requested if run_id in reports_by_run_id]
+        if not selected or selection.baseline_run_id not in {
+            report.run_id for report in selected
+        }:
+            raise ConfigError(
+                f"No CSV report contains baseline run '{selection.baseline_run_id}'."
+            )
+        return selected
     baseline_reports = [report for report in reports if report.run_id == selection.baseline_run_id]
     if not baseline_reports:
         raise ConfigError(f"No CSV report contains baseline run '{selection.baseline_run_id}'.")
@@ -290,13 +326,18 @@ def read_csv_report(path: Path) -> CsvReportInput:
 
     if "run_id" not in columns:
         raise ConfigError(f"Malformed CSV report {path.name}: missing run_id column.")
-    run_id = first_non_empty(rows, ["run_id"])
+    run_id = first_non_empty(rows, ["run_id"]) or infer_run_id_from_path(path)
     if not run_id:
         raise ConfigError(f"Malformed CSV report {path.name}: missing run_id value.")
     baseline_run_id = first_non_empty(rows, ["baseline_run_id"]) or None
     run_type = first_non_empty(rows, ["run_type"])
     if not run_type:
-        run_type = "candidate" if baseline_run_id else "baseline"
+        if run_id.startswith("candidate-"):
+            run_type = "candidate"
+        elif run_id.startswith("baseline-"):
+            run_type = "baseline"
+        else:
+            run_type = "candidate" if baseline_run_id else "baseline"
     return CsvReportInput(
         path=path,
         run_id=run_id,
@@ -512,6 +553,13 @@ def parse_float(value: str) -> float | None:
         return float(text)
     except ValueError:
         return None
+
+
+def infer_run_id_from_path(path: Path) -> str:
+    stem = path.stem.strip()
+    if stem.startswith("baseline-") or stem.startswith("candidate-"):
+        return stem
+    return ""
 
 
 def _default_writer(

@@ -152,6 +152,33 @@ def test_run_baseline_can_skip_sync_calls() -> None:
     assert langfuse.traces[0]["metadata"]["dataset_name"] == "rewrite-quality/v1"
 
 
+def test_run_baseline_passes_resolved_env_mapping_to_provider_factory() -> None:
+    langfuse = DefaultLangfuseGateway()
+    provider = FakeModelProvider(response=ModelResponse(output="baseline output"))
+    seen_env_mapping = None
+
+    def provider_factory(_config, *, env_mapping):
+        nonlocal seen_env_mapping
+        seen_env_mapping = env_mapping
+        return provider
+
+    runner = ExperimentRunner(
+        langfuse_gateway=langfuse,
+        provider_factory=provider_factory,
+    )
+
+    result = runner.run(
+        Path("configs/projects/rewrite_quality.yaml"),
+        "baseline",
+        select_human_review=False,
+        skip_sync=True,
+    )
+
+    assert result.completed_count == 2
+    assert seen_env_mapping is not None
+    assert seen_env_mapping.get("PATH")
+
+
 def test_run_baseline_blocks_missing_required_dataset_identity() -> None:
     class MissingDatasetIdentityRunner(ExperimentRunner):
         def _skip_sync_dataset_result(self, config, items):
@@ -255,3 +282,44 @@ def test_run_baseline_records_failed_call_context() -> None:
     assert langfuse.traces[0]["error"]
     assert langfuse.traces[0]["metadata"]["provider"] == "openai_compatible"
     assert langfuse.traces[0]["metadata"]["retry_count"] >= 0
+
+
+def test_run_and_export_reuse_live_gateway_within_single_runner(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from evaluator_harness.exports import ExportResult
+
+    call_count = 0
+
+    def fake_build_langfuse_gateway_from_env(*, env_mapping=None):
+        nonlocal call_count
+        call_count += 1
+        return DefaultLangfuseGateway()
+
+    monkeypatch.setenv("EVALUATOR_HARNESS_LIVE", "1")
+    monkeypatch.setattr(
+        "evaluator_harness.runner.build_langfuse_gateway_from_env",
+        fake_build_langfuse_gateway_from_env,
+    )
+
+    provider = FakeModelProvider(response=ModelResponse(output="baseline output"))
+    runner = ExperimentRunner(
+        provider_factory=lambda _config, **_kwargs: provider,
+    )
+
+    result = runner.run(
+        Path("configs/projects/rewrite_quality.yaml"),
+        "baseline",
+        select_human_review=False,
+        skip_sync=True,
+    )
+    export_result: ExportResult = runner.export(
+        Path("configs/projects/rewrite_quality.yaml"),
+        result.run_id,
+        "csv",
+        expected_count=result.completed_count + result.failed_count,
+        strict_linkage=False,
+    )
+
+    assert call_count == 1
+    assert export_result.row_count == 2

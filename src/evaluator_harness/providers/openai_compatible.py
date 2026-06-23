@@ -17,12 +17,14 @@ class OpenAICompatibleProvider:
         self,
         config: ModelConfig,
         *,
+        env_mapping: Mapping[str, str] | None = None,
         credential_class: type | None = None,
         azure_openai_class: type | None = None,
         generator: Callable[[ModelRequest], ModelResponse] | None = None,
         max_attempts: int = 3,
     ) -> None:
         self.config = config
+        self._env_mapping = env_mapping
         self._credential_class = credential_class
         self._azure_openai_class = azure_openai_class
         self._generator = generator
@@ -306,7 +308,7 @@ class OpenAICompatibleProvider:
         return auth
 
     def _required_env(self, name: str) -> str:
-        value = os.getenv(name)
+        value = self._env_value(name)
         if not value:
             raise RuntimeDependencyError(f"Required environment variable is not set: {name}")
         return value
@@ -336,7 +338,7 @@ class OpenAICompatibleProvider:
             return False
         refs = self.config.azure
         return all(
-            os.getenv(name)
+            self._env_value(name)
             for name in (
                 refs.tenant_id_env,
                 refs.client_id_env,
@@ -374,11 +376,15 @@ class OpenAICompatibleProvider:
             if self.config.azure_api_key.subscription_key_env:
                 env_names.append(self.config.azure_api_key.subscription_key_env)
         for env_name in env_names:
-            value = os.getenv(env_name)
+            value = self._env_value(env_name)
             if value:
                 redacted = redacted.replace(value, "[REDACTED]")
         return redacted
 
+    def _env_value(self, name: str) -> str | None:
+        if self._env_mapping is not None:
+            return self._env_mapping.get(name)
+        return os.getenv(name)
 
 def _messages_for_request(request: ModelRequest) -> list[dict[str, str]]:
     rendered = getattr(request, "rendered_prompt", None)

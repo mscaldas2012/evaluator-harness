@@ -119,9 +119,15 @@ def test_project_env_overrides_root_env_for_project_command(
         encoding="utf-8",
     )
 
-    ExperimentRunner().validate_project(project_path)
-
-    assert os.getenv("PROJECT_ENV_SHARED") == "project-shared"
+    from evaluator_harness.config import resolve_environment, project_env_file_path
+    runner = ExperimentRunner()
+    runner.validate_project(project_path)
+    
+    env_mapping = resolve_environment(
+        env_file=".env",
+        project_env_file=project_env_file_path("project-env-files"),
+    )
+    assert env_mapping.get("PROJECT_ENV_SHARED") == "project-shared"
 
 
 def test_project_only_env_value_is_available_to_project_command(
@@ -136,9 +142,15 @@ def test_project_only_env_value_is_available_to_project_command(
         encoding="utf-8",
     )
 
-    ExperimentRunner().validate_project(project_path)
-
-    assert os.getenv("PROJECT_ENV_PROJECT_ONLY") == "project-only"
+    from evaluator_harness.config import resolve_environment, project_env_file_path
+    runner = ExperimentRunner()
+    runner.validate_project(project_path)
+    
+    env_mapping = resolve_environment(
+        env_file=".env",
+        project_env_file=project_env_file_path("project-env-files"),
+    )
+    assert env_mapping.get("PROJECT_ENV_PROJECT_ONLY") == "project-only"
 
 
 def test_missing_project_env_file_falls_back_to_root_env(
@@ -150,9 +162,15 @@ def test_missing_project_env_file_falls_back_to_root_env(
     project_path = _write_project_workspace(tmp_path)
     (Path.cwd() / ".env").write_text("PROJECT_ENV_ROOT_ONLY=root-only\n", encoding="utf-8")
 
-    ExperimentRunner().validate_project(project_path)
-
-    assert os.getenv("PROJECT_ENV_ROOT_ONLY") == "root-only"
+    from evaluator_harness.config import resolve_environment, project_env_file_path
+    runner = ExperimentRunner()
+    runner.validate_project(project_path)
+    
+    env_mapping = resolve_environment(
+        env_file=".env",
+        project_env_file=project_env_file_path("project-env-files"),
+    )
+    assert env_mapping.get("PROJECT_ENV_ROOT_ONLY") == "root-only"
 
 
 def test_malformed_project_env_lines_are_ignored(
@@ -168,7 +186,13 @@ def test_malformed_project_env_lines_are_ignored(
         encoding="utf-8",
     )
 
-    ExperimentRunner().validate_project(project_path)
-
-    assert os.getenv("PROJECT_ENV_VALID") == "valid"
-    assert os.getenv("INVALID-NAME") is None
+    from evaluator_harness.config import resolve_environment, project_env_file_path
+    runner = ExperimentRunner()
+    runner.validate_project(project_path)
+    
+    env_mapping = resolve_environment(
+        env_file=".env",
+        project_env_file=project_env_file_path("project-env-files"),
+    )
+    assert env_mapping.get("PROJECT_ENV_VALID") == "valid"
+    assert env_mapping.get("INVALID-NAME") is None
