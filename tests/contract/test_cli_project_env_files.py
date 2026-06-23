@@ -144,8 +144,8 @@ def test_cli_project_command_resolves_project_env_before_credentials(
     )
     seen: list[LiveSettings] = []
 
-    def fake_from_env(cls):
-        settings = LiveSettings.from_env(load_file=False)
+    def fake_from_env(cls, env_mapping=None):
+        settings = LiveSettings.from_env(load_file=False, env_mapping=env_mapping)
         seen.append(settings)
         settings.require_langfuse()
         return DefaultLangfuseGateway(settings=settings)
@@ -158,6 +158,65 @@ def test_cli_project_command_resolves_project_env_before_credentials(
     )
 
     assert result.exit_code == 0
+    assert seen[0].langfuse_public_key == "project-public"
+    assert seen[0].langfuse_secret_key == "project-secret"
+    assert seen[0].langfuse_host == "https://project-langfuse.test"
+
+
+def test_cli_project_env_enables_live_mode_without_shell_flag(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("EVALUATOR_HARNESS_LIVE", raising=False)
+    for name in (
+        "LANGFUSE_PUBLIC_KEY",
+        "LANGFUSE_SECRET_KEY",
+        "LANGFUSE_HOST",
+        "LANGFUSE_BASE_URL",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    project_path = _write_project_workspace(tmp_path)
+    workspace = Path.cwd()
+    (workspace / ".env").write_text(
+        "\n".join(
+            [
+                "EVALUATOR_HARNESS_LIVE=1",
+                "LANGFUSE_PUBLIC_KEY=root-public",
+                "LANGFUSE_SECRET_KEY=root-secret",
+                "LANGFUSE_HOST=https://root-langfuse.test",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    (workspace / ".env.project-env-files").write_text(
+        "\n".join(
+            [
+                "EVALUATOR_HARNESS_LIVE=1",
+                "LANGFUSE_PUBLIC_KEY=project-public",
+                "LANGFUSE_SECRET_KEY=project-secret",
+                "LANGFUSE_HOST=https://project-langfuse.test",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    seen: list[LiveSettings] = []
+
+    def fake_from_env(cls, env_mapping=None):
+        settings = LiveSettings.from_env(load_file=False, env_mapping=env_mapping)
+        seen.append(settings)
+        settings.require_langfuse()
+        return DefaultLangfuseGateway(settings=settings)
+
+    monkeypatch.setattr(DefaultLangfuseGateway, "from_env", classmethod(fake_from_env))
+
+    result = CliRunner().invoke(
+        app,
+        ["sync-dataset", "--project", str(project_path), "--dry-run"],
+    )
+
+    assert result.exit_code == 0
+    assert seen
     assert seen[0].langfuse_public_key == "project-public"
     assert seen[0].langfuse_secret_key == "project-secret"
     assert seen[0].langfuse_host == "https://project-langfuse.test"

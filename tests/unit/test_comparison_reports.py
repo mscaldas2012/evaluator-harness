@@ -210,3 +210,105 @@ def test_create_comparison_reports_invokes_requested_writers(tmp_path: Path) -> 
         ("excel", (reports_dir / "baseline-1-comparison.xlsx").resolve()),
         ("html", (reports_dir / "baseline-1-comparison.html").resolve()),
     ]
+
+
+def test_create_comparison_reports_ignores_malformed_unrelated_csv(tmp_path: Path) -> None:
+    from evaluator_harness.comparison_reports import create_comparison_reports
+
+    reports_dir = tmp_path / "reports"
+    reports_dir.mkdir()
+    _write_csv(
+        reports_dir / "baseline.csv",
+        [{"run_id": "baseline-1", "run_type": "baseline", "score_quality": "1"}],
+    )
+    _write_csv(
+        reports_dir / "candidate.csv",
+        [
+            {
+                "run_id": "candidate-1",
+                "run_type": "candidate",
+                "baseline_run_id": "baseline-1",
+                "score_quality": "0.9",
+            }
+        ],
+    )
+    _write_csv(
+        reports_dir / "broken.csv",
+        [{"run_id": "", "run_type": "baseline", "score_quality": "0.5"}],
+    )
+
+    def excel_writer(payload):
+        payload.output_path.write_bytes(b"xlsx")
+
+    def html_writer(payload):
+        payload.output_path.write_text("<!doctype html>", encoding="utf-8")
+
+    outputs = create_comparison_reports(
+        "baseline-1",
+        reports_dir=reports_dir,
+        formats="both",
+        overwrite=True,
+        excel_writer=excel_writer,
+        html_writer=html_writer,
+    )
+
+    assert [output.format for output in outputs] == ["excel", "html"]
+    for output in outputs:
+        assert any(
+            "Malformed CSV report broken.csv: missing run_id value." in warning
+            for warning in output.warnings
+        )
+
+
+def test_create_comparison_reports_can_target_specific_run_ids(tmp_path: Path) -> None:
+    from evaluator_harness.comparison_reports import create_comparison_reports
+
+    reports_dir = tmp_path / "reports"
+    reports_dir.mkdir()
+    _write_csv(
+        reports_dir / "baseline-current.csv",
+        [{"run_id": "baseline-current", "run_type": "baseline", "score_quality": "1"}],
+    )
+    _write_csv(
+        reports_dir / "candidate-current.csv",
+        [
+            {
+                "run_id": "candidate-current",
+                "run_type": "candidate",
+                "baseline_run_id": "baseline-current",
+                "score_quality": "0.9",
+            }
+        ],
+    )
+    _write_csv(
+        reports_dir / "baseline-stale.csv",
+        [{"run_id": "baseline-stale", "run_type": "baseline", "score_quality": "0.1"}],
+    )
+
+    def excel_writer(payload):
+        payload.output_path.write_bytes(b"xlsx")
+
+    outputs = create_comparison_reports(
+        "baseline-current",
+        reports_dir=reports_dir,
+        formats="excel",
+        overwrite=True,
+        include_run_ids=["baseline-current", "candidate-current"],
+        excel_writer=excel_writer,
+    )
+
+    assert outputs[0].report_count == 2
+
+
+def test_read_csv_report_infers_run_id_from_filename_for_header_only_csv(
+    tmp_path: Path,
+) -> None:
+    from evaluator_harness.comparison_reports import read_csv_report
+
+    report_path = tmp_path / "baseline-abc123.csv"
+    report_path.write_text("run_id,run_type\n", encoding="utf-8")
+
+    report = read_csv_report(report_path)
+
+    assert report.run_id == "baseline-abc123"
+    assert report.run_type == "baseline"

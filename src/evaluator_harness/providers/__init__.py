@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 from typing import Any
 
 from evaluator_harness.config import AuthMode, ModelConfig, ProviderName
@@ -8,11 +9,18 @@ from evaluator_harness.model_output_targeting import MODEL_OUTPUT_ROLE
 from evaluator_harness.providers.base import ModelProvider
 
 
-def create_provider(config: ModelConfig) -> ModelProvider:
+def create_provider(
+    config: ModelConfig,
+    *,
+    env_mapping: Any | None = None,
+) -> ModelProvider:
     if config.provider == ProviderName.OPENAI_COMPATIBLE:
         from evaluator_harness.providers.openai_compatible import OpenAICompatibleProvider
 
-        return OpenAICompatibleProvider(config)
+        try:
+            return OpenAICompatibleProvider(config, env_mapping=env_mapping)
+        except TypeError:
+            return OpenAICompatibleProvider(config)
     if config.provider == ProviderName.OLLAMA:
         from evaluator_harness.providers.ollama import OllamaProvider
 

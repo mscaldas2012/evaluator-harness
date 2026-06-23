@@ -166,6 +166,11 @@ def test_campaign_exports_reports_and_passes_excel_overwrite(monkeypatch) -> Non
             "reports_dir": Path("reports/campaign-mode"),
             "formats": "excel",
             "overwrite": True,
+            "include_run_ids": [
+                "baseline-campaign",
+                "candidate-included-candidate",
+                "candidate-default-included-candidate",
+            ],
         }
     ]
     assert result.excel_report is not None
@@ -207,6 +212,11 @@ def test_campaign_generates_html_report_when_requested(monkeypatch) -> None:
             "reports_dir": Path("reports/campaign-mode"),
             "formats": "html",
             "overwrite": True,
+            "include_run_ids": [
+                "baseline-campaign",
+                "candidate-included-candidate",
+                "candidate-default-included-candidate",
+            ],
         }
     ]
     assert result.final_reports[0].format == "html"
@@ -380,3 +390,40 @@ def test_campaign_keeps_candidate_when_export_linkage_is_incomplete() -> None:
         and "expected traces confirmed" in warning
         for warning in result.warnings
     )
+
+
+def test_campaign_deduplicates_identical_final_report_warnings(monkeypatch) -> None:
+    runner = RecordingRunner()
+
+    monkeypatch.setattr(
+        "evaluator_harness.runner.create_comparison_reports",
+        lambda **_kwargs: [
+            type(
+                "FakeExcel",
+                (),
+                {
+                    "format": "excel",
+                    "output_path": Path(
+                        "reports/campaign-mode/baseline-campaign-comparison.xlsx"
+                    ),
+                    "warnings": ("No score columns found in included CSV reports.",),
+                },
+            )(),
+            type(
+                "FakeHtml",
+                (),
+                {
+                    "format": "html",
+                    "output_path": Path(
+                        "reports/campaign-mode/baseline-campaign-comparison.html"
+                    ),
+                    "warnings": ("No score columns found in included CSV reports.",),
+                },
+            )(),
+        ],
+        raising=False,
+    )
+
+    result = runner.campaign(Path("tests/fixtures/projects/campaign_mode.yaml"))
+
+    assert result.warnings.count("No score columns found in included CSV reports.") == 1

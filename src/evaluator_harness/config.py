@@ -13,6 +13,7 @@ import yaml
 from pydantic import BaseModel, Field, ValidationError, field_validator, model_validator
 
 from evaluator_harness.errors import ConfigError
+from evaluator_harness.environment import EnvironmentResolver, ResolvedEnvironment, EnvironmentScope
 
 
 ENV_NAME_PATTERN = re.compile(r"^[A-Z_][A-Z0-9_]*$")
@@ -506,6 +507,12 @@ class LiveSettings(BaseModel):
     langfuse_host: str | None = None
     annotation_queue_id: str | None = None
 
+    @staticmethod
+    def _env_value(env: dict[str, str] | ResolvedEnvironment | None, name: str) -> str | None:
+        if env is None:
+            return os.getenv(name)
+        return env.get(name)
+
     @classmethod
     def from_env(
         cls,
@@ -513,21 +520,19 @@ class LiveSettings(BaseModel):
         env_file: Path | str = ".env",
         project_env_file: Path | str | None = None,
         load_file: bool = True,
+        env_mapping: dict[str, str] | ResolvedEnvironment | None = None,
     ) -> LiveSettings:
-        if load_file:
-            if project_env_file is None:
-                load_env_file(env_file)
-            else:
-                load_layered_env_files(
-                    root_env_file=env_file,
-                    project_env_file=project_env_file,
-                )
-        _normalize_langfuse_host_alias()
+        if env_mapping is None and load_file:
+            env_mapping = resolve_environment(
+                env_file=env_file,
+                project_env_file=project_env_file,
+            )
         return cls(
-            langfuse_public_key=os.getenv("LANGFUSE_PUBLIC_KEY"),
-            langfuse_secret_key=os.getenv("LANGFUSE_SECRET_KEY"),
-            langfuse_host=os.getenv("LANGFUSE_HOST") or os.getenv("LANGFUSE_BASE_URL"),
-            annotation_queue_id=os.getenv("LANGFUSE_ANNOTATION_QUEUE_ID"),
+            langfuse_public_key=cls._env_value(env_mapping, "LANGFUSE_PUBLIC_KEY"),
+            langfuse_secret_key=cls._env_value(env_mapping, "LANGFUSE_SECRET_KEY"),
+            langfuse_host=cls._env_value(env_mapping, "LANGFUSE_HOST")
+            or cls._env_value(env_mapping, "LANGFUSE_BASE_URL"),
+            annotation_queue_id=cls._env_value(env_mapping, "LANGFUSE_ANNOTATION_QUEUE_ID"),
         )
 
     def require_langfuse(self) -> None:
@@ -561,6 +566,36 @@ class _ManagedEnvValue:
 
 
 _MANAGED_ENV_VALUES: dict[str, _ManagedEnvValue] = {}
+
+
+def resolve_environment(
+    *,
+    env_file: Path | str = ".env",
+    project_env_file: Path | str | None = None,
+    defaults: dict[str, str] | None = None,
+) -> ResolvedEnvironment:
+    shell_vars = dict(os.environ)
+    root_vars = _read_env_file_values(env_file)
+    project_vars = _read_env_file_values(project_env_file) if project_env_file is not None else {}
+    resolved = EnvironmentResolver.resolve(root_vars, project_vars, shell_vars, defaults)
+    return ResolvedEnvironment(resolved)
+
+
+def environment_scope(
+    *,
+    env_file: Path | str = ".env",
+    project_env_file: Path | str | None = None,
+    defaults: dict[str, str] | None = None,
+    apply_to_os_environ: bool = False,
+) -> EnvironmentScope:
+    return EnvironmentScope(
+        resolve_environment(
+            env_file=env_file,
+            project_env_file=project_env_file,
+            defaults=defaults,
+        ),
+        apply_to_os_environ=apply_to_os_environ,
+    )
 
 
 def load_env_file(path: Path | str = ".env") -> None:
@@ -624,18 +659,9 @@ def _load_env_file(
     env_path = Path(path)
     if not env_path.exists():
         return EnvLoadResult(loaded_files=(), loaded_keys=(), ignored_files=(env_path,))
+    _, ignored_keys, values = _parse_env_file(env_path)
     loaded_keys: set[str] = set()
-    ignored_keys: set[str] = set()
-    for raw_line in env_path.read_text(encoding="utf-8").splitlines():
-        line = raw_line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        key = key.strip()
-        if not ENV_NAME_PATTERN.fullmatch(key):
-            ignored_keys.add(key)
-            continue
-        value = value.strip().strip('"').strip("'")
+    for key, value in values.items():
         managed_value = _MANAGED_ENV_VALUES.get(key)
         env_value = os.environ.get(key)
         is_shell_value = env_value is not None and (
@@ -652,6 +678,35 @@ def _load_env_file(
         loaded_keys=tuple(sorted(loaded_keys)),
         ignored_keys=tuple(sorted(ignored_keys)),
     )
+
+
+def _read_env_file_values(path: Path | str | None) -> dict[str, str]:
+    if path is None:
+        return {}
+    env_path = Path(path)
+    if not env_path.exists():
+        return {}
+    _, _, values = _parse_env_file(env_path)
+    return values
+
+
+def _parse_env_file(path: Path) -> tuple[set[str], set[str], dict[str, str]]:
+    loaded_keys: set[str] = set()
+    ignored_keys: set[str] = set()
+    values: dict[str, str] = {}
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        if not ENV_NAME_PATTERN.fullmatch(key):
+            ignored_keys.add(key)
+            continue
+        value = value.strip().strip('"').strip("'")
+        loaded_keys.add(key)
+        values[key] = value
+    return loaded_keys, ignored_keys, values
 
 
 def _normalize_langfuse_host_alias() -> None:

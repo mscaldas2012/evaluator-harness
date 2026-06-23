@@ -120,6 +120,7 @@ def run_campaign(
     final_reports, excel_report, final_report_warnings = build_campaign_final_reports(
         config=config,
         baseline_run_id=baseline_run.run_id,
+        candidate_runs=candidate_runs,
         create_reports=create_reports,
         no_report=no_report,
         overwrite=overwrite,
@@ -298,6 +299,7 @@ def build_campaign_final_reports(
     *,
     config: ProjectConfig,
     baseline_run_id: str,
+    candidate_runs: list[CampaignCandidateRun],
     create_reports: CreateReportsCallback,
     no_report: bool,
     overwrite: bool,
@@ -309,12 +311,19 @@ def build_campaign_final_reports(
 ]:
     if no_report:
         return [], None, []
+    include_run_ids = [baseline_run_id]
+    include_run_ids.extend(
+        candidate.run_result.run_id
+        for candidate in candidate_runs
+        if candidate.run_result is not None
+    )
     try:
         final_reports = create_reports(
             baseline_run_id=baseline_run_id,
             reports_dir=_project_reports_dir(config),
             formats=report_format,
             overwrite=overwrite,
+            include_run_ids=include_run_ids,
         )
     except HarnessError as exc:
         return [], None, [str(exc)]
@@ -323,9 +332,16 @@ def build_campaign_final_reports(
         None,
     )
     warnings: list[str] = []
+    seen_warnings: set[str] = set()
     for report in final_reports:
         warnings.extend(report.warnings)
-    return final_reports, excel_report, warnings
+    deduped_warnings: list[str] = []
+    for warning in warnings:
+        if warning in seen_warnings:
+            continue
+        seen_warnings.add(warning)
+        deduped_warnings.append(warning)
+    return final_reports, excel_report, deduped_warnings
 
 
 def _project_reports_dir(config: ProjectConfig) -> Path:
