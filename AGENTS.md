@@ -1,7 +1,7 @@
 <!-- SPECKIT START -->
 For additional context about technologies to be used, project structure,
 shell commands, and other important information, read
-specs/024-scoped-env-resolution/plan.md
+specs/025-cli-presenter-extraction/plan.md
 <!-- SPECKIT END -->
 
 ## Python Environment
