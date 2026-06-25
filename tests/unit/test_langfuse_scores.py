@@ -56,3 +56,56 @@ def test_live_score_retrieval_failure_produces_lookup_warning() -> None:
     assert warnings[0].affected_count == 1
     assert warnings[0].examples == ("trace-1",)
     assert warnings[0].details["error"] == "authorization: [REDACTED]"
+
+
+def test_calibration_scores_include_completed_annotation_queue_scores() -> None:
+    gateway = DefaultLangfuseGateway(
+        scores={
+            "candidate-1": [
+                {
+                    "id": "score-1",
+                    "trace_id": "trace-1",
+                    "name": "clarity",
+                    "value": 0.8,
+                    "source": "EVAL",
+                }
+            ]
+        },
+        annotation_queue_items=[
+            {
+                "queue_id": "queue-1",
+                "trace_id": "trace-1",
+                "object_id": "trace-1",
+                "status": "COMPLETED",
+                "scores": [
+                    {
+                        "name": "clarity",
+                        "value": 0.6,
+                        "comment": "human label",
+                    }
+                ],
+            }
+        ],
+    )
+
+    scores = gateway.fetch_calibration_scores(
+        "candidate-1",
+        trace_ids=["trace-1"],
+    )
+
+    assert scores == [
+        {
+            "id": "score-1",
+            "trace_id": "trace-1",
+            "name": "clarity",
+            "value": 0.8,
+            "source": "EVAL",
+        },
+        {
+            "trace_id": "trace-1",
+            "name": "clarity",
+            "value": 0.6,
+            "comment": "human label",
+            "source": "ANNOTATION",
+        },
+    ]

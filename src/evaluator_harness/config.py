@@ -495,8 +495,18 @@ class HumanReviewSelection(BaseModel):
     item_id: str
     run_id: str
     trace_id: str
-    selection_reason: Literal["failure", "low_confidence", "disputed", "sample"]
-    selection_bucket: Literal["stable_calibration", "run_risk"] = "stable_calibration"
+    selection_reason: Literal[
+        "failure",
+        "low_confidence",
+        "disputed",
+        "sample",
+        "annotated_queue_item",
+    ]
+    selection_bucket: Literal[
+        "stable_calibration",
+        "run_risk",
+        "completed_annotation",
+    ] = "stable_calibration"
     annotation_queue_id: str | None = None
     queued: bool = False
 

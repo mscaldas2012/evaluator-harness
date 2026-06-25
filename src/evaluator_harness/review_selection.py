@@ -10,7 +10,13 @@ from typing import Any, Literal
 from evaluator_harness.config import HumanReviewPolicy, HumanReviewSelection
 
 
-SelectionReason = Literal["failure", "low_confidence", "disputed", "sample"]
+SelectionReason = Literal[
+    "failure",
+    "low_confidence",
+    "disputed",
+    "sample",
+    "annotated_queue_item",
+]
 SampleStrategy = Literal["stable", "random"]
 
 
@@ -47,7 +53,13 @@ class ReviewCandidate:
         )
 
     def to_selection(self, reason: SelectionReason) -> HumanReviewSelection:
-        bucket = "stable_calibration" if reason == "sample" else "run_risk"
+        bucket = (
+            "stable_calibration"
+            if reason == "sample"
+            else "completed_annotation"
+            if reason == "annotated_queue_item"
+            else "run_risk"
+        )
         return HumanReviewSelection(
             item_id=self.item_id,
             run_id=self.run_id,

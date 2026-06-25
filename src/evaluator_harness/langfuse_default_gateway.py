@@ -19,6 +19,7 @@ from evaluator_harness.errors import LangfuseError
 from evaluator_harness.langfuse_annotation_ops import (
     annotation_queue_object_ids_workflow,
     build_annotation_queue_payload_workflow,
+    completed_annotation_queue_items_workflow,
     create_annotation_queue_workflow,
     create_live_annotation_queue,
     create_live_annotation_queue_item,
@@ -105,6 +106,7 @@ from evaluator_harness.langfuse_score_configs import (
     sync_score_configs_workflow,
 )
 from evaluator_harness.langfuse_scores import (
+    fetch_calibration_scores_workflow,
     fetch_scores_workflow,
     live_scores_for_traces,
 )
@@ -612,6 +614,20 @@ class DefaultLangfuseGateway:
             progress=progress,
         )
 
+    def fetch_calibration_scores(
+        self,
+        run_id: str,
+        *,
+        trace_ids: list[str] | None = None,
+        progress: ProgressReporter | None = None,
+    ) -> list[dict[str, Any]]:
+        return fetch_calibration_scores_workflow(
+            self,
+            run_id,
+            trace_ids=trace_ids,
+            progress=progress,
+        )
+
     def _fetch_scores_impl(
         self,
         run_id: str,
@@ -787,6 +803,18 @@ class DefaultLangfuseGateway:
 
     def _annotation_queue_object_ids_impl(self, queue_id: str) -> set[str]:
         return annotation_queue_object_ids_workflow(self, queue_id)
+
+    def completed_annotation_queue_items(
+        self,
+        queue_ids: list[str],
+    ) -> list[dict[str, Any]]:
+        return self._gateway.completed_annotation_queue_items(queue_ids)
+
+    def _completed_annotation_queue_items_impl(
+        self,
+        queue_ids: list[str],
+    ) -> list[dict[str, Any]]:
+        return completed_annotation_queue_items_workflow(self, queue_ids)
 
     def create_annotation_queue(
         self,

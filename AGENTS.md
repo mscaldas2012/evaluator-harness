@@ -1,7 +1,7 @@
 <!-- SPECKIT START -->
 For additional context about technologies to be used, project structure,
 shell commands, and other important information, read
-specs/025-cli-presenter-extraction/plan.md
+specs/026-evaluator-calibration/plan.md
 <!-- SPECKIT END -->
 
 ## Python Environment

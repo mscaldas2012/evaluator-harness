@@ -10,6 +10,8 @@ from rich.console import Console
 from evaluator_harness.cli_presenters import (
     ComparisonReportPresentationResult,
     RunPresentationResult,
+    present_calibration_capture_result,
+    present_calibration_summary_result,
     present_campaign_result,
     present_comparison_report_result,
     present_export_evaluator_setup_result,
@@ -310,6 +312,28 @@ def select_review(
     )
     if result is not None:
         present_select_review_result(result, console)
+
+
+@app.command("calibration-capture")
+def calibration_capture(
+    project: Annotated[Path, typer.Option("--project")],
+    run_id: Annotated[str, typer.Option("--run")],
+) -> None:
+    project = _resolve_project_path(project)
+    result = _handle_command(lambda: _runner().calibration_capture(project, run_id))
+    if result is not None:
+        present_calibration_capture_result(result, console)
+
+
+@app.command("calibration-summary")
+def calibration_summary(
+    project: Annotated[Path, typer.Option("--project")],
+    run_id: Annotated[str, typer.Option("--run")],
+) -> None:
+    project = _resolve_project_path(project)
+    result = _handle_command(lambda: _runner().calibration_summary(project, run_id))
+    if result is not None:
+        present_calibration_summary_result(result, console)
 
 
 @app.command()

@@ -25,6 +25,22 @@ def fetch_scores_workflow(
     return [score for score in scores if str(score.get("trace_id")) in trace_id_set]
 
 
+def fetch_calibration_scores_workflow(
+    owner: Any,
+    run_id: str,
+    *,
+    trace_ids: list[str] | None = None,
+    progress: ProgressReporter | None = None,
+) -> list[dict[str, Any]]:
+    scores = fetch_scores_workflow(
+        owner,
+        run_id,
+        trace_ids=trace_ids,
+        progress=progress,
+    )
+    return [*scores, *annotation_scores_for_traces(owner, trace_ids or [])]
+
+
 def live_scores_for_traces(
     owner: Any,
     trace_ids: list[str],
@@ -52,6 +68,52 @@ def live_scores_for_traces(
             scores.extend(_scores_for_trace(get_many, trace_id, owner=owner))
             task.advance()
     return scores
+
+
+def annotation_scores_for_traces(
+    owner: Any,
+    trace_ids: list[str],
+) -> list[dict[str, Any]]:
+    trace_id_set = {str(trace_id) for trace_id in trace_ids}
+    annotation_scores: list[dict[str, Any]] = []
+    for item in getattr(owner, "annotation_queue_items", []):
+        if not isinstance(item, dict):
+            continue
+        if str(item.get("status") or "").upper() not in {"COMPLETED", "DONE"}:
+            continue
+        trace_id = str(item.get("trace_id") or item.get("object_id") or "")
+        if not trace_id or trace_id not in trace_id_set:
+            continue
+        for score in _annotation_item_scores(item):
+            name = score.get("name") or score.get("score_name") or score.get("scoreName")
+            value = score.get("value")
+            if value is None:
+                value = score.get("score")
+            if not name or value is None:
+                continue
+            annotation_scores.append(
+                {
+                    "trace_id": trace_id,
+                    "name": str(name),
+                    "value": value,
+                    "comment": score.get("comment"),
+                    "source": "ANNOTATION",
+                }
+            )
+    return annotation_scores
+
+
+def _annotation_item_scores(item: dict[str, Any]) -> list[dict[str, Any]]:
+    for key in ("scores", "annotations", "score_values", "scoreValues"):
+        value = item.get(key)
+        if isinstance(value, list):
+            return [score for score in value if isinstance(score, dict)]
+        if isinstance(value, dict):
+            return [
+                {"name": name, "value": score}
+                for name, score in value.items()
+            ]
+    return []
 
 
 def _scores_for_trace(
