@@ -294,6 +294,23 @@ def present_calibration_summary_result(result: Any, console: Console) -> None:
         console.print(f"warning: {warning}")
 
 
+def present_campaign_calibration_result(result: Any, console: Console) -> None:
+    console.print("campaign-calibration: completed")
+    console.print(f"baseline: {result.baseline_run_id}")
+    console.print(f"runs: {result.run_count}")
+    console.print(f"captured: {result.captured_count}")
+    console.print(f"summarized: {result.summarized_count}")
+    report_path = getattr(result, "html_report_path", None)
+    if report_path is not None:
+        console.print(f"report: {report_path}")
+    console.print(f"source: {result.source}")
+    warnings = tuple(getattr(result, "warnings", ()))
+    if warnings:
+        console.print(f"warning-count: {len(warnings)}")
+    for warning in warnings:
+        console.print(f"warning: {warning}")
+
+
 def present_campaign_result(result: Any, console: Console) -> None:
     if result.baseline_run is None:
         console.print("campaign: skipped")

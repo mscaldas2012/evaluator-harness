@@ -12,6 +12,7 @@ from evaluator_harness.cli_presenters import (
     RunPresentationResult,
     present_calibration_capture_result,
     present_calibration_summary_result,
+    present_campaign_calibration_result,
     present_campaign_result,
     present_comparison_report_result,
     present_export_evaluator_setup_result,
@@ -334,6 +335,28 @@ def calibration_summary(
     result = _handle_command(lambda: _runner().calibration_summary(project, run_id))
     if result is not None:
         present_calibration_summary_result(result, console)
+
+
+@app.command("campaign-calibration-report")
+def campaign_calibration_report(
+    project: Annotated[Path, typer.Option("--project")],
+    baseline_run_id: Annotated[str, typer.Option("--baseline")],
+    reports_dir: Annotated[Path | None, typer.Option("--reports-dir")] = None,
+    output: Annotated[Path | None, typer.Option("--output")] = None,
+    output_dir: Annotated[Path | None, typer.Option("--output-dir")] = None,
+) -> None:
+    project = _resolve_project_path(project)
+    result = _handle_command(
+        lambda: _runner().campaign_calibration_report(
+            project,
+            baseline_run_id=baseline_run_id,
+            reports_dir=reports_dir,
+            output_path=output,
+            output_dir=output_dir,
+        )
+    )
+    if result is not None:
+        present_campaign_calibration_result(result, console)
 
 
 @app.command()
