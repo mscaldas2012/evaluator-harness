@@ -51,6 +51,12 @@ class LangfuseRestGateway:
     def annotation_queue_object_ids(self, queue_id: str) -> set[str]:
         return self.owner._live_annotation_queue_object_ids(queue_id)
 
+    def completed_annotation_queue_items(
+        self,
+        queue_ids: list[str],
+    ) -> list[dict[str, Any]]:
+        return self.owner._completed_annotation_queue_items_impl(queue_ids)
+
     def create_annotation_queue_item(
         self,
         queue_id: str,

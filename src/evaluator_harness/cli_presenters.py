@@ -270,6 +270,30 @@ def present_export_result(result: Any, console: Console) -> None:
         console.print(f"warning: {warning}")
 
 
+def present_calibration_capture_result(result: Any, console: Console) -> None:
+    console.print(f"calibration: {result.output_path}")
+    console.print(f"rows: {result.row_count}")
+    console.print(f"paired: {result.paired_count}")
+    console.print(f"pending: {result.pending_count}")
+    warnings = tuple(getattr(result, "warnings", ()))
+    if warnings:
+        console.print(f"warning-count: {len(warnings)}")
+    for warning in warnings:
+        console.print(f"warning: {warning}")
+
+
+def present_calibration_summary_result(result: Any, console: Console) -> None:
+    console.print(f"calibration-summary: {result.output_path}")
+    console.print(f"summaries: {result.summary_count}")
+    console.print(f"paired: {result.paired_count}")
+    console.print(f"pending: {result.pending_count}")
+    warnings = tuple(getattr(result, "warnings", ()))
+    if warnings:
+        console.print(f"warning-count: {len(warnings)}")
+    for warning in warnings:
+        console.print(f"warning: {warning}")
+
+
 def present_campaign_result(result: Any, console: Console) -> None:
     if result.baseline_run is None:
         console.print("campaign: skipped")

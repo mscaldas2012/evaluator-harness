@@ -7,6 +7,7 @@ from evaluator_harness.langfuse_mappers import (
     object_to_score_config_dict,
     object_to_score_dict,
 )
+from evaluator_harness.langfuse_scores import annotation_scores_for_traces
 from evaluator_harness.langfuse_records import (
     AnnotationQueueRecord,
     DatasetItemRecord,
@@ -137,6 +138,13 @@ class InMemoryLangfuseGateway:
         trace_ids = kwargs.get("trace_ids")
         return self.scores_for_traces(trace_ids or [])
 
+    def fetch_calibration_scores(self, *args: Any, **kwargs: Any) -> Any:
+        if self.owner is not None:
+            return self.owner.fetch_calibration_scores(*args, **kwargs)
+        trace_ids = kwargs.get("trace_ids") or []
+        scores = [object_to_score_dict(score) for score in self.scores_for_traces(trace_ids)]
+        return [*scores, *annotation_scores_for_traces(self, trace_ids)]
+
     def list_evaluators(self) -> list[EvaluatorRecord]:
         if self.owner is not None:
             return self.owner._list_evaluators_impl()
@@ -232,6 +240,22 @@ class InMemoryLangfuseGateway:
             return self.owner._annotation_queue_object_ids_impl(*args, **kwargs)
         queue_id = str(args[0] if args else kwargs["queue_id"])
         return set(self.annotation_queue_items.get(queue_id, set()))
+
+    def completed_annotation_queue_items(self, *args: Any, **kwargs: Any) -> list[Any]:
+        if self.owner is not None:
+            return self.owner._completed_annotation_queue_items_impl(*args, **kwargs)
+        queue_ids = {str(queue_id) for queue_id in (args[0] if args else kwargs["queue_ids"])}
+        return [
+            {
+                "queue_id": queue_id,
+                "object_id": object_id,
+                "trace_id": object_id,
+                "status": "COMPLETED",
+            }
+            for queue_id, object_ids in self.annotation_queue_items.items()
+            if queue_id in queue_ids
+            for object_id in object_ids
+        ]
 
     def create_annotation_queue(self, *args: Any, **kwargs: Any) -> Any:
         if self.owner is not None:
