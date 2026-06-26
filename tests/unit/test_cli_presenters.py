@@ -11,6 +11,7 @@ from evaluator_harness import cli
 from evaluator_harness.cli_presenters import (
     ComparisonReportPresentationResult,
     RunPresentationResult,
+    present_campaign_calibration_result,
     present_campaign_result,
     present_comparison_report_result,
     present_export_result,
@@ -219,6 +220,29 @@ def test_present_campaign_result_outputs_completed_and_skipped() -> None:
     assert "excel-report: reports/final.xlsx" in output
 
 
+def test_present_campaign_calibration_result_outputs_report_and_warnings() -> None:
+    result = SimpleNamespace(
+        baseline_run_id="baseline-1",
+        run_count=2,
+        captured_count=2,
+        summarized_count=1,
+        html_report_path="reports/campaign-mode/baseline-1-calibration-report.html",
+        source="manifest",
+        warnings=("candidate-1: missing annotations",),
+    )
+
+    output = _text_for(present_campaign_calibration_result, result)
+
+    assert "campaign-calibration: completed" in output
+    assert "baseline: baseline-1" in output
+    assert "runs: 2" in output
+    assert "captured: 2" in output
+    assert "summarized: 1" in output
+    assert "report: reports/campaign-mode/baseline-1-calibration-report.html" in output
+    assert "warning-count: 1" in output
+    assert "warning: candidate-1: missing annotations" in output
+
+
 def test_present_select_review_and_export_outputs() -> None:
     review_result = SimpleNamespace(
         selected_count=4,
@@ -356,6 +380,7 @@ def test_presenter_signatures_use_result_console_contract() -> None:
         "present_select_review_result",
         "present_export_result",
         "present_campaign_result",
+        "present_campaign_calibration_result",
         "present_comparison_report_result",
     ]
 
@@ -385,6 +410,7 @@ def test_cli_command_functions_do_not_print_results_inline() -> None:
         "select_review",
         "export",
         "campaign",
+        "campaign_calibration_report",
         "comparison_report",
         "excel_report",
     }

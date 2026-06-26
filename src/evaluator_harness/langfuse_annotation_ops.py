@@ -64,6 +64,26 @@ def annotation_queue_object_ids_workflow(owner: Any, queue_id: str) -> set[str]:
     }
 
 
+def completed_annotation_queue_items_workflow(
+    owner: Any,
+    queue_ids: list[str],
+) -> list[dict[str, Any]]:
+    owner.check_reachable(operation="list-annotation-queue-items")
+    if owner.client is not None:
+        return [
+            item
+            for queue_id in queue_ids
+            for item in live_completed_annotation_queue_items(owner, queue_id)
+        ]
+    queue_id_set = {str(queue_id) for queue_id in queue_ids}
+    return [
+        item
+        for item in owner.annotation_queue_items
+        if str(item.get("queue_id") or "") in queue_id_set
+        and str(item.get("status") or "").upper() in {"COMPLETED", "DONE"}
+    ]
+
+
 def create_annotation_queue_workflow(
     owner: Any,
     *,
@@ -267,6 +287,37 @@ def live_annotation_queue_object_ids(owner: Any, queue_id: str) -> set[str]:
             break
         page_number += 1
     return object_ids
+
+
+def live_completed_annotation_queue_items(
+    owner: Any,
+    queue_id: str,
+) -> list[dict[str, Any]]:
+    annotation_queues = _annotation_queues_api(owner)
+    list_queue_items = getattr(annotation_queues, "list_queue_items", None)
+    if not callable(list_queue_items):
+        return []
+    items: list[dict[str, Any]] = []
+    page_number = 1
+    while True:
+        try:
+            page = list_queue_items(
+                queue_id,
+                status="COMPLETED",
+                page=page_number,
+                limit=100,
+            )
+        except Exception as exc:
+            raise LangfuseError(
+                f"Unable to list completed annotation queue items for {queue_id}: {exc}"
+            ) from exc
+        items.extend(object_to_queue_dict(item) for item in getattr(page, "data", None) or [])
+        meta = getattr(page, "meta", None)
+        total_pages = int(getattr(meta, "total_pages", page_number) or page_number)
+        if page_number >= total_pages:
+            break
+        page_number += 1
+    return items
 
 
 def _route_one_annotation_item(

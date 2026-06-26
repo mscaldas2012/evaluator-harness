@@ -163,6 +163,37 @@ runs, and review selected items in Human Annotation Queues. For local artifacts,
 campaign mode uses `--report-format excel|html|both` for the final comparison
 artifact and defaults to Excel for compatibility.
 
+### Evaluator Calibration
+
+After a run has automated evaluator scores and completed human annotations in
+Langfuse, capture the paired calibration evidence:
+
+```powershell
+eval calibration-capture `
+  --project configs/projects/rewrite_quality.yaml `
+  --run <run-id>
+```
+
+Calibration capture writes JSON and CSV artifacts under
+`reports/<project>/calibration/`. Completed Langfuse annotation queue items are
+the primary calibration cohort for a run: the harness matches completed queue
+item trace IDs to traces from the run, then pairs automated `EVAL` scores with
+human `ANNOTATION` scores for each evaluator. If live Langfuse trace lookup is
+partial, capture can use the local run export CSV to complete the run context.
+
+Summarize a captured snapshot with:
+
+```powershell
+eval calibration-summary `
+  --project configs/projects/rewrite_quality.yaml `
+  --run <run-id>
+```
+
+Summary artifacts report paired coverage, disagreement rate, mean absolute
+score delta, and directional bias per evaluator. `directional_bias` is
+`human_score - automated_score`, so negative values mean the human reviewer
+scored lower than the automated evaluator.
+
 ### Shared Evaluation Configs And Scenarios
 
 When one use case has multiple scenario-specific project configs, keep the

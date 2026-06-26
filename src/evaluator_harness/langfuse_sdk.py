@@ -95,6 +95,13 @@ class LangfuseSdkGateway:
     def annotation_queue_object_ids(self, *args: Any, **kwargs: Any) -> set[str]:
         return self.owner._annotation_queue_object_ids_impl(*args, **kwargs)
 
+    def completed_annotation_queue_items(
+        self,
+        *args: Any,
+        **kwargs: Any,
+    ) -> list[dict[str, Any]]:
+        return self.owner._completed_annotation_queue_items_impl(*args, **kwargs)
+
     def create_annotation_queue(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
         return self.owner._create_annotation_queue_impl(*args, **kwargs)
 

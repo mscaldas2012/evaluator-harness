@@ -8,14 +8,15 @@ Tests cover:
 """
 
 import os
-import pytest
 import tempfile
 from pathlib import Path
 
+import pytest
+
 from evaluator_harness.environment import (
     EnvironmentResolver,
+    EnvironmentScope,
     ResolvedEnvironment,
-    EnvironmentScope
 )
 
 
@@ -125,37 +126,30 @@ class TestEnvironmentResolver:
         assert result['API_KEY'] == 'default_value'
         assert result['HOST'] == 'localhost'
     
-    def test_load_with_precedence(self):
+    def test_load_with_precedence(self, tmp_path: Path):
         """Test load_with_precedence with actual files."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            # Create root .env
-            root_file = os.path.join(tmpdir, '.env')
-            with open(root_file, 'w') as f:
-                f.write('API_KEY=root_key\n')
-                f.write('PORT=8080\n')
-            
-            # Create project .env
-            project_file = os.path.join(tmpdir, '.env.project')
-            with open(project_file, 'w') as f:
-                f.write('API_KEY=project_key\n')
-                f.write('DEBUG=true\n')
-            
-            # Mock shell environment
-            original_environ = os.environ.copy()
-            try:
-                os.environ.clear()
-                os.environ['SHELL_VAR'] = 'shell_value'
-                
-                result = EnvironmentResolver.load_with_precedence(root_file, project_file)
-                
-                # Verify precedence
-                assert result['API_KEY'] == 'project_key'  # Project wins over root
-                assert result['PORT'] == '8080'  # Root-only value
-                assert result['DEBUG'] == 'true'  # Project-only value
-                assert result['SHELL_VAR'] == 'shell_value'  # Shell value
-            finally:
-                os.environ.clear()
-                os.environ.update(original_environ)
+        root_file = tmp_path / '.env'
+        root_file.write_text('API_KEY=root_key\nPORT=8080\n', encoding='utf-8')
+
+        project_file = tmp_path / '.env.project'
+        project_file.write_text('API_KEY=project_key\nDEBUG=true\n', encoding='utf-8')
+
+        # Mock shell environment
+        original_environ = os.environ.copy()
+        try:
+            os.environ.clear()
+            os.environ['SHELL_VAR'] = 'shell_value'
+
+            result = EnvironmentResolver.load_with_precedence(root_file, project_file)
+
+            # Verify precedence
+            assert result['API_KEY'] == 'project_key'  # Project wins over root
+            assert result['PORT'] == '8080'  # Root-only value
+            assert result['DEBUG'] == 'true'  # Project-only value
+            assert result['SHELL_VAR'] == 'shell_value'  # Shell value
+        finally:
+            os.environ.clear()
+            os.environ.update(original_environ)
 
 
 class TestResolvedEnvironment:

@@ -127,7 +127,7 @@ def run_campaign(
         report_format=report_format,
     )
     csv_warnings = campaign_csv_warnings(csv_reports)
-    return CampaignRunResult(
+    result = CampaignRunResult(
         baseline_run=baseline_run,
         candidate_runs=candidate_runs,
         skipped_candidates=skipped,
@@ -136,6 +136,8 @@ def run_campaign(
         warnings=[*csv_warnings, *final_report_warnings],
         final_reports=final_reports,
     )
+    _write_campaign_manifest(config, result)
+    return result
 
 
 def campaign_candidate_selections(
@@ -346,3 +348,21 @@ def build_campaign_final_reports(
 
 def _project_reports_dir(config: ProjectConfig) -> Path:
     return Path("reports") / config.project.name
+
+
+def _write_campaign_manifest(
+    config: ProjectConfig,
+    result: CampaignRunResult,
+) -> None:
+    from evaluator_harness.campaign_calibration import (
+        write_campaign_manifest_from_result,
+    )
+
+    try:
+        write_campaign_manifest_from_result(
+            config=config,
+            result=result,
+            reports_dir=_project_reports_dir(config),
+        )
+    except ConfigError as exc:
+        result.warnings.append(str(exc))

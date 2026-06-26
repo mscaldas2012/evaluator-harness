@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
@@ -16,6 +15,20 @@ from evaluator_harness.baseline_registry import (
     BaselineRegistry,
 )
 from evaluator_harness.baseline_runs import build_baseline_run_context
+from evaluator_harness.calibration import (
+    calibration_reports_dir,
+    capture_calibration_snapshot,
+    load_calibration_inputs_from_export,
+    summarize_calibration_snapshot,
+)
+from evaluator_harness.campaign_calibration import (
+    capture_campaign_calibration,
+    resolve_campaign_run_references,
+    summarize_campaign_calibration,
+)
+from evaluator_harness.campaign_calibration_reports import (
+    create_campaign_calibration_report,
+)
 from evaluator_harness.campaigns import (
     CampaignCandidateRun as CampaignCandidateRun,
 )
@@ -521,6 +534,145 @@ class ExperimentRunner:
             expected_count=expected_count,
             strict_linkage=strict_linkage,
         )
+
+    def calibration_capture(
+        self,
+        project_path: Path,
+        run_id: str,
+        *,
+        output_dir: Path | None = None,
+    ) -> Any:
+        config = self._load_project_config(project_path)
+        validate_project_config(config)
+        dataset_names = [
+            name
+            for name in [
+                config.dataset.langfuse_dataset_name,
+                config.dataset.langfuse_dataset_id,
+            ]
+            if name
+        ]
+        traces = self.langfuse_gateway.traces_for_run(
+            run_id,
+            dataset_names=dataset_names or None,
+        )
+        effective_output_dir = output_dir or calibration_reports_dir(config.project.name)
+        export_warning: tuple[str, ...] = ()
+        export_scores: list[dict[str, Any]] = []
+        export_path = _calibration_export_fallback_path(
+            config,
+            run_id,
+            output_dir=effective_output_dir,
+        )
+        if export_path is not None:
+            export_traces, export_scores = load_calibration_inputs_from_export(export_path)
+            if len(export_traces) > len(traces):
+                traces = export_traces
+                export_warning = (
+                    f"Calibration capture used existing run export {export_path} "
+                    "because live Langfuse trace or score retrieval was incomplete.",
+                )
+        trace_ids = [
+            str(trace["trace_id"])
+            for trace in traces
+            if trace.get("trace_id") is not None
+        ]
+        completed_annotation_trace_ids = _completed_annotation_trace_ids_for_run(
+            self.langfuse_gateway,
+            config,
+            trace_ids=trace_ids,
+        )
+        score_trace_ids = (
+            sorted(completed_annotation_trace_ids)
+            if completed_annotation_trace_ids
+            else trace_ids
+        )
+        scores = self.langfuse_gateway.fetch_calibration_scores(
+            run_id,
+            trace_ids=score_trace_ids,
+            progress=self.progress,
+        )
+        if not completed_annotation_trace_ids and not scores and export_scores:
+            scores = export_scores
+            if not export_warning:
+                export_warning = (
+                    f"Calibration capture used existing run export {export_path} "
+                    "because live Langfuse trace or score retrieval was incomplete.",
+                )
+        run_type = "candidate" if run_id.startswith("candidate-") else "baseline"
+        return capture_calibration_snapshot(
+            config=config,
+            run_id=run_id,
+            run_type=run_type,
+            traces=traces,
+            scores=scores,
+            completed_annotation_trace_ids=completed_annotation_trace_ids,
+            warnings=export_warning,
+            output_dir=effective_output_dir,
+        )
+
+    def calibration_summary(
+        self,
+        project_path: Path,
+        run_id: str,
+        *,
+        output_dir: Path | None = None,
+    ) -> Any:
+        config = self._load_project_config(project_path)
+        validate_project_config(config)
+        effective_output_dir = output_dir or calibration_reports_dir(config.project.name)
+        return summarize_calibration_snapshot(
+            effective_output_dir / f"{run_id}.json",
+            project_name=config.project.name,
+            project_version=config.project.version,
+            output_dir=effective_output_dir,
+        )
+
+    def campaign_calibration_report(
+        self,
+        project_path: Path,
+        baseline_run_id: str,
+        *,
+        reports_dir: Path | None = None,
+        output_path: Path | None = None,
+        output_dir: Path | None = None,
+    ) -> Any:
+        config = self._load_project_config(project_path)
+        validate_project_config(config)
+        effective_reports_dir = reports_dir or Path("reports") / config.project.name
+        resolution = resolve_campaign_run_references(
+            baseline_run_id,
+            reports_dir=effective_reports_dir,
+        )
+        calibration_dir = effective_reports_dir / "calibration"
+        captured = capture_campaign_calibration(
+            project_name=config.project.name,
+            project_version=config.project.version,
+            baseline_run_id=baseline_run_id,
+            source=resolution.source,
+            run_references=resolution.runs,
+            warnings=resolution.warnings,
+            capture_run=lambda run_id: self.calibration_capture(
+                project_path,
+                run_id,
+                output_dir=calibration_dir,
+            ),
+        )
+        summarized = summarize_campaign_calibration(
+            captured,
+            summarize_run=lambda run_id: self.calibration_summary(
+                project_path,
+                run_id,
+                output_dir=calibration_dir,
+            ),
+        )
+        report = create_campaign_calibration_report(
+            summarized,
+            reports_dir=effective_reports_dir,
+            output_path=output_path,
+            output_dir=output_dir,
+        )
+        return replace(summarized, html_report_path=report.output_path)
 
     def campaign(
         self,
@@ -1216,3 +1368,55 @@ def _required_str(value: object, option_name: str) -> str:
     if not isinstance(value, str) or not value:
         raise ConfigError(f"{option_name} is required for candidate runs")
     return value
+
+
+def _calibration_export_fallback_path(
+    config: ProjectConfig,
+    run_id: str,
+    *,
+    output_dir: Path,
+) -> Path | None:
+    candidates = [
+        output_dir.parent / f"{run_id}.csv",
+        _project_reports_dir(config) / f"{run_id}.csv",
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def _completed_annotation_trace_ids_for_run(
+    langfuse_gateway: LangfuseGateway,
+    config: ProjectConfig,
+    *,
+    trace_ids: list[str],
+) -> set[str]:
+    if not config.human_review.enabled or not trace_ids:
+        return set()
+    queue_ids = _calibration_annotation_queue_ids(langfuse_gateway, config)
+    if not queue_ids:
+        return set()
+    trace_id_set = {str(trace_id) for trace_id in trace_ids}
+    completed_items = langfuse_gateway.completed_annotation_queue_items(queue_ids)
+    return {
+        str(item.get("object_id") or item.get("objectId") or item.get("trace_id") or "")
+        for item in completed_items
+        if str(item.get("object_id") or item.get("objectId") or item.get("trace_id") or "")
+        in trace_id_set
+    }
+
+
+def _calibration_annotation_queue_ids(
+    langfuse_gateway: LangfuseGateway,
+    config: ProjectConfig,
+) -> list[str]:
+    configured_queue_id = config.human_review.annotation_queue_id
+    if configured_queue_id:
+        return [configured_queue_id]
+    queues = langfuse_gateway.list_annotation_queues()
+    return [
+        str(queue.get("id"))
+        for queue in queues
+        if queue.get("id") is not None
+    ]
