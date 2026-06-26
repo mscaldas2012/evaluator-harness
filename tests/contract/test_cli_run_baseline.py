@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from types import SimpleNamespace
 
 from typer.testing import CliRunner
 
@@ -43,7 +44,31 @@ def test_sync_score_configs_cli_dry_run_output(monkeypatch) -> None:
 
 
 def test_run_baseline_cli_success_with_fake_provider(monkeypatch) -> None:
-    monkeypatch.setenv("EVALUATOR_HARNESS_LIVE", "0")
+    class FakeRunner:
+        def run(self, project, mode, **kwargs):
+            assert project == Path("configs/projects/rewrite_quality.yaml")
+            assert mode == "baseline"
+            assert kwargs["select_human_review"] is True
+            return SimpleNamespace(
+                run_id="baseline-123",
+                run_type="baseline",
+                completed_count=2,
+                failed_count=0,
+                baseline_reference=None,
+                review_selection=None,
+                langfuse_status="complete",
+                langfuse_warnings=(),
+                model_output_targeting_status="aligned",
+                model_output_targeting_message="2 observations aligned.",
+            )
+
+        def export(self, project, run_id, fmt, **_kwargs):
+            assert project == Path("configs/projects/rewrite_quality.yaml")
+            assert run_id == "baseline-123"
+            assert fmt == "csv"
+            return FakeExportResult()
+
+    monkeypatch.setattr(cli, "ExperimentRunner", FakeRunner)
 
     result = CliRunner().invoke(
         app,

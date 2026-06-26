@@ -1,7 +1,7 @@
 <!-- SPECKIT START -->
 For additional context about technologies to be used, project structure,
 shell commands, and other important information, read
-specs/026-evaluator-calibration/plan.md
+specs/027-campaign-calibration-report/plan.md
 <!-- SPECKIT END -->
 
 ## Python Environment

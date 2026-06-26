@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
@@ -16,6 +15,20 @@ from evaluator_harness.baseline_registry import (
     BaselineRegistry,
 )
 from evaluator_harness.baseline_runs import build_baseline_run_context
+from evaluator_harness.calibration import (
+    calibration_reports_dir,
+    capture_calibration_snapshot,
+    load_calibration_inputs_from_export,
+    summarize_calibration_snapshot,
+)
+from evaluator_harness.campaign_calibration import (
+    capture_campaign_calibration,
+    resolve_campaign_run_references,
+    summarize_campaign_calibration,
+)
+from evaluator_harness.campaign_calibration_reports import (
+    create_campaign_calibration_report,
+)
 from evaluator_harness.campaigns import (
     CampaignCandidateRun as CampaignCandidateRun,
 )
@@ -28,12 +41,6 @@ from evaluator_harness.campaigns import (
 from evaluator_harness.campaigns import (
     campaign_candidate_selections,
     run_campaign,
-)
-from evaluator_harness.calibration import (
-    calibration_reports_dir,
-    capture_calibration_snapshot,
-    load_calibration_inputs_from_export,
-    summarize_calibration_snapshot,
 )
 from evaluator_harness.candidate_runs import build_candidate_run_context
 from evaluator_harness.certificates import configure_tls_truststore
@@ -620,6 +627,52 @@ class ExperimentRunner:
             project_version=config.project.version,
             output_dir=effective_output_dir,
         )
+
+    def campaign_calibration_report(
+        self,
+        project_path: Path,
+        baseline_run_id: str,
+        *,
+        reports_dir: Path | None = None,
+        output_path: Path | None = None,
+        output_dir: Path | None = None,
+    ) -> Any:
+        config = self._load_project_config(project_path)
+        validate_project_config(config)
+        effective_reports_dir = reports_dir or Path("reports") / config.project.name
+        resolution = resolve_campaign_run_references(
+            baseline_run_id,
+            reports_dir=effective_reports_dir,
+        )
+        calibration_dir = effective_reports_dir / "calibration"
+        captured = capture_campaign_calibration(
+            project_name=config.project.name,
+            project_version=config.project.version,
+            baseline_run_id=baseline_run_id,
+            source=resolution.source,
+            run_references=resolution.runs,
+            warnings=resolution.warnings,
+            capture_run=lambda run_id: self.calibration_capture(
+                project_path,
+                run_id,
+                output_dir=calibration_dir,
+            ),
+        )
+        summarized = summarize_campaign_calibration(
+            captured,
+            summarize_run=lambda run_id: self.calibration_summary(
+                project_path,
+                run_id,
+                output_dir=calibration_dir,
+            ),
+        )
+        report = create_campaign_calibration_report(
+            summarized,
+            reports_dir=effective_reports_dir,
+            output_path=output_path,
+            output_dir=output_dir,
+        )
+        return replace(summarized, html_report_path=report.output_path)
 
     def campaign(
         self,
