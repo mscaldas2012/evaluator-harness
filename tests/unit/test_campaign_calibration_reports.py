@@ -115,6 +115,10 @@ def test_render_campaign_calibration_html_includes_metrics_and_warnings(
     assert "trace-2" in html
     assert "trace-3" in html
     assert "candidate-1: missing annotation" in html
+    assert "2/3" in html
+    assert "(66.7%)" in html
+    assert "1/2" in html
+    assert "(50%)" in html
 
 
 def test_render_campaign_calibration_html_styles_run_groups_and_deltas(
@@ -195,6 +199,8 @@ def test_render_campaign_calibration_html_styles_run_groups_and_deltas(
 
     assert 'class="run-badge baseline run-color-0"' in html
     assert 'class="run-badge candidate run-color-1"' in html
+    assert 'class="run-label"' in html
+    assert 'title="candidate-a"' in html
     assert "run-color-0" in html
     assert "run-color-1" in html
     assert 'data-run-id="baseline-1"' in html
@@ -263,7 +269,7 @@ def _write_summary_and_snapshot(
                     "record_count": 3,
                     "paired_count": 2,
                     "pending_count": 1,
-                    "paired_coverage": 1.0,
+                    "paired_coverage": 0.6666666667,
                     "disagreement_rate": 0.5,
                     "mean_absolute_score_delta": 0.2,
                     "directional_bias": directional_bias,
