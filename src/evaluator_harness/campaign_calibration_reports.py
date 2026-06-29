@@ -286,8 +286,8 @@ def _summary_table(payload: CampaignCalibrationReportPayload) -> str:
             [
                 _run_badge_for_summary(summary, run_context),
                 _e(summary.get("evaluator_name", "")),
-                _metric_cell(summary.get("paired_coverage")),
-                _metric_cell(summary.get("disagreement_rate")),
+                _paired_coverage_cell(summary),
+                _disagreement_rate_cell(summary),
                 _metric_cell(summary.get("mean_absolute_score_delta")),
                 _delta_cell(summary.get("directional_bias")),
             ],
@@ -554,8 +554,9 @@ def _run_badge(
     label = candidate_name or run_id
     class_name = f"run-badge {_e(role_text)} {_e(color_class)}".strip()
     return (
-        f'<span class="{class_name}">'
-        f'<span>{_e(role_text)}</span>{_e(label)}</span>'
+        f'<span class="{class_name}" title="{_e(label)}">'
+        f'<span>{_e(role_text)}</span>'
+        f'<span class="run-label">{_e(label)}</span></span>'
     )
 
 
@@ -573,6 +574,44 @@ def _status_badge(status: object) -> str:
 
 def _metric_cell(value: object) -> str:
     return f'<span class="metric-value">{_e(_format_number(value))}</span>'
+
+
+def _paired_coverage_cell(summary: dict[str, Any]) -> str:
+    paired_count = _as_int(summary.get("paired_count"))
+    record_count = _as_int(summary.get("record_count"))
+    return _fraction_metric_cell(
+        paired_count,
+        record_count,
+        summary.get("paired_coverage"),
+    )
+
+
+def _disagreement_rate_cell(summary: dict[str, Any]) -> str:
+    paired_count = _as_int(summary.get("paired_count"))
+    rate = _as_float(summary.get("disagreement_rate"))
+    disagreement_count = None
+    if paired_count is not None and rate is not None:
+        disagreement_count = int(round(rate * paired_count))
+    return _fraction_metric_cell(
+        disagreement_count,
+        paired_count,
+        summary.get("disagreement_rate"),
+    )
+
+
+def _fraction_metric_cell(
+    numerator: int | None,
+    denominator: int | None,
+    ratio: object,
+) -> str:
+    if numerator is None or denominator is None:
+        return _metric_cell(ratio)
+    return (
+        '<span class="metric-value metric-fraction">'
+        f"{numerator}/{denominator}"
+        f' <span class="metric-subvalue">({_e(_format_percent(ratio))})</span>'
+        "</span>"
+    )
 
 
 def _delta_cell(value: object) -> str:
@@ -725,11 +764,25 @@ def _as_float(value: object) -> float | None:
         return None
 
 
+def _as_int(value: object) -> int | None:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def _format_number(value: object) -> str:
     number = _as_float(value)
     if number is None:
         return str(value)
     return f"{number:.3g}"
+
+
+def _format_percent(value: object) -> str:
+    number = _as_float(value)
+    if number is None:
+        return str(value)
+    return f"{number * 100:.3g}%"
 
 
 def _e(value: object) -> str:
@@ -817,10 +870,16 @@ th { background: #eef2f8; color: #25324a; font-weight: 700; }
   font-weight: 700; gap: 6px; line-height: 1; white-space: nowrap;
 }
 .run-badge {
-  border: 1px solid currentColor; padding: 6px 8px;
+  border: 1px solid currentColor; max-width: 220px; min-width: 0; padding: 6px 8px;
 }
 .run-badge span {
+  flex: 0 0 auto;
   font-size: 10px; letter-spacing: .04em; opacity: .72; text-transform: uppercase;
+}
+.run-badge .run-label {
+  flex: 1 1 auto; font-size: 12px; letter-spacing: 0; min-width: 0;
+  opacity: 1; overflow: hidden; text-overflow: ellipsis; text-transform: none;
+  white-space: nowrap;
 }
 .run-badge.baseline { color: var(--baseline); }
 .run-badge.candidate { color: var(--candidate); }

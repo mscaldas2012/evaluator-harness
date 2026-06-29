@@ -292,6 +292,7 @@ human_review:
   queue_ownership: managed_by_harness
   review_policy_version: default
   minimum_sample_percent: 5
+  minimum_sample_count: 3
   prioritize:
     - failures
     - low_confidence
